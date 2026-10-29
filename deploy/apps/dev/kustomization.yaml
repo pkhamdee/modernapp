@@ -12,4 +12,4 @@ images:
   - name: ghcr.io/pkhamdee/sphone-api
     newTag: main-47ac14c-1793280828 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-web
-    newTag: main-d5eddef-1793280527 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
+    newTag: main-47ac14c-1793280828 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
