@@ -20,6 +20,12 @@ public class Product
     /// <summary>Current cash price in baht.</summary>
     public decimal Price { get; set; }
 
+    /// <summary>
+    /// ID of the Product photo in the image service's public area (sphone-node-api), e.g. <c>demo-iphone-17.svg</c>.
+    /// Only the ID is stored here; the photo is served at <c>/images/public/{ImageId}</c>.
+    /// </summary>
+    public string? ImageId { get; set; }
+
     /// <summary>Retired Products stay in the database (Applications may refer to them) but leave the catalog.</summary>
     public bool IsRetired { get; set; }
 }

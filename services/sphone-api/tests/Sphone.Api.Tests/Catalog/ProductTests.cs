@@ -34,6 +34,24 @@ public sealed class ProductTests(SphoneApiFactory api)
     }
 
     [Fact]
+    public async Task Every_demo_Product_has_a_public_photo()
+    {
+        foreach (var category in new[] { "mobile-phone", "ipad", "electrical-appliance", "furniture", "electric-motorcycle" })
+        {
+            var products = await _client.GetFromJsonAsync<List<ProductSummary>>(
+                $"/api/product-categories/{category}/products", Ct);
+
+            Assert.All(products!, p => Assert.StartsWith("/images/public/demo-", p.ImageUrl));
+        }
+
+        var iphone = (await _client.GetFromJsonAsync<List<ProductSummary>>("/api/product-categories/mobile-phone/products", Ct))!
+            .Single(p => p.Name == "iPhone 17 128GB");
+        var detail = await _client.GetFromJsonAsync<ProductDetail>($"/api/products/{iphone.Id}", Ct);
+        Assert.Equal("/images/public/demo-iphone-17.svg", iphone.ImageUrl);
+        Assert.Equal(iphone.ImageUrl, detail!.ImageUrl);
+    }
+
+    [Fact]
     public async Task Browsing_an_unknown_Product_Category_is_not_found()
     {
         var response = await _client.GetAsync("/api/product-categories/spaceship/products", Ct);
@@ -66,9 +84,10 @@ public sealed class ProductTests(SphoneApiFactory api)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
-    private sealed record ProductSummary(int Id, string Name, decimal Price, string ProductCategoryCode);
+    private sealed record ProductSummary(int Id, string Name, decimal Price, string ProductCategoryCode, string? ImageUrl);
 
-    private sealed record ProductDetail(int Id, string Name, string Description, decimal Price, CategoryTerms ProductCategory);
+    private sealed record ProductDetail(
+        int Id, string Name, string Description, decimal Price, CategoryTerms ProductCategory, string? ImageUrl);
 
     private sealed record CategoryTerms(string Code, string Name, decimal FlatRate, int LongestTerm);
 }

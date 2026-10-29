@@ -16,6 +16,8 @@ export interface ProductSummary {
   productCategoryCode: string
   /** Lowest Installment offered with no Down Payment ("from ฿X / month"); null if no Term is offered. */
   fromInstallment: number | null
+  /** Same-origin path of the Product photo (served by sphone-node-api under /images/public), or null. */
+  imageUrl: string | null
 }
 
 export interface ProductDetail {
@@ -24,6 +26,7 @@ export interface ProductDetail {
   description: string
   price: number
   productCategory: ProductCategory
+  imageUrl: string | null
 }
 
 /** One offered Term. totalPayable = Down Payment + Installment × Term. */

@@ -2,6 +2,7 @@ import { Link, useParams } from 'react-router'
 import { catalogPaths, type ProductDetail } from '../api/catalog.ts'
 import { ApiError, useApi } from '../api/client.ts'
 import { InstallmentCalculator } from '../components/InstallmentCalculator.tsx'
+import { ProductPhoto } from '../components/ProductPhoto.tsx'
 import { Status } from '../components/Status.tsx'
 import { formatBaht, formatMonthlyRate } from '../format.ts'
 import { NotFoundPage } from './NotFoundPage.tsx'
@@ -15,13 +16,14 @@ export function ProductPage() {
   }
   if (product.status !== 'success') return <Status state={product} />
 
-  const { name, description, price, productCategory } = product.data
+  const { name, description, price, productCategory, imageUrl } = product.data
 
   return (
     <article className="product-detail">
       <Link to={`/categories/${productCategory.code}`} className="back-link">
         ← {productCategory.name}
       </Link>
+      <ProductPhoto src={imageUrl} alt={name} large />
       <h1>{name}</h1>
       <p className="product-detail-price">{formatBaht(price)}</p>
       <p>{description}</p>

@@ -96,6 +96,26 @@ jobs:
         run: npm run typecheck
 
 
+  sphone-node-api:
+    name: sphone-node-api (lint, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/sphone-node-api
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/sphone-node-api/package-lock.json
+      - run: npm ci
+      - name: Lint and type-check
+        run: npm run lint
+      # Seam-3 tests: real HTTP against a temporary folder standing in for the SMB share.
+      - name: Test
+        run: npm test
+
   # Decides what to build, after every service's lint/test passed:
   #   - tag vX.Y.Z: validate the tag (semver, annotated, on a release/N.x branch); build every service as X.Y.Z.
   #   - workflow_dispatch with `version`: release dry run; build every service as that pre-release tag.
@@ -103,7 +123,7 @@ jobs:
   #     rebuilt when the push has no usable base (first push, force push), when this workflow or services.json
   #     changes, or on workflow_dispatch without `version`.
   plan:
-    needs: [sphone-api, sphone-web, thirdparty-mock]
+    needs: [sphone-api, sphone-web, thirdparty-mock, sphone-node-api]
     if: >-
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
       || github.event_name == 'workflow_dispatch'
