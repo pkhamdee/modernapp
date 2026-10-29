@@ -1,7 +1,13 @@
 import { Link, useParams } from 'react-router'
 import { formatThaiDate } from '../api/applications.ts'
 import { useApi } from '../api/client.ts'
-import { CONTRACT_STATUS_LABELS, contractPaths, type Contract, type ContractSummary } from '../api/contracts.ts'
+import {
+  CONTRACT_STATUS_LABELS,
+  contractPaths,
+  CUSTOMER_HANDOVER_STAGE_LABELS,
+  type Contract,
+  type ContractSummary,
+} from '../api/contracts.ts'
 import { Status } from '../components/Status.tsx'
 import { formatBaht } from '../format.ts'
 
@@ -57,6 +63,13 @@ export function ContractPage() {
             {c.handover === 'delivery'
               ? `จัดส่งที่ ${c.deliveryAddress ?? ''} ${c.deliveryProvince ?? ''}`
               : `รับที่${c.branch?.name ?? 'สาขา'}`}
+          </dd>
+        </div>
+        <div>
+          <dt>สถานะการส่งมอบ</dt>
+          <dd className="handover-stage">
+            {CUSTOMER_HANDOVER_STAGE_LABELS[c.handoverStage]}
+            {c.handedOverAt && ` เมื่อ ${formatThaiDate(c.handedOverAt)}`}
           </dd>
         </div>
       </dl>

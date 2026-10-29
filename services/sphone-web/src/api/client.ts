@@ -77,6 +77,22 @@ export function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   return request<T>('GET', path, undefined, signal)
 }
 
+/**
+ * GETs a binary body (e.g. a private image) with the session's token. An <img src> can't send the
+ * token, so callers turn the Blob into an object URL and revoke it when done.
+ */
+export async function apiGetBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  const session = loadSession()
+  const headers: Record<string, string> = {}
+  if (session) headers.Authorization = `Bearer ${session.token}`
+  const response = await fetch(`${API_BASE}${path}`, { headers, signal, cache: 'no-store' })
+  if (!response.ok) {
+    if (response.status === 401 && session) saveSession(null)
+    throw new ApiError(response.status, `GET ${path} failed with ${response.status}`)
+  }
+  return response.blob()
+}
+
 /** POSTs JSON, multipart form data when `body` is a FormData, or a raw Blob/File. */
 export function apiPost<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>('POST', path, body, signal)

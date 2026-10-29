@@ -820,4 +820,20 @@ button.header-link {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+/* Staff Handover: the Customer's ID card photo, fetched with the Staff token (never a public link). */
+.id-card-photo {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+  margin: 1rem 0;
+}
+
+.id-card-photo img {
+  max-width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+}
+
+.handover-stage {
+  color: var(--brand);
 }

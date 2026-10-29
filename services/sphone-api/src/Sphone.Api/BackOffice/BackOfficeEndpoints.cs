@@ -18,6 +18,7 @@ internal static class BackOfficeEndpoints
         backOffice.MapProductCategoryAdministration();
         backOffice.MapBranchAdministration();
         backOffice.MapAuctionAdministration();
+        backOffice.MapHandoverAdministration();
 
         return api;
     }

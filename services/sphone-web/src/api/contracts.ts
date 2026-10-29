@@ -25,7 +25,21 @@ export interface Contract {
   deliveryAddress: string | null
   deliveryProvince: string | null
   branch: { code: string; name: string } | null
+  /** Where the Handover is; `stopped` once the Contract was cancelled before the goods were handed over. */
+  handoverStage: CustomerHandoverStage
+  handedOverAt: string | null
   installments: ScheduledInstallment[]
+}
+
+export type CustomerHandoverStage = 'preparing' | 'ready-for-pickup' | 'out-for-delivery' | 'handed-over' | 'stopped'
+
+/** The Handover stage as the Customer reads it. */
+export const CUSTOMER_HANDOVER_STAGE_LABELS: Record<CustomerHandoverStage, string> = {
+  preparing: 'กำลังเตรียมสินค้า',
+  'ready-for-pickup': 'สินค้าพร้อมแล้ว รับได้ที่สาขา',
+  'out-for-delivery': 'กำลังจัดส่งสินค้า',
+  'handed-over': 'รับสินค้าแล้ว',
+  stopped: 'หยุดการส่งมอบ เนื่องจากสัญญาถูกยกเลิก',
 }
 
 export interface ContractSummary {

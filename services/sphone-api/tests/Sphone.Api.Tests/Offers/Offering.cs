@@ -82,6 +82,8 @@ internal sealed record ContractView(
     decimal Installment,
     decimal TotalPayable,
     string Handover,
+    string HandoverStage,
+    DateTimeOffset? HandedOverAt,
     List<InstallmentView> Installments);
 
 internal sealed record InstallmentView(int Number, decimal Amount, DateOnly? DueDate);
