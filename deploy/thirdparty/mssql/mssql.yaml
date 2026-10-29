@@ -1,0 +1,159 @@
+# Mock Enterprise System (ADR-0003): the real SQL Server, shared by both environments through separate databases
+# enterprise_dev and enterprise_prod (fake schema in enterprise-schema.sql, logins in logins.sql, applied by the
+# `schema` container on every start). In-cluster: mssql.thirdparty.svc.cluster.local:1433.
+# The image is linux/amd64 only. The node is arm64: Rancher Desktop runs it under Rosetta (its manifest is
+# single-platform, so the arm64 node pulls it as is). No arch nodeSelector, since there is no amd64 node; it
+# needs Rosetta enabled in Rancher Desktop and about 2 GB of memory.
+# Admin tool (list Contracts, simulate Payment, cancel): https://sphone.localhost/thirdparty-mock/enterprise/
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mssql-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 4Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mssql
+  labels:
+    app.kubernetes.io/name: mssql
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # ReadWriteOnce volume, and one SQL Server per data folder
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mssql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mssql
+    spec:
+      nodeSelector:
+        kubernetes.io/os: linux
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001 # the image's mssql user
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: mssql
+          image: mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
+          env:
+            - name: ACCEPT_EULA
+              value: "Y"
+            - name: MSSQL_PID
+              value: Developer
+            # Below the container limit, so SQL Server never gets OOM-killed.
+            - name: MSSQL_MEMORY_LIMIT_MB
+              value: "1536"
+            - name: MSSQL_SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mssql-credentials
+                  key: sa-password
+          ports:
+            - name: mssql
+              containerPort: 1433
+          # Start-up under Rosetta is slow (first start creates the system databases).
+          startupProbe:
+            tcpSocket:
+              port: mssql
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            tcpSocket:
+              port: mssql
+          livenessProbe:
+            tcpSocket:
+              port: mssql
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 250m
+              memory: 2Gi
+            limits:
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/opt/mssql
+        # Applies databases, schema and logins once SQL Server answers, then idles (ready = done).
+        - name: schema
+          image: mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
+          command: ["/bin/bash", "/init/init.sh"]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MSSQL_SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mssql-credentials
+                  key: sa-password
+            - name: ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mssql-credentials
+                  key: admin-password
+            - name: SYNC_DEV_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mssql-credentials
+                  key: sync-dev-password
+            - name: SYNC_PROD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mssql-credentials
+                  key: sync-prod-password
+          readinessProbe:
+            exec:
+              command: ["test", "-f", "/tmp/initialized"]
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: init
+              mountPath: /init
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mssql-data
+        - name: init
+          configMap:
+            name: mssql-init
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mssql
+spec:
+  selector:
+    app.kubernetes.io/name: mssql
+  ports:
+    - name: mssql
+      port: 1433
+      targetPort: mssql

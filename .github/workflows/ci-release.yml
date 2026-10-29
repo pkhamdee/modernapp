@@ -52,7 +52,9 @@ jobs:
         run: dotnet format --verify-no-changes --no-restore
       - name: Build
         run: dotnet build --no-restore -c Release
-      # Seam-1 tests start PostgreSQL with Testcontainers (Docker is available on GitHub runners).
+      # Seam-1 tests (sphone-api) start PostgreSQL with Testcontainers (Docker is available on GitHub runners).
+      # Seam-2 tests (sphone-sync-master, same solution) also start SQL Server, which has no Arm image: this job
+      # must stay on an x86 runner (ubuntu-latest).
       - name: Test
         run: dotnet test --no-build -c Release
 

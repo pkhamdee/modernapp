@@ -90,6 +90,7 @@ curl -kI https://sphone.localhost/images/public/demo-iphone-17.svg   # a Product
 curl -I http://sphone.localhost  # 301 to https
 curl -k https://prod.sphone.localhost/api/product-categories   # sphone-prod (release images, own database)
 open https://sphone.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-in codes for any mobile number
+open https://sphone.localhost/thirdparty-mock/enterprise/ # mock Enterprise System: pushed Contracts, simulate Payment, cancel
 ```
 
 The certificate comes from a local CA created by cert-manager. To stop browser warnings, trust the CA once:
@@ -129,6 +130,42 @@ Verification may bid, and the only way to pass it is to apply for hire purchase:
 `02` (ID Verification passes, Credit Check fails) to make a bidder without taking on a Contract. A Bid must be at least the
 starting price, then at least ฿100 above the current highest; Bids before opening or from the closing time on are refused.
 
+## Mock Enterprise System (SQL Server)
+
+The Enterprise System is a real SQL Server 2022 (`mcr.microsoft.com/mssql/server`, amd64 only, so it runs under Rosetta;
+about 2 GB of memory and a slow first start) in the `thirdparty` namespace, shared by both environments:
+databases `enterprise_dev` and `enterprise_prod`, fake schema `hp.contract` / `hp.payment`
+(`deploy/thirdparty/mssql/enterprise-schema.sql`). The pod's `schema` container creates the databases, applies the
+schema and (re)sets the logins on every start. Passwords are in the SOPS Secret
+`deploy/thirdparty/mssql/mssql-credentials.sops.yaml` (`sa`, `enterprise_admin` for the admin tool, `sphone_sync_dev` /
+`sphone_sync_prod` for sphone-sync-master). Each environment's copy of its sync login is in
+`deploy/apps/<env>/sphone-sync-master-enterprise.sops.yaml` and must match.
+
+**Admin tool** (story 62): `https://sphone.localhost/thirdparty-mock/enterprise/` → `dev/` or `prod/` lists the Contracts
+sphone-sync-master pushed (newest first) with their Payments, and per Contract: **Simulate Payment** (one Installment by
+default; the last one makes it `PAID_OFF`), **Mark overdue / Mark active**, **Cancel Contract**. The same as JSON for
+scripts:
+
+```sh
+B=https://sphone.localhost/thirdparty-mock/enterprise/dev
+curl -k $B/contracts                                                          # Contracts + Payments
+curl -k -H 'content-type: application/json' -d '{}' $B/contracts/SP-202610-000001/payments    # {amount?, channel?}
+curl -k -H 'content-type: application/json' -d '{"status":"OVERDUE"}' $B/contracts/SP-202610-000001/status
+curl -k -H 'content-type: application/json' -d '{"reason":"demo"}' $B/contracts/SP-202610-000001/cancel
+```
+
+**sphone-sync-master** (`deploy/apps/base/sphone-sync-master`) runs a sync cycle every 30 s: it pushes Contracts waiting in
+`contract_outbox` to `hp.contract` (MERGE on the Contract number, insert only: pushing twice leaves one copy and never
+overwrites what the Enterprise System changed), then sets `pushed_at`. From then on the Enterprise System owns the
+Contract (ADR-0001). Logs: `kubectl -n sphone-dev logs deploy/sphone-sync-master`.
+
+Read-only look at the database (sa password from the Secret, never printed):
+
+```sh
+kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
+  '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d enterprise_dev -Q "SELECT contract_no, status, last_updated_at FROM hp.contract"'
+```
+
 ## Repo layout
 
 | Path | What | Flux Kustomization |
@@ -141,10 +178,10 @@ starting price, then at least ฿100 above the current highest; Bids before open
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
 | `deploy/apps/prod/` | `sphone-prod` overlay, follows release tags, served at `prod.sphone.localhost` | `apps-prod` (after configs) |
 | `deploy/apps/prod/image-automation.yaml` | Flux image automation: newest semver `X.Y.Z` image per service, committed back to `main` | `apps-prod` |
-| `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, `samba/`: image share with one share per environment, ...); thirdparty-mock follows `main` via its own image automation | `thirdparty` (after configs) |
-| `services/sphone-api/` | .NET solution: `src/Sphone.Domain`, `src/Sphone.Data` (EF Core, migrations), `src/Sphone.Api`, `tests/Sphone.Api.Tests` | – |
+| `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, `samba/`: image share with one share per environment, `mssql/`: mock Enterprise System, ...); thirdparty-mock follows `main` via its own image automation | `thirdparty` (after configs) |
+| `services/sphone-api/` | .NET solution: `src/Sphone.Domain`, `src/Sphone.Data` (EF Core, migrations), `src/Sphone.Api`, `src/Sphone.SyncMaster` (sphone-sync-master), `tests/Sphone.Api.Tests` (Seam 1), `tests/Sphone.SyncMaster.Tests` (Seam 2) | – |
 | `services/sphone-web/` | React + Vite + TypeScript, served by Caddy | – |
-| `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), later ID Verification and Credit Check; adjustable delay | – |
+| `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/sphone-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
@@ -153,7 +190,8 @@ Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` wh
 ## Developing
 
 ```sh
-# sphone-api (.NET 10). Tests start PostgreSQL with Testcontainers.
+# sphone-api + sphone-sync-master (.NET 10). Tests start PostgreSQL (and, for sync-master's Seam-2 tests, SQL Server
+# amd64 under Rosetta: enable Rosetta in Rancher Desktop) with Testcontainers.
 export DOCKER_HOST=unix://$HOME/.rd/docker.sock
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock   # Rancher Desktop: socket path inside the VM
 cd services/sphone-api
@@ -164,6 +202,10 @@ dotnet tool restore && dotnet ef migrations add <Name> --project src/Sphone.Data
 # Run locally: a PostgreSQL on localhost:5432 (user/password/db sphone), then
 docker run -d --name sphone-pg -p 5432:5432 -e POSTGRES_USER=sphone -e POSTGRES_PASSWORD=sphone -e POSTGRES_DB=sphone postgres:18-alpine
 dotnet run --project src/Sphone.Api                                 # http://localhost:5080, migrates and seeds
+# sphone-sync-master needs a SQL Server on localhost:1433 with enterprise_dev and the schema (appsettings.Development.json):
+docker run -d --name enterprise-sql --platform linux/amd64 -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Local_Dev_Passw0rd mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
+#   then create enterprise_dev and run ../../deploy/thirdparty/mssql/enterprise-schema.sql in it (sqlcmd -d enterprise_dev -i ...)
+dotnet run --project src/Sphone.SyncMaster                          # pushes every 30 s; probes on http://localhost:5090/healthz/ready
 
 # sphone-web (Node 24)
 cd services/sphone-web
@@ -173,6 +215,7 @@ npm run lint && npm run build                                       # as CI runs
 # thirdparty-mock (Node 24). sphone-api's Development settings point ThirdParty:BaseUrl at localhost:4000.
 cd services/thirdparty-mock
 npm ci && npm run dev                                               # http://localhost:4000/sms/inbox
+# Enterprise admin tool locally: ENTERPRISE_SQL_SERVER=localhost ENTERPRISE_SQL_USER=sa ENTERPRISE_SQL_PASSWORD=... npm run dev
 npm run lint && npm run typecheck
 # sphone-node-api (Node 24). Tests use a temporary folder instead of the SMB share.
 cd services/sphone-node-api
