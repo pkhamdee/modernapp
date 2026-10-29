@@ -1,6 +1,7 @@
 import { Link, useParams } from 'react-router'
 import { catalogPaths, type ProductDetail } from '../api/catalog.ts'
 import { ApiError, useApi } from '../api/client.ts'
+import { InstallmentCalculator } from '../components/InstallmentCalculator.tsx'
 import { Status } from '../components/Status.tsx'
 import { formatBaht, formatMonthlyRate } from '../format.ts'
 import { NotFoundPage } from './NotFoundPage.tsx'
@@ -34,6 +35,7 @@ export function ProductPage() {
           <dd>{productCategory.longestTerm} งวด</dd>
         </div>
       </dl>
+      <InstallmentCalculator productId={product.data.id} price={price} />
     </article>
   )
 }
