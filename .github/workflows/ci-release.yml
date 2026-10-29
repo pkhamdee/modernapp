@@ -1,0 +1,70 @@
+# Tag-based release workflow. See docs/git-workflow.md.
+#   - push / PR to main or release/*  -> test only
+#   - push tag vX.Y.Z                 -> test, then publish a GitHub Release
+name: CI / Release
+
+on:
+  push:
+    branches: [main, "release/*"]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, "release/*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Placeholder until the app has a toolchain. Replace with the real build/test commands.
+      - name: Test
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+            npm test
+          else
+            echo "No build/test configured yet."
+          fi
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Enforce the workflow rules: semver name, annotated tag, tagged commit on a release/N.x branch.
+      - name: Validate tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
+
+          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+          if [ "$(git cat-file -t "$TAG")" != "tag" ]; then
+            echo "::error::Tag '$TAG' is lightweight; release tags must be annotated (git tag -a)"
+            exit 1
+          fi
+
+          if ! git branch -r --contains "$TAG" | grep -qE '^\s*origin/release/[0-9]+\.x$'; then
+            echo "::error::Tag '$TAG' is not on any release/N.x branch"
+            exit 1
+          fi
+
+      # Add build steps here and attach artifacts with: gh release create ... <files>
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
