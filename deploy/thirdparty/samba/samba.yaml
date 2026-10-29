@@ -1,0 +1,118 @@
+# Mock Windows file share for images: one Samba server, one share per environment (sphone-dev, sphone-prod),
+# each with a `public` and a `private` area (folders sphone-node-api creates). Each environment has its own
+# SMB account that can open only its own share; passwords live in samba-accounts.sops.yaml and must match
+# the sphone-node-api-smb secret of that environment.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: samba-shares
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: samba
+  labels:
+    app.kubernetes.io/name: samba
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate # ReadWriteOnce volume
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: samba
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: samba
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Each environment's share folder belongs to its SMB account (UIDs match UID_* below).
+        - name: share-folders
+          image: ghcr.io/servercontainers/samba:smbd-only-a3.24.3-s4.23.8-r0
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p /shares/sphone-dev /shares/sphone-prod
+              chown 1001:1001 /shares/sphone-dev && chmod 0700 /shares/sphone-dev
+              chown 1002:1002 /shares/sphone-prod && chmod 0700 /shares/sphone-prod
+          volumeMounts:
+            - name: shares
+              mountPath: /shares
+      containers:
+        # smbd runs as root and switches to the SMB account per connection (the image's entrypoint creates
+        # the accounts from ACCOUNT_* at start).
+        - name: samba
+          image: ghcr.io/servercontainers/samba:smbd-only-a3.24.3-s4.23.8-r0
+          env:
+            - name: AVAHI_DISABLE
+              value: "1"
+            - name: WSDD2_DISABLE
+              value: "1"
+            - name: NETBIOS_DISABLE
+              value: "1"
+            - name: SAMBA_GLOBAL_CONFIG_server_SPACE_min_SPACE_protocol
+              value: SMB2_10
+            - name: ACCOUNT_sphonedev
+              valueFrom:
+                secretKeyRef:
+                  name: samba-accounts
+                  key: sphonedev
+            - name: UID_sphonedev
+              value: "1001"
+            - name: ACCOUNT_sphoneprod
+              valueFrom:
+                secretKeyRef:
+                  name: samba-accounts
+                  key: sphoneprod
+            - name: UID_sphoneprod
+              value: "1002"
+            - name: SAMBA_VOLUME_CONFIG_sphonedev
+              value: "[sphone-dev]; path = /shares/sphone-dev; valid users = sphonedev; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
+            - name: SAMBA_VOLUME_CONFIG_sphoneprod
+              value: "[sphone-prod]; path = /shares/sphone-prod; valid users = sphoneprod; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
+          ports:
+            - name: smb
+              containerPort: 445
+          readinessProbe:
+            tcpSocket:
+              port: smb
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: smb
+            initialDelaySeconds: 15
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 256Mi
+          volumeMounts:
+            - name: shares
+              mountPath: /shares
+      volumes:
+        - name: shares
+          persistentVolumeClaim:
+            claimName: samba-shares
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: samba
+spec:
+  selector:
+    app.kubernetes.io/name: samba
+  ports:
+    - name: smb
+      port: 445
+      targetPort: smb

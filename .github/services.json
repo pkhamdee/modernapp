@@ -16,5 +16,11 @@
     "context": "services/thirdparty-mock",
     "dockerfile": "services/thirdparty-mock/Dockerfile",
     "paths": ["services/thirdparty-mock/"]
+  },
+  {
+    "service": "sphone-node-api",
+    "context": "services/sphone-node-api",
+    "dockerfile": "services/sphone-node-api/Dockerfile",
+    "paths": ["services/sphone-node-api/"]
   }
 ]

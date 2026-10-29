@@ -5,7 +5,8 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Local development: run sphone-api with `dotnet run` (http://localhost:5080).
-    proxy: { '/api': 'http://localhost:5080' },
+    // Local development: run sphone-api with `dotnet run` (http://localhost:5080)
+    // and sphone-node-api with `npm run dev` (http://localhost:8081).
+    proxy: { '/api': 'http://localhost:5080', '/images': 'http://localhost:8081' },
   },
 })

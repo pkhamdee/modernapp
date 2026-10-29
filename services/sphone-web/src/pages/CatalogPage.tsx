@@ -1,6 +1,7 @@
 import { Link, NavLink, useParams } from 'react-router'
 import { catalogPaths, type ProductCategory, type ProductSummary } from '../api/catalog.ts'
 import { useApi } from '../api/client.ts'
+import { ProductPhoto } from '../components/ProductPhoto.tsx'
 import { Status } from '../components/Status.tsx'
 import { formatBaht, formatMonthlyRate } from '../format.ts'
 
@@ -58,6 +59,7 @@ function CategoryProducts({ category }: { category: ProductCategory }) {
           {products.data.map((product) => (
             <li key={product.id}>
               <Link to={`/products/${product.id}`} className="product-card">
+                <ProductPhoto src={product.imageUrl} />
                 <span className="product-name">{product.name}</span>
                 <span className="product-price">{formatBaht(product.price)}</span>
                 {product.fromInstallment !== null && (

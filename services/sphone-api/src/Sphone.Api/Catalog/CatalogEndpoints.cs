@@ -8,6 +8,11 @@ namespace Sphone.Api.Catalog;
 /// <summary>Public catalog: Product Categories and Products. No sign-in needed.</summary>
 internal static class CatalogEndpoints
 {
+    // Product photos are served by sphone-node-api through the Gateway; sphone-api stores only the image ID.
+    private const string PublicImagePath = "/images/public/";
+
+    private static string? PublicImageUrl(string? imageId) => imageId is null ? null : PublicImagePath + imageId;
+
     public static IEndpointRouteBuilder MapCatalogEndpoints(this IEndpointRouteBuilder api)
     {
         var categories = api.MapGroup("/product-categories").WithTags("Catalog");
@@ -50,7 +55,8 @@ internal static class CatalogEndpoints
                 p.Name,
                 p.Price,
                 p.ProductCategory.Code,
-                InstallmentPlan.Offered(p.Price, p.ProductCategory, 0m).Select(plan => (decimal?)plan.Installment).Min()))
+                InstallmentPlan.Offered(p.Price, p.ProductCategory, 0m).Select(plan => (decimal?)plan.Installment).Min(),
+                PublicImageUrl(p.ImageId)))
             .ToList());
     }
 
@@ -65,7 +71,8 @@ internal static class CatalogEndpoints
                 p.Description,
                 p.Price,
                 new ProductCategoryResponse(
-                    p.ProductCategory.Code, p.ProductCategory.Name, p.ProductCategory.FlatRate, p.ProductCategory.LongestTerm)))
+                    p.ProductCategory.Code, p.ProductCategory.Name, p.ProductCategory.FlatRate, p.ProductCategory.LongestTerm),
+                p.ImageId == null ? null : PublicImagePath + p.ImageId))
             .SingleOrDefaultAsync(cancellationToken);
 
         return product is null ? TypedResults.NotFound() : TypedResults.Ok(product);
@@ -135,11 +142,12 @@ internal static class CatalogEndpoints
 internal sealed record ProductCategoryResponse(string Code, string Name, decimal FlatRate, int LongestTerm);
 
 // FromInstallment: the lowest Installment offered with no Down Payment, for "from ฿X / month".
+// ImageUrl: same-origin path of the Product photo (served by sphone-node-api), or null when there is none.
 internal sealed record ProductSummaryResponse(
-    int Id, string Name, decimal Price, string ProductCategoryCode, decimal? FromInstallment);
+    int Id, string Name, decimal Price, string ProductCategoryCode, decimal? FromInstallment, string? ImageUrl);
 
 internal sealed record ProductDetailResponse(
-    int Id, string Name, string Description, decimal Price, ProductCategoryResponse ProductCategory);
+    int Id, string Name, string Description, decimal Price, ProductCategoryResponse ProductCategory, string? ImageUrl);
 
 internal sealed record TermPlanResponse(int Term, decimal Installment, decimal TotalPayable);
 

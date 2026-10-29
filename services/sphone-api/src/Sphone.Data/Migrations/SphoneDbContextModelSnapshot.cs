@@ -80,6 +80,11 @@ namespace Sphone.Data.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("description");
 
+                    b.Property<string>("ImageId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("image_id");
+
                     b.Property<bool>("IsRetired")
                         .HasColumnType("boolean")
                         .HasColumnName("is_retired");

@@ -180,6 +180,22 @@ h2 {
   outline-offset: 2px;
 }
 
+.product-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--line);
+  margin-bottom: 0.5rem;
+}
+
+.product-photo.large {
+  max-width: 360px;
+  margin: 0 auto 1rem;
+}
+
 .product-name {
   font-weight: 600;
 }
