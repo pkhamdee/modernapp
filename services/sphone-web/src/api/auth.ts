@@ -7,6 +7,8 @@ export interface Me {
   role: Session['role']
   mobileNumber: string | null
   customerId: number | null
+  /** Staff only. */
+  username: string | null
 }
 
 export const authPaths = {
@@ -21,6 +23,11 @@ export function requestSmsCode(mobileNumber: string): Promise<void> {
 /** Exchanges the SMS code for a Customer session. ApiError error: code-invalid | code-expired | code-locked. */
 export function verifySmsCode(mobileNumber: string, code: string): Promise<Session> {
   return apiPost<Session>('/auth/sms-code/verify', { mobileNumber, code })
+}
+
+/** Staff sign-in with username and password. ApiError error: credentials-invalid. */
+export function staffSignIn(username: string, password: string): Promise<Session> {
+  return apiPost<Session>('/auth/staff/sign-in', { username, password })
 }
 
 /** 0812345678 → 081-234-5678 */

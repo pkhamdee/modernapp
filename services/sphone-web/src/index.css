@@ -579,3 +579,155 @@ fieldset.field {
     animation-duration: 3s;
   }
 }
+
+/* Staff back office (/staff) */
+.staff-header {
+  background: var(--ink);
+}
+
+button.header-link {
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.staff-nav {
+  display: flex;
+  gap: 0.25rem;
+  overflow-x: auto;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.staff-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.staff-nav a.active {
+  background: var(--ink);
+  color: #fff;
+}
+
+.staff-nav a:focus-visible {
+  outline: 3px solid var(--brand-dark);
+  outline-offset: 2px;
+}
+
+.staff-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.staff-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.staff-item {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+}
+
+.staff-item .product-photo {
+  width: 72px;
+  flex: none;
+  margin: 0;
+}
+
+.staff-item.retired {
+  opacity: 0.65;
+}
+
+.staff-item-body {
+  display: grid;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.staff-actions,
+.photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.staff-inline-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.button-small {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 1rem;
+  text-decoration: none;
+}
+
+.button-outline {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.button-outline:hover:not(:disabled) {
+  background: var(--background);
+}
+
+.form-field select:focus-visible,
+.form-field textarea:focus-visible {
+  outline: 3px solid var(--brand-dark);
+  outline-offset: 1px;
+}
+
+.photo-field {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font-weight: 400;
+}
+
+.photo-field .product-photo {
+  width: 96px;
+  margin: 0;
+}
+
+.file-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.file-button input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.file-button:focus-within {
+  outline: 3px solid var(--brand-dark);
+  outline-offset: 2px;
+}

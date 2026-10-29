@@ -38,6 +38,11 @@ public sealed class SphoneApiFactory : WebApplicationFactory<Program>, IAsyncLif
     /// <summary>The Credit Check port, scripted per ID number.</summary>
     public FakeCreditCheck CreditCheck { get; } = new();
 
+    /// <summary>The Staff account the harness provisions from configuration, the same way the cluster does.</summary>
+    public const string StaffUsername = "test-staff";
+
+    public const string StaffPassword = "test-staff-password";
+
     public async ValueTask InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -51,6 +56,9 @@ public sealed class SphoneApiFactory : WebApplicationFactory<Program>, IAsyncLif
         builder.UseSetting("ConnectionStrings:Sphone", _postgres.GetConnectionString());
         builder.UseSetting("Database:MigrateOnStartup", "true");
         builder.UseSetting("Auth:SigningKey", "test-signing-key-for-sphone-api-seam-1-tests-only");
+        builder.UseSetting("Staff:Accounts:0:Username", StaffUsername);
+        builder.UseSetting("Staff:Accounts:0:Password", StaffPassword);
+        builder.UseSetting("Staff:Accounts:0:DisplayName", "พนักงานทดสอบ");
         builder.ConfigureServices(services =>
         {
             services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));
@@ -77,6 +85,24 @@ public sealed class SphoneApiFactory : WebApplicationFactory<Program>, IAsyncLif
         var verify = await client.PostAsJsonAsync("/api/auth/sms-code/verify", new { mobileNumber, code }, ct);
         verify.EnsureSuccessStatusCode();
         var session = await verify.Content.ReadFromJsonAsync<TokenResponse>(ct);
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session!.Token);
+        return client;
+    }
+
+    /// <summary>
+    /// Signs in as the harness's Staff account through the real username/password flow and returns a
+    /// client that sends the Staff token.
+    /// </summary>
+    public async Task<HttpClient> CreateStaffClientAsync()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var client = CreateClient();
+
+        var signIn = await client.PostAsJsonAsync(
+            "/api/auth/staff/sign-in", new { username = StaffUsername, password = StaffPassword }, ct);
+        signIn.EnsureSuccessStatusCode();
+        var session = await signIn.Content.ReadFromJsonAsync<TokenResponse>(ct);
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session!.Token);
         return client;

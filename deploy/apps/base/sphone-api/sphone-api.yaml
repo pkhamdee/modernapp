@@ -42,9 +42,22 @@ spec:
             # SMS, ID Verification and Credit Check go to the shared thirdparty-mock.
             - name: ThirdParty__BaseUrl
               value: http://thirdparty-mock.thirdparty.svc.cluster.local/
-            # Image service (sphone-node-api) internal API, same namespace.
+            # Product photos (and later ID card photos) go to the image service's internal API.
             - name: ImageService__BaseUrl
               value: http://sphone-node-api/
+            # Demo Staff account, per environment (deploy/apps/<env>/sphone-api-staff.sops.yaml); provisioned at startup.
+            - name: Staff__Accounts__0__Username
+              valueFrom:
+                secretKeyRef:
+                  name: sphone-api-staff
+                  key: username
+            - name: Staff__Accounts__0__Password
+              valueFrom:
+                secretKeyRef:
+                  name: sphone-api-staff
+                  key: password
+            - name: Staff__Accounts__0__DisplayName
+              value: พนักงานสาธิต
           ports:
             - name: http
               containerPort: 8080

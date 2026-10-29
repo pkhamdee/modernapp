@@ -20,4 +20,10 @@ internal static class SphoneClaims
     public const string Role = "role";
 
     public const string MobileNumber = "mobile_number";
+
+    /// <summary>Staff tokens only.</summary>
+    public const string Username = "username";
+
+    /// <summary>Staff tokens only.</summary>
+    public const string DisplayName = "name";
 }

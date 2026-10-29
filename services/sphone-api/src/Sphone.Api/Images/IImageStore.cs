@@ -10,7 +10,7 @@ namespace Sphone.Api.Images;
 /// </summary>
 internal interface IImageStore
 {
-    /// <summary>Stores an image and returns its ID. <paramref name="contentType"/> must be one of <see cref="ImageTypes.Allowed"/>.</summary>
+    /// <summary>Stores an image and returns its ID. <paramref name="contentType"/> is image/jpeg, image/png or image/webp.</summary>
     Task<string> SaveAsync(ImageArea area, Stream content, string contentType, CancellationToken cancellationToken);
 
     /// <summary>The image's bytes and content type, or null when there is no such image.</summary>
@@ -27,9 +27,12 @@ internal sealed record StoredImage(byte[] Content, string ContentType);
 
 internal static class ImageTypes
 {
-    /// <summary>What the image service accepts (and its 10 MB limit).</summary>
+    /// <summary>
+    /// Photo types sphone-api uploads (the image service also takes SVG, used only for the seeded demo photos:
+    /// an uploaded SVG could carry script and is served from our own origin, so uploads refuse it).
+    /// </summary>
     public static readonly IReadOnlySet<string> Allowed =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "image/jpeg", "image/png", "image/webp", "image/svg+xml" };
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "image/jpeg", "image/png", "image/webp" };
 
     public const long MaxBytes = 10 * 1024 * 1024;
 
@@ -75,7 +78,7 @@ internal static class ImageServiceCollectionExtensions
     /// <summary>Registers the image service adapter; base URL <c>ImageService:BaseUrl</c> (k8s: <c>http://sphone-node-api/</c>).</summary>
     public static IServiceCollection AddImageService(this IServiceCollection services, IConfiguration configuration)
     {
-        var baseUrl = configuration["ImageService:BaseUrl"] ?? "http://localhost:4100/";
+        var baseUrl = configuration["ImageService:BaseUrl"] ?? "http://localhost:8081/";
         services.AddHttpClient<IImageStore, ImageServiceImageStore>(http =>
         {
             http.BaseAddress = new Uri(baseUrl.EndsWith('/') ? baseUrl : baseUrl + "/");

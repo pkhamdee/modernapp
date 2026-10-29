@@ -10,6 +10,10 @@ export interface Session {
   role: Role
   /** Customers only. */
   mobileNumber?: string | null
+  /** Staff only. */
+  username?: string | null
+  /** Staff only: Thai display name. */
+  displayName?: string | null
 }
 
 const STORAGE_KEY = 'sphone.session'
@@ -41,7 +45,7 @@ export function saveSession(session: Session | null): void {
   window.dispatchEvent(new CustomEvent(SESSION_CHANGED_EVENT, { detail: session }))
 }
 
-/** Where each role signs in. Staff sign-in (#6) lives under the /staff branch. */
+/** Where each role signs in. Staff sign in under the /staff back-office branch. */
 export function signInPath(role: Role): string {
   return role === 'Staff' ? '/staff/sign-in' : '/sign-in'
 }

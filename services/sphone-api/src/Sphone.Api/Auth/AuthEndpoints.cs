@@ -5,22 +5,27 @@ using Microsoft.EntityFrameworkCore;
 using Sphone.Api.ThirdParty;
 using Sphone.Data;
 using Sphone.Domain.Customers;
+using Sphone.Domain.Staff;
 
 namespace Sphone.Api.Auth;
 
 /// <summary>
 /// Sign-in. Customers: request an SMS code, then verify it to get a Customer token (the first sign-in
-/// creates the Customer). <c>GET /auth/me</c> returns who the token belongs to, for any role.
+/// creates the Customer). Staff: username and password. <c>GET /auth/me</c> returns who the token belongs to, for any role.
 /// </summary>
 internal static partial class AuthEndpoints
 {
     public static readonly TimeSpan CustomerTokenLifetime = TimeSpan.FromDays(7);
+
+    /// <summary>A Staff token lasts one working day.</summary>
+    public static readonly TimeSpan StaffTokenLifetime = TimeSpan.FromHours(12);
 
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder api)
     {
         var auth = api.MapGroup("/auth").WithTags("Auth");
         auth.MapPost("/sms-code", RequestSmsCode);
         auth.MapPost("/sms-code/verify", VerifySmsCode);
+        auth.MapPost("/staff/sign-in", StaffSignIn);
         auth.MapGet("/me", Me).RequireAuthorization();
 
         return api;
@@ -85,7 +90,37 @@ internal static partial class AuthEndpoints
             CustomerTokenLifetime,
             [new Claim(SphoneClaims.MobileNumber, customer.MobileNumber)]);
 
-        return TypedResults.Ok(new SessionResponse(token.Token, token.ExpiresAt, token.Role, customer.MobileNumber));
+        return TypedResults.Ok(new SessionResponse(token.Token, token.ExpiresAt, token.Role, customer.MobileNumber, null, null));
+    }
+
+    private static async Task<Results<Ok<SessionResponse>, ProblemHttpResult>> StaffSignIn(
+        StaffSignInRequest request, SphoneDbContext db, TokenIssuer tokens, CancellationToken cancellationToken)
+    {
+        var username = request.Username?.Trim().ToLowerInvariant() ?? string.Empty;
+        var password = request.Password ?? string.Empty;
+        var staff = username.Length == 0
+            ? null
+            : await db.StaffMembers.SingleOrDefaultAsync(s => s.Username == username, cancellationToken);
+
+        if (staff is null)
+        {
+            // Same cost as a real check, so response time doesn't reveal which usernames exist.
+            StaffMember.SpendPasswordCheckTime(password);
+            return InvalidCredentials();
+        }
+
+        if (!staff.HasPassword(password))
+        {
+            return InvalidCredentials();
+        }
+
+        var token = tokens.Issue(
+            Roles.Staff,
+            staff.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            StaffTokenLifetime,
+            [new Claim(SphoneClaims.Username, staff.Username), new Claim(SphoneClaims.DisplayName, staff.DisplayName)]);
+
+        return TypedResults.Ok(new SessionResponse(token.Token, token.ExpiresAt, token.Role, null, staff.Username, staff.DisplayName));
     }
 
     private static async Task<MeResponse> Me(ClaimsPrincipal user, SphoneDbContext db, CancellationToken cancellationToken)
@@ -94,8 +129,15 @@ internal static partial class AuthEndpoints
         var idVerified = customerId is not null
             && await db.Customers.AnyAsync(c => c.Id == customerId && c.IdVerifiedAt != null, cancellationToken);
         return new(
-            user.FindFirstValue(SphoneClaims.Role) ?? string.Empty, user.FindFirstValue(SphoneClaims.MobileNumber), customerId, idVerified);
+            user.FindFirstValue(SphoneClaims.Role) ?? string.Empty,
+            user.FindFirstValue(SphoneClaims.MobileNumber),
+            customerId,
+            idVerified,
+            user.IsInRole(Roles.Staff) ? user.FindFirstValue(SphoneClaims.Username) : null);
     }
+
+    private static ProblemHttpResult InvalidCredentials() =>
+        Refused("credentials-invalid", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
 
     private static bool IsMobileNumber([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? value) => value is not null && ThaiMobileNumber().IsMatch(value);
 
@@ -127,7 +169,11 @@ internal sealed record SmsCodeRequest(string? MobileNumber);
 
 internal sealed record SmsCodeVerifyRequest(string? MobileNumber, string? Code);
 
-internal sealed record SessionResponse(string Token, DateTimeOffset ExpiresAt, string Role, string? MobileNumber);
+internal sealed record StaffSignInRequest(string? Username, string? Password);
 
-// IdVerified: the Customer has passed ID Verification (false for Staff).
-internal sealed record MeResponse(string Role, string? MobileNumber, int? CustomerId, bool IdVerified);
+// MobileNumber: Customers only. Username and DisplayName: Staff only.
+internal sealed record SessionResponse(
+    string Token, DateTimeOffset ExpiresAt, string Role, string? MobileNumber, string? Username, string? DisplayName);
+
+// IdVerified: the Customer has passed ID Verification (false for Staff). Username: Staff only.
+internal sealed record MeResponse(string Role, string? MobileNumber, int? CustomerId, bool IdVerified, string? Username);
