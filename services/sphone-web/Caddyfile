@@ -1,0 +1,36 @@
+# Serves the built single-page app. /api never reaches here: the Gateway routes it to sphone-api.
+{
+	admin off
+	auto_https off
+	log {
+		output stdout
+		format json
+	}
+}
+
+:8080 {
+	log {
+		output stdout
+		format json
+	}
+
+	# Kubernetes probes.
+	handle /healthz {
+		log_skip
+		respond "ok" 200
+	}
+
+	handle {
+		root * /srv
+		encode zstd gzip
+
+		# Hashed build assets never change; index.html must always be revalidated.
+		@assets path /assets/*
+		header @assets Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+
+		# Client-side routes (/categories/..., /products/...) fall back to index.html.
+		try_files {path} /index.html
+		file_server
+	}
+}

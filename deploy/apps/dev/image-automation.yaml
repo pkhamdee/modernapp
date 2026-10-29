@@ -1,0 +1,77 @@
+# sphone-dev follows main: CI pushes ghcr.io/pkhamdee/<service>:main-<sha>-<unix-ts>; each ImagePolicy picks the
+# newest by timestamp, and the ImageUpdateAutomation rewrites the setter markers in kustomization.yaml and
+# commits to main. To add a service: one ImageRepository + ImagePolicy below, and one `images:` entry with a
+# `# {"$imagepolicy": "sphone-dev:<service>:tag"}` marker in kustomization.yaml.
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: sphone-api
+spec:
+  image: ghcr.io/pkhamdee/sphone-api
+  interval: 1m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: sphone-api
+spec:
+  imageRepositoryRef:
+    name: sphone-api
+  filterTags:
+    pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
+    extract: '$ts'
+  policy:
+    numerical:
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: sphone-web
+spec:
+  image: ghcr.io/pkhamdee/sphone-web
+  interval: 1m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: sphone-web
+spec:
+  imageRepositoryRef:
+    name: sphone-web
+  filterTags:
+    pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
+    extract: '$ts'
+  policy:
+    numerical:
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: sphone-dev
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: fluxcdbot
+        email: fluxcdbot@users.noreply.github.com
+      messageTemplate: |
+        sphone-dev: update images [skip ci]
+
+        {{ range .Changed.Changes -}}
+        - {{ .OldValue }} -> {{ .NewValue }}
+        {{ end -}}
+    push:
+      branch: main
+  update:
+    path: ./deploy/apps/dev
+    strategy: Setters
