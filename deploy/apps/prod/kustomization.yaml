@@ -49,6 +49,6 @@ images:
   - name: ghcr.io/pkhamdee/sphone-api
     newTag: 0.0.0-test.2 # {"$imagepolicy": "sphone-prod:sphone-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-web
-    newTag: 0.0.0-test.1 # {"$imagepolicy": "sphone-prod:sphone-web:tag"}
+    newTag: 0.0.0-test.2 # {"$imagepolicy": "sphone-prod:sphone-web:tag"}
   - name: ghcr.io/pkhamdee/sphone-node-api
     newTag: 0.0.0-test.2 # {"$imagepolicy": "sphone-prod:sphone-node-api:tag"}
