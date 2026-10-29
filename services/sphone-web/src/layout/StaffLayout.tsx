@@ -35,6 +35,7 @@ export function StaffLayout() {
           <NavLink to="/staff/products">สินค้า</NavLink>
           <NavLink to="/staff/product-categories">ประเภทสินค้า</NavLink>
           <NavLink to="/staff/branches">สาขา</NavLink>
+          <NavLink to="/staff/auctions">ประมูล</NavLink>
         </nav>
       )}
       <main className="app-main">

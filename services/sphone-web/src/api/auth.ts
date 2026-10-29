@@ -7,6 +7,8 @@ export interface Me {
   role: Session['role']
   mobileNumber: string | null
   customerId: number | null
+  /** Customers: passed ID Verification (needed to bid in Auctions). */
+  idVerified: boolean
   /** Staff only. */
   username: string | null
 }
