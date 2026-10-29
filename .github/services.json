@@ -22,5 +22,11 @@
     "context": "services/sphone-node-api",
     "dockerfile": "services/sphone-node-api/Dockerfile",
     "paths": ["services/sphone-node-api/"]
+  },
+  {
+    "service": "sphone-sync-master",
+    "context": "services/sphone-api",
+    "dockerfile": "services/sphone-api/src/Sphone.SyncMaster/Dockerfile",
+    "paths": ["services/sphone-api/"]
   }
 ]

@@ -69,6 +69,27 @@ spec:
       range: '>=0.0.0-0'
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: sphone-sync-master
+spec:
+  image: ghcr.io/pkhamdee/sphone-sync-master
+  interval: 1m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: sphone-sync-master
+spec:
+  imageRepositoryRef:
+    name: sphone-sync-master
+  filterTags:
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+(-test\.[0-9]+)?$'
+  policy:
+    semver:
+      range: '>=0.0.0-0'
+---
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: sphone-prod

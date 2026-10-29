@@ -1,6 +1,7 @@
 import express from 'express'
 import { creditCheckRouter } from './creditCheck.ts'
 import { currentDelayMs, delayRouter, simulatedDelay } from './delay.ts'
+import { enterpriseRouter } from './enterprise.ts'
 import { escapeHtml, page } from './html.ts'
 import { idVerificationRouter } from './idVerification.ts'
 import { log } from './log.ts'
@@ -46,6 +47,7 @@ export function createApp(): express.Express {
   app.use('/credit-check', simulatedDelay)
   app.use(idVerificationRouter())
   app.use(creditCheckRouter())
+  app.use(enterpriseRouter())
 
   return app
 }
@@ -56,6 +58,7 @@ function homePage(): string {
     `<h1>thirdparty-mock</h1>
 <ul>
   <li><a href="sms/inbox">กล่องข้อความ SMS (mock inbox)</a></li>
+  <li><a href="enterprise/">Enterprise System (Contracts, simulate Payment, cancel)</a></li>
 </ul>
 <section>
   <h2>Response delay</h2>

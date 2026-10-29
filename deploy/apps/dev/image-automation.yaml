@@ -69,6 +69,28 @@ spec:
       order: asc
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: sphone-sync-master
+spec:
+  image: ghcr.io/pkhamdee/sphone-sync-master
+  interval: 1m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: sphone-sync-master
+spec:
+  imageRepositoryRef:
+    name: sphone-sync-master
+  filterTags:
+    pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
+    extract: '$ts'
+  policy:
+    numerical:
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
   name: sphone-dev

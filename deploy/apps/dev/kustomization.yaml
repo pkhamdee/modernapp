@@ -6,10 +6,12 @@ resources:
   - sphone-api-auth.sops.yaml
   - sphone-api-staff.sops.yaml
   - sphone-node-api-smb.sops.yaml
+  - sphone-sync-master-enterprise.sops.yaml
   - ../base/sphone-db
   - ../base/sphone-api
   - ../base/sphone-web
   - ../base/sphone-node-api
+  - ../base/sphone-sync-master
   - image-automation.yaml
 # Tags are written by Flux image automation (image-automation.yaml); do not edit by hand.
 images:
@@ -19,3 +21,5 @@ images:
     newTag: main-c4bef5e-1793285499 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
   - name: ghcr.io/pkhamdee/sphone-node-api
     newTag: main-753434d-1793281459 # {"$imagepolicy": "sphone-dev:sphone-node-api:tag"}
+  - name: ghcr.io/pkhamdee/sphone-sync-master
+    newTag: main-0000000-0 # {"$imagepolicy": "sphone-dev:sphone-sync-master:tag"}
