@@ -1,7 +1,21 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router'
-import { addLot, auctionPaths, auctionStatusLabel, editLot, uploadLotPhoto, type Auction, type Lot } from '../../api/auctions.ts'
-import { problemMessage, useReloadableApi } from '../../api/client.ts'
+import {
+  addLot,
+  auctionPaths,
+  auctionStatusLabel,
+  editLot,
+  forfeitLot,
+  lotStatusLabel,
+  recordLotPayment,
+  reofferLot,
+  uploadLotPhoto,
+  type Auction,
+  type Lot,
+} from '../../api/auctions.ts'
+import { formatMobileNumber } from '../../api/auth.ts'
+import { backOfficePaths, type BackOfficeBranch } from '../../api/backOffice.ts'
+import { problemMessage, useApi, useReloadableApi } from '../../api/client.ts'
 import { ProductPhoto } from '../../components/ProductPhoto.tsx'
 import { Status } from '../../components/Status.tsx'
 import { formatBaht, formatDateTime } from '../../format.ts'
@@ -77,6 +91,7 @@ export function StaffAuctionPage() {
                     </button>
                   )}
                 </div>
+                {closed && <LotAfterClose lot={lot} auctionId={a.id} onChange={reload} />}
               </div>
             </li>
           ),
@@ -84,6 +99,134 @@ export function StaffAuctionPage() {
       </ul>
       {a.lots.length === 0 && editing === null && <p className="muted">ยังไม่มีรายการประมูล</p>}
     </section>
+  )
+}
+
+/**
+ * A closed Auction's Lot: the winner and the 3-day cash payment, recording payment + Handover at a Branch,
+ * marking it Forfeited after 3 days unpaid, and offering a Forfeited or unsold Lot again in a later Auction.
+ */
+function LotAfterClose({ lot, auctionId, onChange }: { lot: Lot; auctionId: number; onChange: () => void }) {
+  const sale = lot.sale
+  const awaiting = lot.lotStatus === 'awaiting-payment'
+  const reofferable = (lot.lotStatus === 'forfeited' || lot.lotStatus === 'unsold') && lot.reofferedAsLotId === null
+  const branches = useApi<BackOfficeBranch[]>(awaiting ? backOfficePaths.branches() : null)
+  const auctions = useApi<Auction[]>(reofferable ? auctionPaths.backOfficeAuctions() : null)
+  const [branchCode, setBranchCode] = useState('')
+  const [targetAuction, setTargetAuction] = useState('')
+  const [startingPrice, setStartingPrice] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function act(action: () => Promise<unknown>, fallback: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await action()
+      onChange()
+    } catch (e) {
+      setError(problemMessage(e, fallback))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const laterAuctions =
+    auctions.status === 'success' ? auctions.data.filter((x) => x.id !== auctionId && x.status !== 'closed') : []
+  const activeBranches = branches.status === 'success' ? branches.data.filter((b) => !b.isRetired) : []
+
+  return (
+    <div className="lot-after-close">
+      <strong>{lotStatusLabel[lot.lotStatus]}</strong>
+      {sale && (
+        <span className="muted">
+          ผู้ชนะ {sale.winnerFullName ?? `ลูกค้า #${sale.winnerCustomerId}`}
+          {sale.winnerMobileNumber ? ` (${formatMobileNumber(sale.winnerMobileNumber)})` : ''} · {formatBaht(sale.amount)} ·
+          ชำระภายใน {formatDateTime(sale.paymentDueAt)}
+          {sale.paidAt && ` · ชำระแล้ว ${formatDateTime(sale.paidAt)} ที่ ${sale.paymentBranchCode} โดย ${sale.paymentRecordedBy}`}
+          {sale.forfeitedAt && ` · ริบสิทธิ์ ${formatDateTime(sale.forfeitedAt)}`}
+        </span>
+      )}
+      {lot.reofferedAsLotId !== null && (
+        <Link to={`/auction/lots/${lot.reofferedAsLotId}`}>นำกลับมาประมูลแล้ว (รายการ #{lot.reofferedAsLotId})</Link>
+      )}
+      {awaiting && (
+        <div className="staff-actions">
+          <select value={branchCode} onChange={(e) => setBranchCode(e.target.value)} aria-label="สาขาที่รับชำระ">
+            <option value="">เลือกสาขาที่รับชำระ</option>
+            {activeBranches.map((b) => (
+              <option key={b.code} value={b.code}>
+                {b.name}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="button button-small"
+            disabled={busy || !branchCode}
+            onClick={() => act(() => recordLotPayment(lot.id, branchCode), 'บันทึกการชำระเงินไม่สำเร็จ')}
+          >
+            บันทึกรับเงินสดและส่งมอบ
+          </button>
+          <button
+            type="button"
+            className="button button-small button-outline"
+            disabled={busy || !sale?.mayForfeit}
+            title={sale?.mayForfeit ? undefined : 'ริบสิทธิ์ได้เมื่อครบ 3 วันแล้วยังไม่ชำระ'}
+            onClick={() => {
+              if (window.confirm('ริบสิทธิ์ผู้ชนะรายการนี้? (ไม่ส่งต่อให้ผู้เสนอราคาอันดับสอง)')) {
+                void act(() => forfeitLot(lot.id), 'ริบสิทธิ์ไม่สำเร็จ')
+              }
+            }}
+          >
+            ริบสิทธิ์
+          </button>
+        </div>
+      )}
+      {reofferable && (
+        <div className="staff-actions">
+          <select value={targetAuction} onChange={(e) => setTargetAuction(e.target.value)} aria-label="การประมูลครั้งถัดไป">
+            <option value="">เลือกการประมูลครั้งถัดไป</option>
+            {laterAuctions.map((x) => (
+              <option key={x.id} value={x.id}>
+                #{x.id} · {formatDateTime(x.opensAt)}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step={1}
+            placeholder={`ราคาเริ่มต้น ${lot.startingPrice}`}
+            value={startingPrice}
+            onChange={(e) => setStartingPrice(e.target.value)}
+            aria-label="ราคาเริ่มต้นใหม่ (บาท)"
+          />
+          <button
+            type="button"
+            className="button button-small"
+            disabled={busy || !targetAuction}
+            onClick={() =>
+              act(
+                () => reofferLot(lot.id, Number(targetAuction), startingPrice ? Number(startingPrice) : undefined),
+                'นำกลับมาประมูลไม่สำเร็จ',
+              )
+            }
+          >
+            นำกลับมาประมูล
+          </button>
+        </div>
+      )}
+      {reofferable && auctions.status === 'success' && laterAuctions.length === 0 && (
+        <span className="muted">สร้างการประมูลครั้งถัดไปก่อน แล้วจึงนำรายการนี้กลับมาประมูล</span>
+      )}
+      {error && (
+        <p className="form-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
   )
 }
 

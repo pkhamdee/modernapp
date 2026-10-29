@@ -23,6 +23,11 @@ internal sealed class LotConfiguration : IEntityTypeConfiguration<Lot>
         builder.Property(l => l.HighestBid).HasPrecision(12, 2);
         builder.Property(l => l.ImageIds).HasColumnType("text[]");
         builder.Ignore(l => l.MinimumBid);
+        builder.Ignore(l => l.PaymentDueAt);
+        builder.Property(l => l.PaymentRecordedBy).HasMaxLength(100);
+        builder.HasOne(l => l.PaymentBranch).WithMany().HasForeignKey(l => l.PaymentBranchId).OnDelete(DeleteBehavior.Restrict);
+        // A Lot is offered again at most once (the new Lot may itself be offered again later).
+        builder.HasOne<Lot>().WithOne().HasForeignKey<Lot>(l => l.ReofferedAsLotId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(l => l.Auction).WithMany(a => a.Lots).HasForeignKey(l => l.AuctionId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(l => l.HighestBidder).WithMany().HasForeignKey(l => l.HighestBidderId).OnDelete(DeleteBehavior.Restrict);

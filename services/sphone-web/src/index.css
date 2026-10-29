@@ -816,6 +816,20 @@ button.header-link {
   margin-bottom: 0.5rem;
 }
 
+.lot-after-close {
+  display: grid;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.lot-after-close select,
+.lot-after-close input {
+  min-height: 44px;
+  font: inherit;
+  max-width: 100%;
+}
+
 .lot-photo-item {
   display: flex;
   flex-direction: column;

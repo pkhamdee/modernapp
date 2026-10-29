@@ -23,6 +23,7 @@ import { StaffProductCategoriesPage } from './pages/staff/StaffProductCategories
 import { StaffProductFormPage } from './pages/staff/StaffProductFormPage.tsx'
 import { StaffProductsPage } from './pages/staff/StaffProductsPage.tsx'
 import { StaffSignInPage } from './pages/staff/StaffSignInPage.tsx'
+import { WonLotsPage } from './pages/WonLotsPage.tsx'
 
 // One route tree for the whole app. Public Customer screens hang off AppLayout.
 // Signed-in screens go in a nested layout route whose element checks the role:
@@ -50,6 +51,7 @@ export const router = createBrowserRouter([
           { path: 'offers/:id', element: <OfferPage /> },
           { path: 'contracts', element: <ContractsPage /> },
           { path: 'contracts/:number', element: <ContractPage /> },
+          { path: 'won-lots', element: <WonLotsPage /> },
         ],
       },
       { path: '*', element: <NotFoundPage /> },

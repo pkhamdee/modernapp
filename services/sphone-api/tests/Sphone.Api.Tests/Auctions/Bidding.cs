@@ -59,6 +59,50 @@ internal static class Bidding
     }
 
     /// <summary>
+    /// A new Auction that opened an hour ago and closes a minute from now, with <paramref name="lotCount"/> Lots
+    /// (starting price ฿10,000). Close it with <c>api.Clock.SetUtcNow(auction.ClosesAt)</c> (ClockMoving tests only).
+    /// </summary>
+    public static async Task<(AuctionView Auction, List<LotView> Lots)> ShortAuctionAsync(this SphoneApiFactory api, int lotCount)
+    {
+        var staff = await api.CreateStaffClientAsync();
+        var now = api.Clock.GetUtcNow();
+        var auction = await staff.CreateAuctionAsync(new { opensAt = now.AddHours(-1), closesAt = now.AddMinutes(1) });
+        var lots = new List<LotView>();
+        for (var i = 0; i < lotCount; i++)
+        {
+            lots.Add(await staff.AddLotAsync(auction.Id, new
+            {
+                title = $"iPhone 15 128GB Black #{i + 1}",
+                conditionNotes = "ครบกล่อง",
+                startingPrice = 10_000m,
+                imageIds = new[] { await staff.UploadLotPhotoAsync(TestData.NewPhoto()) },
+            }));
+        }
+
+        return (auction, lots);
+    }
+
+    /// <summary>A Lot as Staff see it in the back office (with the winner and payment in <c>Sale</c>).</summary>
+    public static async Task<LotView> GetBackOfficeLotAsync(this HttpClient staff, int auctionId, int lotId)
+    {
+        var auction = (await staff.GetFromJsonAsync<AuctionView>($"/api/back-office/auctions/{auctionId}", Ct))!;
+        return auction.Lots.Single(l => l.Id == lotId);
+    }
+
+    public static Task<HttpResponseMessage> RecordPaymentAsync(this HttpClient staff, int lotId, string branchCode) =>
+        staff.PostAsJsonAsync($"/api/back-office/lots/{lotId}/payment", new { branchCode }, Ct);
+
+    public static Task<HttpResponseMessage> ForfeitAsync(this HttpClient staff, int lotId) =>
+        staff.PostAsync($"/api/back-office/lots/{lotId}/forfeit", null, Ct);
+
+    public static Task<HttpResponseMessage> ReofferAsync(this HttpClient staff, int lotId, int auctionId, decimal? startingPrice = null) =>
+        staff.PostAsJsonAsync($"/api/back-office/lots/{lotId}/re-offer", new { auctionId, startingPrice }, Ct);
+
+    /// <summary>The signed-in Customer's won Lots, newest first.</summary>
+    public static async Task<List<LotView>> GetWonLotsAsync(this HttpClient customer) =>
+        (await customer.GetFromJsonAsync<List<LotView>>("/api/lots/won", Ct))!;
+
+    /// <summary>
     /// A signed-in Customer who has passed ID Verification. The only way to pass it is to apply for hire purchase,
     /// so this applies (ID Verification passes, Credit Check fails) and waits for the Credit Decision.
     /// </summary>
@@ -100,7 +144,7 @@ internal static class Bidding
 }
 
 // MinimumBid: only with bid-too-low.
-internal sealed record BidRefusal(string? Error, decimal? MinimumBid);
+internal sealed record BidRefusal(string? Error, decimal? MinimumBid, DateTimeOffset? PaymentDueAt);
 
 internal sealed record AuctionView(int Id, DateTimeOffset OpensAt, DateTimeOffset ClosesAt, string Status, List<LotView> Lots);
 
@@ -115,4 +159,22 @@ internal sealed record LotView(
     int BidCount,
     decimal MinimumBid,
     string AuctionStatus,
-    bool? YouAreHighestBidder);
+    bool? YouAreHighestBidder,
+    string LotStatus,
+    bool? YouWon,
+    DateTimeOffset? PaymentDueAt,
+    bool CashOnly,
+    int? ReofferedAsLotId,
+    LotSaleView? Sale);
+
+internal sealed record LotSaleView(
+    int WinnerCustomerId,
+    string? WinnerFullName,
+    string? WinnerMobileNumber,
+    decimal Amount,
+    DateTimeOffset PaymentDueAt,
+    DateTimeOffset? PaidAt,
+    string? PaymentBranchCode,
+    string? PaymentRecordedBy,
+    DateTimeOffset? ForfeitedAt,
+    bool MayForfeit);
