@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Sphone.Api.Applications;
+using Sphone.Api.Auctions;
 using Sphone.Api.Auth;
 using Sphone.Api.BackOffice;
 using Sphone.Api.Branches;
@@ -74,6 +75,8 @@ api.MapAuthEndpoints();
 api.MapApplicationEndpoints();
 api.MapOfferEndpoints();
 api.MapContractEndpoints();
+api.MapAuctionEndpoints();
+api.MapBidEndpoints();
 api.MapBackOfficeEndpoints();
 
 await app.RunAsync();

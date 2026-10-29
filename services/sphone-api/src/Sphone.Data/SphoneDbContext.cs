@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Sphone.Domain.Applications;
+using Sphone.Domain.Auctions;
 using Sphone.Domain.Branches;
 using Sphone.Domain.Catalog;
 using Sphone.Domain.Contracts;
@@ -36,6 +37,12 @@ public class SphoneDbContext(DbContextOptions<SphoneDbContext> options) : DbCont
 
     /// <summary>Submissions that failed Eligibility after ID Verification (under 20): never Applications.</summary>
     public DbSet<EligibilityRefusal> EligibilityRefusals => Set<EligibilityRefusal>();
+
+    public DbSet<Auction> Auctions => Set<Auction>();
+
+    public DbSet<Lot> Lots => Set<Lot>();
+
+    public DbSet<Bid> Bids => Set<Bid>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SphoneDbContext).Assembly);

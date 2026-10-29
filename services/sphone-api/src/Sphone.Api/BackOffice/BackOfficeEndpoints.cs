@@ -4,7 +4,7 @@ namespace Sphone.Api.BackOffice;
 
 /// <summary>
 /// The Staff back office under <c>/api/back-office</c>: catalog (Products, product photos, Product Category
-/// settings) and Branch management. Every endpoint requires a Staff token (none → 401, Customer → 403).
+/// settings), Branch management and Auctions. Every endpoint requires a Staff token (none → 401, Customer → 403).
 /// </summary>
 internal static class BackOfficeEndpoints
 {
@@ -17,6 +17,7 @@ internal static class BackOfficeEndpoints
         backOffice.MapProductAdministration();
         backOffice.MapProductCategoryAdministration();
         backOffice.MapBranchAdministration();
+        backOffice.MapAuctionAdministration();
 
         return api;
     }
