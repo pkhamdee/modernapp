@@ -1,0 +1,12 @@
+# Shared mocked third parties (Flux Kustomization `thirdparty`, clusters/local/thirdparty.yaml).
+# One folder per component; add yours to `resources`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: thirdparty
+resources:
+  - thirdparty-mock
+  - image-automation.yaml
+# Tags are written by Flux image automation (image-automation.yaml); do not edit by hand.
+images:
+  - name: ghcr.io/pkhamdee/thirdparty-mock
+    newTag: main-placeholder-0 # {"$imagepolicy": "thirdparty:thirdparty-mock:tag"}

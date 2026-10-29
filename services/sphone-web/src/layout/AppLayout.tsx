@@ -1,6 +1,9 @@
 import { Link, Outlet } from 'react-router'
+import { useAuth } from '../auth/context.ts'
 
 export function AppLayout() {
+  const { session } = useAuth()
+
   return (
     <div className="app">
       <header className="app-header">
@@ -11,6 +14,15 @@ export function AppLayout() {
             <small>เอส ลีสซิ่ง</small>
           </span>
         </Link>
+        {session?.role === 'Customer' ? (
+          <Link to="/account" className="header-link">
+            บัญชีของฉัน
+          </Link>
+        ) : (
+          <Link to="/sign-in" className="header-link">
+            เข้าสู่ระบบ
+          </Link>
+        )}
       </header>
       <main className="app-main">
         <Outlet />

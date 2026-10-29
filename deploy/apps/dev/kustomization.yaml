@@ -3,6 +3,7 @@ kind: Kustomization
 namespace: sphone-dev
 resources:
   - sphone-db-credentials.sops.yaml
+  - sphone-api-auth.sops.yaml
   - ../base/sphone-db
   - ../base/sphone-api
   - ../base/sphone-web

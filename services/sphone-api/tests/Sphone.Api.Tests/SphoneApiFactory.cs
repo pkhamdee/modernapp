@@ -1,8 +1,12 @@
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
+using Sphone.Api.Tests.Fakes;
+using Sphone.Api.ThirdParty;
 using Testcontainers.PostgreSql;
 
 [assembly: AssemblyFixture(typeof(Sphone.Api.Tests.SphoneApiFactory))]
@@ -12,7 +16,7 @@ namespace Sphone.Api.Tests;
 /// <summary>
 /// Seam-1 harness: hosts sphone-api in-process against a real PostgreSQL container.
 /// One instance (one container, one migrated database) is shared by every test in the assembly.
-/// Ports to the outside world are replaced here by test-controlled fakes; today that is only the clock.
+/// Ports to the outside world (clock, SMS, ...) are replaced here by test-controlled fakes.
 /// </summary>
 public sealed class SphoneApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -20,6 +24,9 @@ public sealed class SphoneApiFactory : WebApplicationFactory<Program>, IAsyncLif
 
     /// <summary>The clock port. Tests move time with <c>Clock.SetUtcNow</c> / <c>Clock.Advance</c>.</summary>
     public FakeTimeProvider Clock { get; } = new(new DateTimeOffset(2026, 1, 5, 3, 0, 0, TimeSpan.Zero));
+
+    /// <summary>The SMS port. Read sign-in codes with <c>Sms.LatestCodeFor(mobileNumber)</c>.</summary>
+    public FakeSms Sms { get; } = new();
 
     public async ValueTask InitializeAsync()
     {
@@ -33,8 +40,36 @@ public sealed class SphoneApiFactory : WebApplicationFactory<Program>, IAsyncLif
         builder.UseEnvironment("Testing");
         builder.UseSetting("ConnectionStrings:Sphone", _postgres.GetConnectionString());
         builder.UseSetting("Database:MigrateOnStartup", "true");
-        builder.ConfigureServices(services => services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock)));
+        builder.UseSetting("Auth:SigningKey", "test-signing-key-for-sphone-api-seam-1-tests-only");
+        builder.ConfigureServices(services =>
+        {
+            services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));
+            services.Replace(ServiceDescriptor.Singleton<ISmsSender>(Sms));
+        });
     }
+
+    /// <summary>
+    /// Signs in as a Customer through the real SMS-code flow (request code → read it from the fake SMS
+    /// → verify) and returns a client that sends the Customer's token. A fresh mobile number (so a new
+    /// Customer) is used unless one is given.
+    /// </summary>
+    public async Task<HttpClient> CreateCustomerClientAsync(string? mobileNumber = null)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        mobileNumber ??= TestData.NewMobileNumber();
+        var client = CreateClient();
+
+        (await client.PostAsJsonAsync("/api/auth/sms-code", new { mobileNumber }, ct)).EnsureSuccessStatusCode();
+        var code = Sms.LatestCodeFor(mobileNumber);
+        var verify = await client.PostAsJsonAsync("/api/auth/sms-code/verify", new { mobileNumber, code }, ct);
+        verify.EnsureSuccessStatusCode();
+        var session = await verify.Content.ReadFromJsonAsync<TokenResponse>(ct);
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", session!.Token);
+        return client;
+    }
+
+    private sealed record TokenResponse(string Token);
 
     public override async ValueTask DisposeAsync()
     {

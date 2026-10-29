@@ -10,5 +10,11 @@
     "context": "services/sphone-web",
     "dockerfile": "services/sphone-web/Dockerfile",
     "paths": ["services/sphone-web/"]
+  },
+  {
+    "service": "thirdparty-mock",
+    "context": "services/thirdparty-mock",
+    "dockerfile": "services/thirdparty-mock/Dockerfile",
+    "paths": ["services/thirdparty-mock/"]
   }
 ]

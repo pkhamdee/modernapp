@@ -75,6 +75,26 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
+  # Test equipment (no tests of its own, per the spec): lint and type-check only.
+  thirdparty-mock:
+    name: thirdparty-mock (lint, type-check)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/thirdparty-mock
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/thirdparty-mock/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Type-check
+        run: npm run typecheck
+
 
   # Decides what to build, after every service's lint/test passed:
   #   - tag vX.Y.Z: validate the tag (semver, annotated, on a release/N.x branch); build every service as X.Y.Z.
@@ -83,7 +103,7 @@ jobs:
   #     rebuilt when the push has no usable base (first push, force push), when this workflow or services.json
   #     changes, or on workflow_dispatch without `version`.
   plan:
-    needs: [sphone-api, sphone-web]
+    needs: [sphone-api, sphone-web, thirdparty-mock]
     if: >-
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
       || github.event_name == 'workflow_dispatch'
