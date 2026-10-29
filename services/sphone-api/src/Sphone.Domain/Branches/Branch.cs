@@ -1,0 +1,20 @@
+namespace Sphone.Domain.Branches;
+
+/// <summary>
+/// An S Phone shop where a Customer can collect goods and pay at Handover (GLOSSARY: Branch).
+/// </summary>
+public class Branch
+{
+    public int Id { get; set; }
+
+    /// <summary>Stable identifier, e.g. <c>bkk-ladprao</c>.</summary>
+    public required string Code { get; set; }
+
+    /// <summary>Thai display name.</summary>
+    public required string Name { get; set; }
+
+    public required string Address { get; set; }
+
+    /// <summary>Thai province name.</summary>
+    public required string Province { get; set; }
+}

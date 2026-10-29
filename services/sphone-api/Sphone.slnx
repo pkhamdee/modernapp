@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Sphone.Api/Sphone.Api.csproj" />
+    <Project Path="src/Sphone.Data/Sphone.Data.csproj" />
+    <Project Path="src/Sphone.Domain/Sphone.Domain.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sphone.Api.Tests/Sphone.Api.Tests.csproj" />
+  </Folder>
+</Solution>

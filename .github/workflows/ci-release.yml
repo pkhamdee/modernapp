@@ -1,6 +1,12 @@
-# Tag-based release workflow. See docs/git-workflow.md.
-#   - push / PR to main or release/*  -> test only
-#   - push tag vX.Y.Z                 -> test, then publish a GitHub Release
+# CI and tag-based releases. See docs/git-workflow.md.
+#   - push / PR to main or release/*  -> lint + test every service
+#   - push to main                    -> also build changed services for arm64, Trivy scan,
+#                                        push ghcr.io/pkhamdee/<service>:main-<sha>[-<unix-ts>]
+#                                        (Flux image automation deploys the newest to sphone-dev)
+#   - push tag vX.Y.Z                 -> lint + test, then publish a GitHub Release
+#
+# Adding a service: add a lint/test job below (and to `images.needs` and `release.needs`),
+# and an entry in .github/services.json (build context, Dockerfile, source paths).
 name: CI / Release
 
 on:
@@ -9,34 +15,153 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main, "release/*"]
+  workflow_dispatch: # on main: rebuilds and pushes every service
 
 permissions:
   contents: read
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-      # Placeholder until the app has a toolchain. Replace with the real build/test commands.
+jobs:
+  sphone-api:
+    name: sphone-api (lint, test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/sphone-api
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: services/sphone-api/global.json
+      - run: dotnet restore
+      - name: Lint
+        run: dotnet format --verify-no-changes --no-restore
+      - name: Build
+        run: dotnet build --no-restore -c Release
+      # Seam-1 tests start PostgreSQL with Testcontainers (Docker is available on GitHub runners).
       - name: Test
+        run: dotnet test --no-build -c Release
+
+  sphone-web:
+    name: sphone-web (lint, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/sphone-web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: services/sphone-web/package-lock.json
+      - run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Type-check and build
+        run: npm run build
+
+  # Which services' images to build on main: those whose source changed in this push.
+  # Everything is rebuilt when the push has no usable base (first push, force push),
+  # when this workflow or services.json changes, or on workflow_dispatch.
+  changes:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          if [ -f package.json ]; then
-            npm ci
-            npm test
+          all=$(jq -c . .github/services.json)
+          if [ "$EVENT" != "push" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            matrix="$all"
           else
-            echo "No build/test configured yet."
+            changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
+            echo "Changed files:"; echo "$changed"
+            if grep -qxE '\.github/workflows/ci-release\.yml|\.github/services\.json' <<<"$changed"; then
+              matrix="$all"
+            else
+              matrix=$(jq -c --arg changed "$changed" '
+                ($changed | split("\n")) as $files
+                | [ .[] | select(.paths as $p | any($files[]; . as $f | any($p[]; . as $prefix | $f | startswith($prefix)))) ]
+              ' .github/services.json)
+            fi
           fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Services to build: $(jq -r 'map(.service) | join(", ")' <<<"$matrix")"
+
+  images:
+    name: image ${{ matrix.service }}
+    needs: [changes, sphone-api, sphone-web]
+    if: needs.changes.outputs.matrix != '[]'
+    runs-on: ubuntu-24.04-arm # native arm64 build for the Apple Silicon cluster
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: tags
+        run: |
+          sha=$(git rev-parse --short=7 HEAD)
+          ts=$(git show -s --format=%ct HEAD)
+          # main-<sha> for humans; main-<sha>-<commit-ts> is what Flux's ImagePolicy orders by.
+          echo "list=${IMAGE}:main-${sha},${IMAGE}:main-${sha}-${ts}" >> "$GITHUB_OUTPUT"
+          echo "scan=${IMAGE}:main-${sha}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v4
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/arm64
+          load: true
+          tags: ${{ steps.tags.outputs.list }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+      - name: Scan (fail on critical)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.tags.outputs.scan }}
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push
+        env:
+          TAGS: ${{ steps.tags.outputs.list }}
+        run: |
+          for tag in ${TAGS//,/ }; do docker push "$tag"; done
 
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+    needs: [sphone-api, sphone-web]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

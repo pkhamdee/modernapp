@@ -1,0 +1,14 @@
+[
+  {
+    "service": "sphone-api",
+    "context": "services/sphone-api",
+    "dockerfile": "services/sphone-api/src/Sphone.Api/Dockerfile",
+    "paths": ["services/sphone-api/"]
+  },
+  {
+    "service": "sphone-web",
+    "context": "services/sphone-web",
+    "dockerfile": "services/sphone-web/Dockerfile",
+    "paths": ["services/sphone-web/"]
+  }
+]

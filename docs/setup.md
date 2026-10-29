@@ -73,7 +73,8 @@ Bootstrap installs Flux, commits `clusters/local/flux-system/` to `main` if it c
 ```sh
 flux get kustomizations          # flux-system, infra-controllers, infra-configs, apps-dev: all Ready
 kubectl get gateway -n gateway   # sphone, PROGRAMMED True
-curl -k https://sphone.localhost # placeholder page
+curl -k https://sphone.localhost/api/product-categories   # catalog JSON from sphone-api
+curl -k https://sphone.localhost                          # sphone-web
 curl -I http://sphone.localhost  # 301 to https
 ```
 
@@ -95,9 +96,33 @@ Recreating the cluster creates a new CA; remove the old "S Phone Local CA" from 
 | `deploy/infrastructure/configs/` | Issuers, the `sphone` Gateway and its certificate, platform secrets | `infra-configs` (after controllers) |
 | `deploy/apps/base/` | One directory per app, environment-neutral | – |
 | `deploy/apps/dev/` | `sphone-dev` overlay, follows `main` | `apps-dev` (after configs) |
-| `services/<name>/` | Service source code | – |
+| `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
+| `services/sphone-api/` | .NET solution: `src/Sphone.Domain`, `src/Sphone.Data` (EF Core, migrations), `src/Sphone.Api`, `tests/Sphone.Api.Tests` | – |
+| `services/sphone-web/` | React + Vite + TypeScript, served by Caddy | – |
+| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths) | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
+
+## Developing
+
+```sh
+# sphone-api (.NET 10). Tests start PostgreSQL with Testcontainers.
+export DOCKER_HOST=unix://$HOME/.rd/docker.sock
+export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock   # Rancher Desktop: socket path inside the VM
+cd services/sphone-api
+dotnet test
+dotnet format --verify-no-changes                                   # lint, as CI runs it
+dotnet tool restore && dotnet ef migrations add <Name> --project src/Sphone.Data
+
+# Run locally: a PostgreSQL on localhost:5432 (user/password/db sphone), then
+docker run -d --name sphone-pg -p 5432:5432 -e POSTGRES_USER=sphone -e POSTGRES_PASSWORD=sphone -e POSTGRES_DB=sphone postgres:18-alpine
+dotnet run --project src/Sphone.Api                                 # http://localhost:5080, migrates and seeds
+
+# sphone-web (Node 24)
+cd services/sphone-web
+npm ci && npm run dev                                               # proxies /api to localhost:5080
+npm run lint && npm run build                                       # as CI runs it
+```
 
 ## Troubleshooting
 
