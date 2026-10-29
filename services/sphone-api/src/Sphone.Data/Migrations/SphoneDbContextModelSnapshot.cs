@@ -181,6 +181,10 @@ namespace Sphone.Data.Migrations
                         .HasColumnType("character varying(50)")
                         .HasColumnName("code");
 
+                    b.Property<bool>("IsRetired")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_retired");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -392,6 +396,43 @@ namespace Sphone.Data.Migrations
                         .HasDatabaseName("ix_sms_codes_mobile_number_purpose_created_at");
 
                     b.ToTable("sms_codes", (string)null);
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Staff.StaffMember", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("password_hash");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("username");
+
+                    b.HasKey("Id")
+                        .HasName("pk_staff_members");
+
+                    b.HasIndex("Username")
+                        .IsUnique()
+                        .HasDatabaseName("ix_staff_members_username");
+
+                    b.ToTable("staff_members", (string)null);
                 });
 
             modelBuilder.Entity("Sphone.Domain.Applications.Application", b =>

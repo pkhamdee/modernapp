@@ -4,6 +4,7 @@ namespace: sphone-dev
 resources:
   - sphone-db-credentials.sops.yaml
   - sphone-api-auth.sops.yaml
+  - sphone-api-staff.sops.yaml
   - sphone-node-api-smb.sops.yaml
   - ../base/sphone-db
   - ../base/sphone-api

@@ -101,6 +101,25 @@ sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keyc
 
 Recreating the cluster creates a new CA; remove the old "S Phone Local CA" from Keychain Access and trust the new one.
 
+## Staff back office (demo account)
+
+The back office is at `https://sphone.localhost/staff` (prod: `https://prod.sphone.localhost/staff`). Each environment has
+one demo Staff account; its username and password live **only** in the SOPS-encrypted Secret
+`deploy/apps/<env>/sphone-api-staff.sops.yaml` (never in plain text in git). Read them with:
+
+```sh
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/sphone-api-staff.sops.yaml   # or prod
+```
+
+sphone-api provisions the account at startup from `Staff__Accounts__0__Username|Password|DisplayName` (stored as a salted
+PBKDF2 hash). To change the password: `sops deploy/apps/<env>/sphone-api-staff.sops.yaml`, commit, and once Flux applies
+it restart sphone-api (`kubectl -n sphone-<env> rollout restart deploy/sphone-api`); the Secret is the source of truth.
+More accounts: add `Staff__Accounts__1__*` env vars from the same kind of Secret.
+
+Running sphone-api locally, give it a Staff account the same way (any password you like, not committed):
+`Staff__Accounts__0__Username=staff Staff__Accounts__0__Password=<choose one> dotnet run --project src/Sphone.Api`.
+Product photo upload needs sphone-node-api (`npm run dev`, port 8081; `ImageService__BaseUrl` overrides it).
+
 ## Repo layout
 
 | Path | What | Flux Kustomization |

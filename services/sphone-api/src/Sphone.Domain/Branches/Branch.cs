@@ -17,4 +17,7 @@ public class Branch
 
     /// <summary>Thai province name.</summary>
     public required string Province { get; set; }
+
+    /// <summary>Retired Branches stay in the database (Handovers may refer to them) but are no longer offered.</summary>
+    public bool IsRetired { get; set; }
 }
