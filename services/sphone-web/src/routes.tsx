@@ -17,6 +17,8 @@ import { SignInPage } from './pages/SignInPage.tsx'
 import { StaffAuctionPage } from './pages/staff/StaffAuctionPage.tsx'
 import { StaffAuctionsPage } from './pages/staff/StaffAuctionsPage.tsx'
 import { StaffBranchesPage } from './pages/staff/StaffBranchesPage.tsx'
+import { StaffHandoverPage } from './pages/staff/StaffHandoverPage.tsx'
+import { StaffHandoversPage } from './pages/staff/StaffHandoversPage.tsx'
 import { StaffProductCategoriesPage } from './pages/staff/StaffProductCategoriesPage.tsx'
 import { StaffProductFormPage } from './pages/staff/StaffProductFormPage.tsx'
 import { StaffProductsPage } from './pages/staff/StaffProductsPage.tsx'
@@ -69,6 +71,8 @@ export const router = createBrowserRouter([
           { path: 'branches', element: <StaffBranchesPage /> },
           { path: 'auctions', element: <StaffAuctionsPage /> },
           { path: 'auctions/:id', element: <StaffAuctionPage /> },
+          { path: 'handovers', element: <StaffHandoversPage /> },
+          { path: 'handovers/:number', element: <StaffHandoverPage /> },
           { path: '*', element: <NotFoundPage /> },
         ],
       },
