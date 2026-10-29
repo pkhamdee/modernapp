@@ -86,6 +86,9 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+              # /opt/mssql/bin/sqlservr carries the file capability cap_net_bind_service=ep; without it in the
+              # bounding set exec fails with "Operation not permitted" (exit 126).
+              add: ["NET_BIND_SERVICE"]
           volumeMounts:
             - name: data
               mountPath: /var/opt/mssql
