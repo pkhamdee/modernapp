@@ -1,0 +1,3 @@
+# Gateway API on the bundled Traefik instead of NGINX
+
+The reference architecture fronts the app with an NGINX reverse proxy. On the local Rancher Desktop (k3s) cluster we replace it with the Kubernetes Gateway API, implemented by the Traefik that k3s already bundles, switched on through a Flux-managed `HelmChartConfig`. We chose Traefik over Envoy Gateway to avoid running a second proxy alongside one the cluster already ships with; the Gateway and HTTPRoutes stay portable to any Gateway API implementation if we move off k3s. NGINX is not used anywhere, including for serving the SPA (Caddy does that).
