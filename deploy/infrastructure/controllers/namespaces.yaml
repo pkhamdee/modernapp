@@ -1,0 +1,36 @@
+# Namespaces labelled sphone.io/gateway-access may attach HTTPRoutes to the sphone Gateway.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sphone-dev
+  labels:
+    sphone.io/gateway-access: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sphone-prod
+  labels:
+    sphone.io/gateway-access: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: thirdparty
+  labels:
+    sphone.io/gateway-access: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cnpg-system

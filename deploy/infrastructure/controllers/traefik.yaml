@@ -1,0 +1,27 @@
+# Overrides values of the Traefik bundled with k3s (ADR-0002). k3s merges this into its own
+# HelmChart kube-system/traefik. Deleting it reverts Traefik to the k3s defaults.
+#
+# The entrypoints listen on 80/443 inside the pod so Gateway listener ports equal the ports
+# clients use (Traefik matches a listener port to an entrypoint port). Pods may bind low
+# ports unprivileged because containerd sets net.ipv4.ip_unprivileged_port_start=0.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    providers:
+      kubernetesGateway:
+        enabled: true
+    gatewayClass:
+      enabled: true
+      name: traefik
+    # Our Gateway lives in Git (deploy/infrastructure/configs/gateway.yaml), not in the chart.
+    gateway:
+      enabled: false
+    ports:
+      web:
+        port: 80
+      websecure:
+        port: 443

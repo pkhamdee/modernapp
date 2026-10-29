@@ -1,0 +1,7 @@
+# Files named *.sops.yaml are encrypted with the cluster's age key; Flux decrypts them.
+# Encrypt:  sops --encrypt --in-place path/to/secret.sops.yaml
+# Edit:     sops path/to/secret.sops.yaml   (needs ~/.config/sops/age/keys.txt)
+creation_rules:
+  - path_regex: .*\.sops\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    age: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
