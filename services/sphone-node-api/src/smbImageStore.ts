@@ -89,7 +89,9 @@ export function smbImageStore(options: SmbOptions): ImageStore {
     },
     async exists(area, id) {
       try {
-        await smb(`allinfo "${remote(area, id)}"`)
+        // `ls <file>`, not `allinfo`: allinfo also asks for shadow copy data, which a Samba share without VSS
+        // answers with NT_STATUS_INVALID_DEVICE_REQUEST even when the file exists.
+        await smb(`ls "${remote(area, id)}"`)
         return true
       } catch (error) {
         if (error instanceof SmbError && notFound.test(error.output)) return false
