@@ -17,26 +17,6 @@ public sealed class EligibilityTests(SphoneApiFactory api)
     }
 
     [Fact]
-    public async Task A_Customer_with_an_active_Contract_is_told_before_starting_and_cannot_submit()
-    {
-        // Until Contracts exist (#16), an Approved Application stands for the Contract it leads to.
-        var customer = await api.CreateCustomerClientAsync();
-        var idNumber = TestData.NewIdNumber();
-        api.IdVerification.Verifies(idNumber, "สมชาย ใจดี", Adult);
-        api.CreditCheck.Passes(idNumber, 50_000m);
-        var iPhone = await customer.IPhone17Async();
-        Assert.Equal("approved", (await customer.ApplyAndWaitAsync(new ApplicationForm(iPhone, idNumber))).Status);
-
-        Assert.Equal(new EligibilityView(false, "active-contract", null), await customer.EligibilityAsync());
-
-        var photo = TestData.NewPhoto();
-        var again = await customer.SubmitAsync(new ApplicationForm(iPhone, idNumber) { Photo = photo });
-        Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
-        Assert.Equal("active-contract", (await again.ProblemAsync()).Error);
-        Assert.Equal((false, false), api.Images.WhereStored(photo)); // nothing stored: no Application exists
-    }
-
-    [Fact]
     public async Task A_Customer_whose_Application_is_being_reviewed_cannot_submit_another()
     {
         var customer = await api.CreateCustomerClientAsync();
@@ -95,10 +75,12 @@ public sealed class EligibilityTests(SphoneApiFactory api)
         api.IdVerification.Verifies(idNumber, "เด็กชาย ทดสอบ", twentiethBirthdayTomorrow);
         api.CreditCheck.Passes(idNumber, 50_000m);
 
-        var result = await customer.ApplyAndWaitAsync(new ApplicationForm(await customer.IPhone17Async(), idNumber));
+        var submitted = await customer.SubmitAcceptedAsync(new ApplicationForm(await customer.IPhone17Async(), idNumber));
 
-        Assert.Equal(("not-eligible", "under-20"), (result.Status, result.Reason));
-        Assert.Null(result.ReapplyFrom);
+        // The screen checking back learns the Customer is not eligible; the submission never became an Application.
+        using var checkBack = await customer.WaitWhileReviewingAsync(submitted.Id);
+        Assert.Equal(HttpStatusCode.Gone, checkBack.StatusCode);
+        Assert.Equal("under-20", (await checkBack.ProblemAsync()).Error);
         Assert.False(api.CreditCheck.WasAskedAbout(idNumber)); // no Credit Decision
         Assert.True((await customer.MeAsync()).IdVerified);
         Assert.Equal(new EligibilityView(true, null, null), await customer.EligibilityAsync()); // no 30-day wait

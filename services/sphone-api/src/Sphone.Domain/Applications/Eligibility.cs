@@ -3,22 +3,33 @@ namespace Sphone.Domain.Applications;
 /// <summary>Why a Customer can't submit an Application right now.</summary>
 public enum IneligibleReason
 {
-    /// <summary>The Customer has an active Contract (for now: an Approved Application, which leads to one; see <see cref="Eligibility.Check"/>).</summary>
+    /// <summary>The Customer holds an active (or overdue) Contract.</summary>
     ActiveContract,
+
+    /// <summary>
+    /// An Offer is still open (Approved, not yet accepted, declined or expired). Accepting it would create a
+    /// Contract, so a second Application could only end in a second active Contract; the Customer declines
+    /// the Offer (or lets it expire) to apply for something else.
+    /// </summary>
+    OfferOpen,
 
     /// <summary>An earlier Application is still being reviewed.</summary>
     ApplicationInProgress,
 
     /// <summary>Within 30 days of a Rejected Application.</summary>
     RecentlyRejected,
+
+    /// <summary>Under 20, known once ID Verification has answered (see <see cref="EligibilityRefusal"/>).</summary>
+    Under20,
 }
 
 /// <summary>
 /// The rules a Customer must meet before an Application can be submitted (GLOSSARY: Eligibility): aged 20 or
 /// over (known only after ID Verification, see <see cref="IsOldEnough"/>), no active Contract, and not within
-/// 30 days of a Rejected Application. A time-out Rejection does not count.
+/// 30 days of a Rejected Application. A time-out Rejection does not count. An open Offer also blocks a new
+/// Application (see <see cref="IneligibleReason.OfferOpen"/>).
 /// </summary>
-public sealed record Eligibility(bool IsEligible, IneligibleReason? Reason, DateTimeOffset? ReapplyFrom)
+public sealed record Eligibility(bool IsEligible, IneligibleReason? Reason, DateTimeOffset? ReapplyFrom, int? OfferId = null)
 {
     public const int MinimumAge = 20;
 
@@ -27,18 +38,21 @@ public sealed record Eligibility(bool IsEligible, IneligibleReason? Reason, Date
     private static readonly TimeSpan Bangkok = TimeSpan.FromHours(7);
 
     /// <summary>
-    /// Checks the rules that are known before ID Verification, from the Customer's earlier Applications
-    /// (and any made with the same ID number).
+    /// Checks the rules that are known before ID Verification, from the Customer's earlier Applications (and
+    /// any made with the same ID number), with their Offers loaded, and whether they hold an active Contract.
     /// </summary>
-    public static Eligibility Check(IEnumerable<Application> earlierApplications, DateTimeOffset now)
+    public static Eligibility Check(IEnumerable<Application> earlierApplications, bool hasActiveContract, DateTimeOffset now)
     {
-        var applications = earlierApplications.ToList();
-
-        // Until Offers and Contracts exist (#16), an Approved Application stands for the Contract it leads to.
-        // #16: replace with "has an active Contract, or an Approved Application whose Offer is still open".
-        if (applications.Any(a => a.Status == ApplicationStatus.Approved))
+        if (hasActiveContract)
         {
             return new(false, IneligibleReason.ActiveContract, null);
+        }
+
+        var applications = earlierApplications.ToList();
+
+        if (applications.Select(a => a.Offer).FirstOrDefault(o => o is not null && o.IsOpenAt(now)) is { } open)
+        {
+            return new(false, IneligibleReason.OfferOpen, null, open.Id);
         }
 
         if (applications.Any(a => a.Status == ApplicationStatus.Reviewing))
@@ -56,4 +70,36 @@ public sealed record Eligibility(bool IsEligible, IneligibleReason? Reason, Date
         var today = DateOnly.FromDateTime(now.ToOffset(Bangkok).DateTime);
         return dateOfBirth.AddYears(MinimumAge) <= today;
     }
+}
+
+/// <summary>
+/// A submission that failed Eligibility only once ID Verification answered (the Customer is under 20). Failing
+/// Eligibility creates no Application and no Credit Decision, so the submitted Application is deleted and this
+/// record takes its place: it tells the Customer polling <see cref="SubmissionId"/> (the id the submission was
+/// given) that they are not eligible. It starts no 30-day wait.
+/// </summary>
+public class EligibilityRefusal
+{
+    public int Id { get; set; }
+
+    public int CustomerId { get; set; }
+
+    /// <summary>The id the deleted submission had (what the Customer's screen polls). Not a foreign key.</summary>
+    public int SubmissionId { get; set; }
+
+    public required string IdNumber { get; set; }
+
+    public IneligibleReason Reason { get; set; }
+
+    public DateTimeOffset RefusedAt { get; set; }
+
+    public static EligibilityRefusal Under20(Application submission, DateTimeOffset now) =>
+        new()
+        {
+            CustomerId = submission.CustomerId,
+            SubmissionId = submission.Id,
+            IdNumber = submission.IdNumber,
+            Reason = IneligibleReason.Under20,
+            RefusedAt = now,
+        };
 }

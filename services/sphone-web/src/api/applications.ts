@@ -1,24 +1,23 @@
 import { apiPost } from './client.ts'
+import type { OfferStatus } from './offers.ts'
 
 // Mirrors sphone-api's Eligibility and Application endpoints (GLOSSARY: Eligibility, Application, Credit Decision).
 
-export type IneligibleReason = 'active-contract' | 'application-in-progress' | 'recently-rejected'
+export type IneligibleReason = 'active-contract' | 'offer-open' | 'application-in-progress' | 'recently-rejected'
 
 export interface Eligibility {
   eligible: boolean
   reason: IneligibleReason | null
   /** ISO time from which a recently Rejected Customer may apply again. */
   reapplyFrom: string | null
+  /** The open Offer to accept or decline first (reason offer-open). */
+  offerId: number | null
 }
 
-export type ApplicationStatus = 'reviewing' | 'approved' | 'rejected' | 'not-eligible'
+// A Customer found to be under 20 has no Application: GET /applications/{id} answers 410 with error "under-20".
+export type ApplicationStatus = 'reviewing' | 'approved' | 'rejected'
 
-export type ApplicationReason =
-  | 'id-verification-failed'
-  | 'credit-check-failed'
-  | 'over-credit-limit'
-  | 'timed-out'
-  | 'under-20'
+export type ApplicationReason = 'id-verification-failed' | 'credit-check-failed' | 'over-credit-limit' | 'timed-out'
 
 export interface Application {
   id: number
@@ -43,6 +42,8 @@ export interface Application {
   fullName: string | null
   dateOfBirth: string | null
   creditLimit: number | null
+  /** The Offer of an Approved Application. */
+  offer: { id: number; status: OfferStatus; expiresAt: string } | null
 }
 
 export const applicationPaths = {
@@ -93,6 +94,8 @@ export function ineligibleMessage(reason: IneligibleReason | string | undefined 
   switch (reason) {
     case 'active-contract':
       return 'คุณมีสัญญาเช่าซื้อที่ยังไม่สิ้นสุด จึงยังสมัครใหม่ไม่ได้'
+    case 'offer-open':
+      return 'คุณมีข้อเสนอที่รอการตอบรับอยู่ กรุณายอมรับหรือปฏิเสธข้อเสนอก่อนสมัครใหม่'
     case 'application-in-progress':
       return 'คำขอก่อนหน้าของคุณกำลังอยู่ระหว่างพิจารณา'
     case 'recently-rejected':

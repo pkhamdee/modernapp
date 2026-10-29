@@ -731,3 +731,50 @@ button.header-link {
   outline: 3px solid var(--brand-dark);
   outline-offset: 2px;
 }
+
+/* Offer and Contract */
+.offer-actions {
+  margin-top: 1.25rem;
+}
+
+.contract-number {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.schedule {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.schedule th,
+.schedule td {
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.schedule th:last-child,
+.schedule td:last-child {
+  text-align: right;
+}
+
+.contract-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.contract-list a {
+  display: grid;
+  gap: 0.15rem;
+  min-height: 44px;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+  color: inherit;
+  text-decoration: none;
+}

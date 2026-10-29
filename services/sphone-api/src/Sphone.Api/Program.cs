@@ -5,7 +5,9 @@ using Sphone.Api.Auth;
 using Sphone.Api.BackOffice;
 using Sphone.Api.Branches;
 using Sphone.Api.Catalog;
+using Sphone.Api.Contracts;
 using Sphone.Api.Images;
+using Sphone.Api.Offers;
 using Sphone.Api.ThirdParty;
 using Sphone.Data;
 
@@ -70,6 +72,8 @@ api.MapCatalogEndpoints();
 api.MapBranchEndpoints();
 api.MapAuthEndpoints();
 api.MapApplicationEndpoints();
+api.MapOfferEndpoints();
+api.MapContractEndpoints();
 api.MapBackOfficeEndpoints();
 
 await app.RunAsync();

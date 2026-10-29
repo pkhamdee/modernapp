@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { authPaths, formatMobileNumber, type Me } from '../api/auth.ts'
 import { useApi } from '../api/client.ts'
 import { useAuth } from '../auth/context.ts'
@@ -27,6 +27,9 @@ export function AccountPage() {
       ) : (
         <Status state={me} />
       )}
+      <Link to="/contracts" className="button apply-button">
+        สัญญาของฉัน
+      </Link>
       <button
         type="button"
         className="button button-secondary"

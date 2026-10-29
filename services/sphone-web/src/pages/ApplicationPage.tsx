@@ -29,8 +29,8 @@ export function ApplicationPage() {
       } catch (e) {
         if (controller.signal.aborted) return
         setError(e)
-        // A network blip shouldn't end the wait; a 404 should.
-        if (!(e instanceof ApiError && e.status === 404)) timer = setTimeout(check, CHECK_BACK_MS)
+        // A network blip shouldn't end the wait; a 404 or 410 (not eligible) should.
+        if (!(e instanceof ApiError && (e.status === 404 || e.status === 410))) timer = setTimeout(check, CHECK_BACK_MS)
       }
     }
 
@@ -42,6 +42,18 @@ export function ApplicationPage() {
   }, [id])
 
   if (error instanceof ApiError && error.status === 404) return <NotFoundPage />
+  // Under 20 (known once the ID is verified): Eligibility failed, so no Application exists.
+  if (error instanceof ApiError && error.status === 410) {
+    return (
+      <section className="card application">
+        <div className="decision decision-rejected" role="alert">
+          <h1>ไม่ผ่านคุณสมบัติผู้สมัคร</h1>
+          <p>ผู้สมัครต้องมีอายุ 20 ปีขึ้นไป</p>
+          <Link to="/">กลับหน้าแรก</Link>
+        </div>
+      </section>
+    )
+  }
   if (!application) {
     return (
       <p className="status" role="status">
@@ -117,14 +129,11 @@ function Decision({ application }: { application: Application }) {
           {application.creditLimit !== null && (
             <p className="muted">วงเงินของคุณ {formatBaht(application.creditLimit)}</p>
           )}
-        </div>
-      )
-    case 'not-eligible':
-      return (
-        <div className="decision decision-rejected" role="alert">
-          <h1>ไม่ผ่านคุณสมบัติผู้สมัคร</h1>
-          <p>ผู้สมัครต้องมีอายุ 20 ปีขึ้นไป</p>
-          <Link to="/">กลับหน้าแรก</Link>
+          {application.offer && (
+            <Link to={`/offers/${application.offer.id}`} className="button decision-retry">
+              {application.offer.status === 'open' ? 'ดูข้อเสนอและยืนยัน' : 'ดูข้อเสนอ'}
+            </Link>
+          )}
         </div>
       )
     default:

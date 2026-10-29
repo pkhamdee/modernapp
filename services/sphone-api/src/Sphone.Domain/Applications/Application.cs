@@ -1,6 +1,7 @@
 using Sphone.Domain.Branches;
 using Sphone.Domain.Catalog;
 using Sphone.Domain.Customers;
+using Sphone.Domain.Offers;
 
 namespace Sphone.Domain.Applications;
 
@@ -9,20 +10,14 @@ public enum ApplicationStatus
     /// <summary>Submitted; ID Verification and Credit Check are running in the background ("กำลังพิจารณา").</summary>
     Reviewing,
 
-    /// <summary>Credit Decision: Approved. #16 turns an Approved Application into an Offer.</summary>
+    /// <summary>Credit Decision: Approved. It comes with an <see cref="Offers.Offer"/>.</summary>
     Approved,
 
     /// <summary>Credit Decision: Rejected (see <see cref="Application.Reason"/>).</summary>
     Rejected,
-
-    /// <summary>
-    /// ID Verification showed the Customer is under 20, so Eligibility failed. This is not a submitted
-    /// Application: it has no Credit Decision and does not start the 30-day wait.
-    /// </summary>
-    NotEligible,
 }
 
-/// <summary>Why an Application was Rejected or found NotEligible.</summary>
+/// <summary>Why an Application was Rejected.</summary>
 public enum ApplicationReason
 {
     IdVerificationFailed,
@@ -31,7 +26,21 @@ public enum ApplicationReason
 
     /// <summary>No Credit Decision within <see cref="Application.DecisionTimeLimit"/>; does not start the 30-day wait.</summary>
     TimedOut,
+}
 
+/// <summary>What happens after ID Verification has answered.</summary>
+public enum IdVerificationOutcome
+{
+    /// <summary>Verified and aged 20 or over: the Credit Check follows.</summary>
+    CreditCheckNext,
+
+    /// <summary>ID Verification failed: Rejected.</summary>
+    Rejected,
+
+    /// <summary>
+    /// Verified but under 20: Eligibility failed, so this submission is not an Application at all. The caller
+    /// deletes it and records an <see cref="EligibilityRefusal"/> instead (no Credit Decision, no 30-day wait).
+    /// </summary>
     Under20,
 }
 
@@ -118,6 +127,9 @@ public class Application
 
     public DateTimeOffset? DecidedAt { get; set; }
 
+    /// <summary>The Offer of an Approved Application (created with the Credit Decision); null otherwise.</summary>
+    public Offer? Offer { get; set; }
+
     public DateTimeOffset DecisionDeadline => SubmittedAt + DecisionTimeLimit;
 
     /// <summary>Price − Down Payment.</summary>
@@ -153,33 +165,27 @@ public class Application
         };
 
     /// <summary>
-    /// Records the ID Verification result. A verified Customer is marked ID-verified; one under 20 fails
-    /// Eligibility (no Credit Decision). Returns true when the Credit Check should follow.
+    /// Records the ID Verification result. A verified Customer is marked ID-verified (whatever their age);
+    /// one under 20 fails Eligibility, see <see cref="IdVerificationOutcome.Under20"/>.
     /// </summary>
-    public bool RecordIdVerification(bool verified, string? fullName, DateOnly? dateOfBirth, DateTimeOffset now)
+    public IdVerificationOutcome RecordIdVerification(bool verified, string? fullName, DateOnly? dateOfBirth, DateTimeOffset now)
     {
         if (Status != ApplicationStatus.Reviewing)
         {
-            return false;
+            return IdVerificationOutcome.Rejected;
         }
 
         if (!verified || fullName is null || dateOfBirth is not { } dob)
         {
             Finish(ApplicationStatus.Rejected, ApplicationReason.IdVerificationFailed, now);
-            return false;
+            return IdVerificationOutcome.Rejected;
         }
 
         FullName = fullName;
         DateOfBirth = dob;
         Customer.MarkIdVerified(IdNumber, fullName, dob, now);
 
-        if (!Eligibility.IsOldEnough(dob, now))
-        {
-            Finish(ApplicationStatus.NotEligible, ApplicationReason.Under20, now);
-            return false;
-        }
-
-        return true;
+        return Eligibility.IsOldEnough(dob, now) ? IdVerificationOutcome.CreditCheckNext : IdVerificationOutcome.Under20;
     }
 
     /// <summary>The Credit Decision: Approved only if the Credit Check passed and the financed amount is within the Credit Limit.</summary>
@@ -204,6 +210,7 @@ public class Application
         else
         {
             Finish(ApplicationStatus.Approved, null, now);
+            Offer = Offer.For(this);
         }
     }
 
