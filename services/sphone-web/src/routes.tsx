@@ -5,13 +5,17 @@ import { StaffLayout } from './layout/StaffLayout.tsx'
 import { AccountPage } from './pages/AccountPage.tsx'
 import { ApplicationPage } from './pages/ApplicationPage.tsx'
 import { ApplyPage } from './pages/ApplyPage.tsx'
+import { AuctionPage } from './pages/AuctionPage.tsx'
 import { CatalogPage } from './pages/CatalogPage.tsx'
 import { ContractPage, ContractsPage } from './pages/ContractPage.tsx'
+import { LotPage } from './pages/LotPage.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { OfferPage } from './pages/OfferPage.tsx'
 import { ProductPage } from './pages/ProductPage.tsx'
 import { SignInCodePage } from './pages/SignInCodePage.tsx'
 import { SignInPage } from './pages/SignInPage.tsx'
+import { StaffAuctionPage } from './pages/staff/StaffAuctionPage.tsx'
+import { StaffAuctionsPage } from './pages/staff/StaffAuctionsPage.tsx'
 import { StaffBranchesPage } from './pages/staff/StaffBranchesPage.tsx'
 import { StaffProductCategoriesPage } from './pages/staff/StaffProductCategoriesPage.tsx'
 import { StaffProductFormPage } from './pages/staff/StaffProductFormPage.tsx'
@@ -31,6 +35,8 @@ export const router = createBrowserRouter([
       { index: true, element: <CatalogPage /> },
       { path: 'categories/:code', element: <CatalogPage /> },
       { path: 'products/:id', element: <ProductPage /> },
+      { path: 'auction', element: <AuctionPage /> },
+      { path: 'auction/lots/:id', element: <LotPage /> },
       { path: 'sign-in', element: <SignInPage /> },
       { path: 'sign-in/code', element: <SignInCodePage /> },
       {
@@ -61,6 +67,8 @@ export const router = createBrowserRouter([
           { path: 'products/:id', element: <StaffProductFormPage /> },
           { path: 'product-categories', element: <StaffProductCategoriesPage /> },
           { path: 'branches', element: <StaffBranchesPage /> },
+          { path: 'auctions', element: <StaffAuctionsPage /> },
+          { path: 'auctions/:id', element: <StaffAuctionPage /> },
           { path: '*', element: <NotFoundPage /> },
         ],
       },

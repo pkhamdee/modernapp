@@ -14,15 +14,20 @@ export function AppLayout() {
             <small>เอส ลีสซิ่ง</small>
           </span>
         </Link>
-        {session?.role === 'Customer' ? (
-          <Link to="/account" className="header-link">
-            บัญชีของฉัน
+        <nav className="header-nav">
+          <Link to="/auction" className="header-link">
+            ประมูล
           </Link>
-        ) : (
-          <Link to="/sign-in" className="header-link">
-            เข้าสู่ระบบ
-          </Link>
-        )}
+          {session?.role === 'Customer' ? (
+            <Link to="/account" className="header-link">
+              บัญชีของฉัน
+            </Link>
+          ) : (
+            <Link to="/sign-in" className="header-link">
+              เข้าสู่ระบบ
+            </Link>
+          )}
+        </nav>
       </header>
       <main className="app-main">
         <Outlet />

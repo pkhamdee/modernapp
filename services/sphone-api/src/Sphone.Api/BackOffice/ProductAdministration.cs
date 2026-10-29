@@ -90,7 +90,7 @@ internal static partial class ProductAdministration
 
     // The raw request body is the photo (Content-Type image/jpeg|png|webp|svg+xml, at most 10 MB). It goes to the
     // image service's public area; the returned ID is then set on a Product.
-    private static async Task<Results<Created<ProductPhotoResponse>, StatusCodeHttpResult>> UploadPhoto(
+    internal static async Task<Results<Created<ProductPhotoResponse>, StatusCodeHttpResult>> UploadPhoto(
         HttpRequest request, IImageStore images, CancellationToken cancellationToken)
     {
         var contentType = request.ContentType?.Split(';')[0].Trim();

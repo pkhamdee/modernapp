@@ -120,6 +120,15 @@ Running sphone-api locally, give it a Staff account the same way (any password y
 `Staff__Accounts__0__Username=staff Staff__Accounts__0__Password=<choose one> dotnet run --project src/Sphone.Api`.
 Product photo upload needs sphone-node-api (`npm run dev`, port 8081; `ImageService__BaseUrl` overrides it).
 
+## Auction demo
+
+Staff open `/staff/auctions`, create an Auction (default: next Monday 10:00 to Sunday 20:00 Asia/Bangkok; tick
+"กำหนดเวลาเอง" to choose times, e.g. one that is already open for a demo) and add Lots with photos. Visitors browse
+`/auction`; a Lot page (`/auction/lots/<id>`) polls the current highest Bid every 3 s. Only Customers who passed ID
+Verification may bid, and the only way to pass it is to apply for hire purchase: use a thirdparty-mock ID number ending
+`02` (ID Verification passes, Credit Check fails) to make a bidder without taking on a Contract. A Bid must be at least the
+starting price, then at least ฿100 above the current highest; Bids before opening or from the closing time on are refused.
+
 ## Repo layout
 
 | Path | What | Flux Kustomization |
