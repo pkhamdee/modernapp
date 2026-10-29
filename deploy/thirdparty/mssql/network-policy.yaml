@@ -1,0 +1,29 @@
+# Arrows: sphone-sync-master (sphone-dev, sphone-prod) -> SQL Server; thirdparty-mock (Enterprise
+# admin tool) -> SQL Server. SQL Server calls nothing (the schema sidecar uses localhost in the pod).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mssql
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mssql
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [sphone-dev, sphone-prod]
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sphone-sync-master
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: thirdparty-mock
+      ports:
+        - port: 1433
+  egress: []

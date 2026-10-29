@@ -1,0 +1,60 @@
+# Arrows into the PostgreSQL instances (CloudNativePG): sphone-api and sphone-sync-master (same
+# namespace) on 5432; the CNPG operator (cnpg-system) on 8000 (instance manager) and 5432;
+# instances of the same cluster to each other (replication, if instances > 1).
+# Out: the Kubernetes API server (the instance manager watches its Cluster), and the same instances.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sphone-db
+spec:
+  podSelector:
+    matchLabels:
+      cnpg.io/cluster: sphone-db
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sphone-api
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sphone-sync-master
+      ports:
+        - port: 5432
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: cnpg-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: cloudnative-pg
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: sphone-db
+      ports:
+        - port: 8000
+        - port: 5432
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: sphone-db
+      ports:
+        - port: 8000
+        - port: 5432
+    # Kubernetes API server: the `kubernetes` Service (10.43.0.1:443) and its endpoint on the
+    # Rancher Desktop k3s node (external 192.168.64.2, internal 192.168.5.15; port 6443).
+    - to:
+        - ipBlock:
+            cidr: 10.43.0.1/32
+      ports:
+        - port: 443
+    - to:
+        - ipBlock:
+            cidr: 192.168.64.2/32
+        - ipBlock:
+            cidr: 192.168.5.15/32
+      ports:
+        - port: 6443

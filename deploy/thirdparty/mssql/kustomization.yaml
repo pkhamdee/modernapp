@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - mssql-credentials.sops.yaml
   - mssql.yaml
+  - network-policy.yaml
 # The schema container runs these on every pod start; a change renames the ConfigMap and so restarts the pod.
 # enterprise-schema.sql is also what sphone-sync-master's Seam-2 tests apply to their SQL Server container.
 configMapGenerator:
