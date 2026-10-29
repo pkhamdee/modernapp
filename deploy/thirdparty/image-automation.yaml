@@ -1,0 +1,56 @@
+# The shared mocks follow main (they are test equipment, not released): CI pushes
+# ghcr.io/pkhamdee/<service>:main-<sha>-<unix-ts>, each ImagePolicy picks the newest by timestamp, and the
+# ImageUpdateAutomation rewrites the setter markers in deploy/thirdparty/kustomization.yaml and commits to main.
+# To add a built mock: one ImageRepository + ImagePolicy below, and one `images:` entry with a
+# `# {"$imagepolicy": "thirdparty:<service>:tag"}` marker in kustomization.yaml.
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: thirdparty-mock
+spec:
+  image: ghcr.io/pkhamdee/thirdparty-mock
+  interval: 1m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: thirdparty-mock
+spec:
+  imageRepositoryRef:
+    name: thirdparty-mock
+  filterTags:
+    pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
+    extract: '$ts'
+  policy:
+    numerical:
+      order: asc
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: thirdparty
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: fluxcdbot
+        email: fluxcdbot@users.noreply.github.com
+      messageTemplate: |
+        thirdparty: update images [skip ci]
+
+        {{ range .Changed.Changes -}}
+        - {{ .OldValue }} -> {{ .NewValue }}
+        {{ end -}}
+    push:
+      branch: main
+  update:
+    path: ./deploy/thirdparty
+    strategy: Setters

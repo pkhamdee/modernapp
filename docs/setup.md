@@ -88,6 +88,7 @@ curl -k https://sphone.localhost/api/product-categories   # catalog JSON from sp
 curl -k https://sphone.localhost                          # sphone-web
 curl -I http://sphone.localhost  # 301 to https
 curl -k https://prod.sphone.localhost/api/product-categories   # sphone-prod (release images, own database)
+open https://sphone.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-in codes for any mobile number
 ```
 
 The certificate comes from a local CA created by cert-manager. To stop browser warnings, trust the CA once:
@@ -111,8 +112,10 @@ Recreating the cluster creates a new CA; remove the old "S Phone Local CA" from 
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
 | `deploy/apps/prod/` | `sphone-prod` overlay, follows release tags, served at `prod.sphone.localhost` | `apps-prod` (after configs) |
 | `deploy/apps/prod/image-automation.yaml` | Flux image automation: newest semver `X.Y.Z` image per service, committed back to `main` | `apps-prod` |
+| `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, ...); follows `main` via its own image automation | `thirdparty` (after configs) |
 | `services/sphone-api/` | .NET solution: `src/Sphone.Domain`, `src/Sphone.Data` (EF Core, migrations), `src/Sphone.Api`, `tests/Sphone.Api.Tests` | – |
 | `services/sphone-web/` | React + Vite + TypeScript, served by Caddy | – |
+| `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), later ID Verification and Credit Check; adjustable delay | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
@@ -136,6 +139,11 @@ dotnet run --project src/Sphone.Api                                 # http://loc
 cd services/sphone-web
 npm ci && npm run dev                                               # proxies /api to localhost:5080
 npm run lint && npm run build                                       # as CI runs it
+
+# thirdparty-mock (Node 24). sphone-api's Development settings point ThirdParty:BaseUrl at localhost:4000.
+cd services/thirdparty-mock
+npm ci && npm run dev                                               # http://localhost:4000/sms/inbox
+npm run lint && npm run typecheck
 ```
 
 ## Troubleshooting

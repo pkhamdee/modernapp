@@ -33,6 +33,15 @@ spec:
             # Migrations and demo seed data are applied at startup (EF Core takes a lock, so this is safe).
             - name: Database__MigrateOnStartup
               value: "true"
+            # Token signing key, per environment (deploy/apps/<env>/sphone-api-auth.sops.yaml).
+            - name: Auth__SigningKey
+              valueFrom:
+                secretKeyRef:
+                  name: sphone-api-auth
+                  key: signing-key
+            # SMS (and later ID Verification, Credit Check) go to the shared thirdparty-mock.
+            - name: ThirdParty__BaseUrl
+              value: http://thirdparty-mock.thirdparty.svc.cluster.local/
           ports:
             - name: http
               containerPort: 8080
