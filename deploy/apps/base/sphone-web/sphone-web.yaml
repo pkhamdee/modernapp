@@ -43,11 +43,9 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
-            # The caddy binary carries the cap_net_bind_service file capability; without it
-            # in the bounding set, exec fails with "operation not permitted".
+            # The image strips caddy's cap_net_bind_service file capability, so ALL can be dropped.
             capabilities:
               drop: ["ALL"]
-              add: ["NET_BIND_SERVICE"]
           volumeMounts:
             - name: tmp
               mountPath: /tmp
