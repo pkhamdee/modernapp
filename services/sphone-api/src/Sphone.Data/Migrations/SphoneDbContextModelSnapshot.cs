@@ -299,6 +299,10 @@ namespace Sphone.Data.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("condition_notes");
 
+                    b.Property<DateTimeOffset?>("ForfeitedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("forfeited_at");
+
                     b.Property<decimal?>("HighestBid")
                         .HasPrecision(12, 2)
                         .HasColumnType("numeric(12,2)")
@@ -312,6 +316,23 @@ namespace Sphone.Data.Migrations
                         .IsRequired()
                         .HasColumnType("text[]")
                         .HasColumnName("image_ids");
+
+                    b.Property<DateTimeOffset?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<int?>("PaymentBranchId")
+                        .HasColumnType("integer")
+                        .HasColumnName("payment_branch_id");
+
+                    b.Property<string>("PaymentRecordedBy")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("payment_recorded_by");
+
+                    b.Property<int?>("ReofferedAsLotId")
+                        .HasColumnType("integer")
+                        .HasColumnName("reoffered_as_lot_id");
 
                     b.Property<decimal>("StartingPrice")
                         .HasPrecision(12, 2)
@@ -332,6 +353,13 @@ namespace Sphone.Data.Migrations
 
                     b.HasIndex("HighestBidderId")
                         .HasDatabaseName("ix_lots_highest_bidder_id");
+
+                    b.HasIndex("PaymentBranchId")
+                        .HasDatabaseName("ix_lots_payment_branch_id");
+
+                    b.HasIndex("ReofferedAsLotId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_lots_reoffered_as_lot_id");
 
                     b.ToTable("lots", (string)null);
                 });
@@ -943,9 +971,23 @@ namespace Sphone.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_lots_customers_highest_bidder_id");
 
+                    b.HasOne("Sphone.Domain.Branches.Branch", "PaymentBranch")
+                        .WithMany()
+                        .HasForeignKey("PaymentBranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_lots_branches_payment_branch_id");
+
+                    b.HasOne("Sphone.Domain.Auctions.Lot", null)
+                        .WithOne()
+                        .HasForeignKey("Sphone.Domain.Auctions.Lot", "ReofferedAsLotId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_lots_lots_reoffered_as_lot_id");
+
                     b.Navigation("Auction");
 
                     b.Navigation("HighestBidder");
+
+                    b.Navigation("PaymentBranch");
                 });
 
             modelBuilder.Entity("Sphone.Domain.Catalog.Product", b =>

@@ -30,6 +30,9 @@ export function AccountPage() {
       <Link to="/contracts" className="button apply-button">
         สัญญาของฉัน
       </Link>
+      <Link to="/won-lots" className="button button-secondary">
+        ประมูลที่ชนะ
+      </Link>
       <button
         type="button"
         className="button button-secondary"

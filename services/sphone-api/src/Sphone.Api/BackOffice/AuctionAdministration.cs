@@ -31,18 +31,25 @@ internal static partial class AuctionAdministration
     // Newest first.
     private static async Task<List<AuctionResponse>> ListAuctions(SphoneDbContext db, TimeProvider clock, CancellationToken cancellationToken)
     {
-        var auctions = await db.Auctions.Include(a => a.Lots).OrderByDescending(a => a.OpensAt).ThenByDescending(a => a.Id)
-            .AsNoTracking().ToListAsync(cancellationToken);
+        var auctions = await WithLotSales(db).OrderByDescending(a => a.OpensAt).ThenByDescending(a => a.Id)
+            .ToListAsync(cancellationToken);
         var now = clock.GetUtcNow();
-        return auctions.Select(a => AuctionResponse.Of(a, now)).ToList();
+        return auctions.Select(a => AuctionResponse.Of(a, now, forStaff: true)).ToList();
     }
 
+    // Staff see each closed Lot's winner and payment (LotResponse.Sale).
     private static async Task<Results<Ok<AuctionResponse>, NotFound>> GetAuction(
         int id, SphoneDbContext db, TimeProvider clock, CancellationToken cancellationToken)
     {
-        var auction = await db.Auctions.Include(a => a.Lots).AsNoTracking().SingleOrDefaultAsync(a => a.Id == id, cancellationToken);
-        return auction is null ? TypedResults.NotFound() : TypedResults.Ok(AuctionResponse.Of(auction, clock.GetUtcNow()));
+        var auction = await WithLotSales(db).SingleOrDefaultAsync(a => a.Id == id, cancellationToken);
+        return auction is null ? TypedResults.NotFound() : TypedResults.Ok(AuctionResponse.Of(auction, clock.GetUtcNow(), forStaff: true));
     }
+
+    private static IQueryable<Auction> WithLotSales(SphoneDbContext db) =>
+        db.Auctions
+            .Include(a => a.Lots).ThenInclude(l => l.HighestBidder)
+            .Include(a => a.Lots).ThenInclude(l => l.PaymentBranch)
+            .AsSplitQuery().AsNoTracking();
 
     private static async Task<Results<Created<AuctionResponse>, ValidationProblem>> CreateAuction(
         AuctionRequest request, SphoneDbContext db, TimeProvider clock, CancellationToken cancellationToken)

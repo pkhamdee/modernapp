@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useParams } from 'react-router'
-import { auctionPaths, auctionStatusLabel, LOT_POLL_MS, placeBid, type Lot } from '../api/auctions.ts'
+import { auctionPaths, auctionStatusLabel, LOT_POLL_MS, lotStatusLabel, placeBid, type Lot } from '../api/auctions.ts'
 import { authPaths, type Me } from '../api/auth.ts'
 import { ApiError, useApi, useReloadableApi } from '../api/client.ts'
 import { useAuth } from '../auth/context.ts'
@@ -60,9 +60,21 @@ export function LotPage() {
           <dd>{formatDateTime(l.auctionStatus === 'upcoming' ? l.opensAt : l.closesAt)}</dd>
         </div>
       </dl>
-      {l.youAreHighestBidder === true && (
+      {l.lotStatus !== 'in-auction' && (
+        <p className={l.youWon ? 'form-notice' : 'muted'}>
+          ผลการประมูล: {lotStatusLabel[l.lotStatus]}
+          {l.reofferedAsLotId !== null && (
+            <>
+              {' '}
+              · <Link to={`/auction/lots/${l.reofferedAsLotId}`}>นำกลับมาประมูลใหม่</Link>
+            </>
+          )}
+        </p>
+      )}
+      {l.youWon === true && <WinnerNotice lot={l} />}
+      {l.youAreHighestBidder === true && l.auctionStatus !== 'closed' && (
         <p className="form-notice" role="status">
-          {l.auctionStatus === 'closed' ? 'คุณเสนอราคาสูงสุด' : 'คุณเป็นผู้เสนอราคาสูงสุดตอนนี้'}
+          คุณเป็นผู้เสนอราคาสูงสุดตอนนี้
         </p>
       )}
       {l.youAreHighestBidder === false && l.bidCount > 0 && l.auctionStatus === 'open' && (
@@ -72,6 +84,34 @@ export function LotPage() {
       <p className="muted">ผู้ชนะชำระเงินสดที่สาขาภายใน 3 วัน (ไม่สามารถผ่อนชำระได้) · ไม่มีการต่อเวลาประมูล</p>
     </article>
   )
+}
+
+/** What the winner must do next: pay cash at a Branch within 3 days (cash only, no hire purchase). */
+export function WinnerNotice({ lot }: { lot: Lot }) {
+  switch (lot.lotStatus) {
+    case 'awaiting-payment':
+      return (
+        <div className="form-notice" role="status">
+          <strong>คุณชนะการประมูล!</strong> กรุณาชำระเงินสด {formatBaht(lot.highestBid ?? 0)} ที่สาขาของ S Phone ภายใน{' '}
+          {lot.paymentDueAt ? formatDateTime(lot.paymentDueAt) : '3 วัน'} พร้อมบัตรประชาชน แล้วรับเครื่องได้ทันที
+          (ชำระเงินสดเท่านั้น ไม่สามารถผ่อนชำระได้)
+        </div>
+      )
+    case 'sold':
+      return (
+        <p className="form-notice" role="status">
+          คุณชนะการประมูลและชำระเงินแล้ว ขอบคุณที่ใช้บริการ
+        </p>
+      )
+    case 'forfeited':
+      return (
+        <p className="form-error" role="status">
+          คุณชนะการประมูลแต่ไม่ได้ชำระเงินภายใน 3 วัน จึงถูกริบสิทธิ์
+        </p>
+      )
+    default:
+      return null
+  }
 }
 
 function BidForm({ lot, onBid }: { lot: Lot; onBid: () => void }) {

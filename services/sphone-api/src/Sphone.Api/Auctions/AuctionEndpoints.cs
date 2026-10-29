@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
+using Sphone.Api.Auth;
 using Sphone.Data;
 
 namespace Sphone.Api.Auctions;
@@ -18,8 +19,23 @@ internal static class AuctionEndpoints
         auctions.MapGet("/{id:int}", GetAuction);
 
         api.MapGet("/lots/{id:int}", GetLot).WithTags("Auctions");
+        api.MapGet("/lots/won", GetWonLots).WithTags("Auctions").RequireAuthorization(Roles.Customer);
 
         return api;
+    }
+
+    // The signed-in Customer's won Lots (closed Auctions where their Bid was the highest), most recent close first:
+    // awaiting payment (pay cash at a Branch by paymentDueAt), sold or forfeited.
+    private static async Task<List<LotResponse>> GetWonLots(
+        ClaimsPrincipal user, SphoneDbContext db, TimeProvider clock, CancellationToken cancellationToken)
+    {
+        var customerId = user.RequiredCustomerId();
+        var now = clock.GetUtcNow();
+        var lots = await db.Lots.Include(l => l.Auction).AsNoTracking()
+            .Where(l => l.HighestBidderId == customerId && l.Auction.ClosesAt <= now)
+            .OrderByDescending(l => l.Auction.ClosesAt).ThenByDescending(l => l.Id)
+            .ToListAsync(cancellationToken);
+        return lots.Select(l => LotResponse.Of(l, l.Auction, now, user)).ToList();
     }
 
     // The open Auction (the latest-opened one if Staff made several), else the next upcoming one, else the

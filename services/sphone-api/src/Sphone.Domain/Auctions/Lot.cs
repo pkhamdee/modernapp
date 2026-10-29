@@ -1,3 +1,4 @@
+using Sphone.Domain.Branches;
 using Sphone.Domain.Customers;
 
 namespace Sphone.Domain.Auctions;
@@ -40,14 +41,69 @@ public class Lot
 
     public List<Bid> Bids { get; set; } = [];
 
-    // #17 (close, winner, payment, Forfeited): the winner of a closed Auction's Lot is HighestBidderId at
-    // HighestBid. Add the Lot's after-close state (won / paid / Forfeited) here.
+    /// <summary>When Staff recorded the winner's cash payment and Handover at a Branch; null until then.</summary>
+    public DateTimeOffset? PaidAt { get; set; }
+
+    /// <summary>The Branch where the winner paid cash and took the Lot.</summary>
+    public int? PaymentBranchId { get; set; }
+
+    public Branch? PaymentBranch { get; set; }
+
+    /// <summary>Username of the Staff member who recorded the payment.</summary>
+    public string? PaymentRecordedBy { get; set; }
+
+    /// <summary>When Staff marked the Lot Forfeited (the winner did not pay within 3 days); null otherwise.</summary>
+    public DateTimeOffset? ForfeitedAt { get; set; }
+
+    /// <summary>The new Lot that offers this (Forfeited or unsold) Lot again in a later Auction; null if not yet.</summary>
+    public int? ReofferedAsLotId { get; set; }
 
     /// <summary>The smallest Bid accepted now: the starting price for the first Bid, else highest + ฿100.</summary>
     public decimal MinimumBid => MinimumBidOver(HighestBid, StartingPrice);
 
+    /// <summary>
+    /// The Lot's state at <paramref name="now"/>; <see cref="Auction"/> must be loaded. When the Auction closes, the
+    /// highest Bid (<see cref="HighestBidderId"/> at <see cref="HighestBid"/>) wins and nobody else ever does: a
+    /// Forfeited Lot does not pass to the second-highest bidder.
+    /// </summary>
+    public LotStatus StatusAt(DateTimeOffset now) =>
+        Auction.StatusAt(now) != AuctionStatus.Closed ? LotStatus.InAuction
+        : HighestBidderId is null ? LotStatus.Unsold
+        : PaidAt is not null ? LotStatus.Sold
+        : ForfeitedAt is not null ? LotStatus.Forfeited
+        : LotStatus.AwaitingPayment;
+
+    /// <summary>The winner must pay cash at a Branch by this time (close + 3 days); null if there is no winner.</summary>
+    public DateTimeOffset? PaymentDueAt => HighestBidderId is null ? null : Auction.ClosesAt + PaymentWindow;
+
+    /// <summary>The winner's Customer id once the Auction has closed; null before the close or with no Bids.</summary>
+    public int? WinnerIdAt(DateTimeOffset now) => Auction.StatusAt(now) == AuctionStatus.Closed ? HighestBidderId : null;
+
+    /// <summary>Staff may mark the Lot Forfeited once the 3 days have passed (from the due time on) without payment.</summary>
+    public bool MayBeForfeitedAt(DateTimeOffset now) => StatusAt(now) == LotStatus.AwaitingPayment && now >= PaymentDueAt;
+
+    /// <summary>A Forfeited or unsold Lot may be offered again in a later Auction, once.</summary>
+    public bool MayBeReofferedAt(DateTimeOffset now) =>
+        StatusAt(now) is LotStatus.Forfeited or LotStatus.Unsold && ReofferedAsLotId is null;
+
+    /// <summary>How long the winner has to pay cash at a Branch after the Auction closes.</summary>
+    public static readonly TimeSpan PaymentWindow = TimeSpan.FromDays(3);
+
     public static decimal MinimumBidOver(decimal? highestBid, decimal startingPrice) =>
         highestBid is { } highest ? highest + MinimumIncrement : startingPrice;
+}
+
+/// <summary>
+/// InAuction until the Auction closes; then Unsold (no Bids) or AwaitingPayment (the winner has 3 days to pay cash at
+/// a Branch), ending Sold (paid and handed over) or Forfeited (Staff marked it after 3 days unpaid).
+/// </summary>
+public enum LotStatus
+{
+    InAuction,
+    Unsold,
+    AwaitingPayment,
+    Sold,
+    Forfeited,
 }
 
 /// <summary>A Customer's offer for a Lot (GLOSSARY: Bid). Accepted Bids only; refused ones are not stored.</summary>
