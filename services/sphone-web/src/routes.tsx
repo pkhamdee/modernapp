@@ -6,7 +6,9 @@ import { AccountPage } from './pages/AccountPage.tsx'
 import { ApplicationPage } from './pages/ApplicationPage.tsx'
 import { ApplyPage } from './pages/ApplyPage.tsx'
 import { CatalogPage } from './pages/CatalogPage.tsx'
+import { ContractPage, ContractsPage } from './pages/ContractPage.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
+import { OfferPage } from './pages/OfferPage.tsx'
 import { ProductPage } from './pages/ProductPage.tsx'
 import { SignInCodePage } from './pages/SignInCodePage.tsx'
 import { SignInPage } from './pages/SignInPage.tsx'
@@ -37,6 +39,9 @@ export const router = createBrowserRouter([
           { path: 'account', element: <AccountPage /> },
           { path: 'products/:id/apply', element: <ApplyPage /> },
           { path: 'applications/:id', element: <ApplicationPage /> },
+          { path: 'offers/:id', element: <OfferPage /> },
+          { path: 'contracts', element: <ContractsPage /> },
+          { path: 'contracts/:number', element: <ContractPage /> },
         ],
       },
       { path: '*', element: <NotFoundPage /> },

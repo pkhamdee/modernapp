@@ -57,6 +57,11 @@ export function ApplyPage() {
         {backToProduct}
         <h1>ยังสมัครไม่ได้</h1>
         <p role="alert">{ineligibleMessage(eligibility.data.reason, eligibility.data.reapplyFrom)}</p>
+        {eligibility.data.offerId !== null && (
+          <Link to={`/offers/${eligibility.data.offerId}`} className="button apply-button">
+            ดูข้อเสนอ
+          </Link>
+        )}
       </section>
     )
   }

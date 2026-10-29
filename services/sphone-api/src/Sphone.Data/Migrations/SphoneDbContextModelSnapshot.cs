@@ -160,6 +160,49 @@ namespace Sphone.Data.Migrations
                     b.ToTable("applications", (string)null);
                 });
 
+            modelBuilder.Entity("Sphone.Domain.Applications.EligibilityRefusal", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("IdNumber")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("character varying(13)")
+                        .HasColumnName("id_number");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("reason");
+
+                    b.Property<DateTimeOffset>("RefusedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("refused_at");
+
+                    b.Property<int>("SubmissionId")
+                        .HasColumnType("integer")
+                        .HasColumnName("submission_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_eligibility_refusals");
+
+                    b.HasIndex("CustomerId", "SubmissionId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_eligibility_refusals_customer_id_submission_id");
+
+                    b.ToTable("eligibility_refusals", (string)null);
+                });
+
             modelBuilder.Entity("Sphone.Domain.Branches.Branch", b =>
                 {
                     b.Property<int>("Id")
@@ -299,6 +342,163 @@ namespace Sphone.Data.Migrations
                     b.ToTable("product_categories", (string)null);
                 });
 
+            modelBuilder.Entity("Sphone.Domain.Contracts.Contract", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTimeOffset>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<int>("ApplicationId")
+                        .HasColumnType("integer")
+                        .HasColumnName("application_id");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_id");
+
+                    b.Property<decimal>("DownPayment")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("down_payment");
+
+                    b.Property<decimal>("FlatRate")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("numeric(6,4)")
+                        .HasColumnName("flat_rate");
+
+                    b.Property<decimal>("Installment")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("installment");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("number");
+
+                    b.Property<int>("OfferId")
+                        .HasColumnType("integer")
+                        .HasColumnName("offer_id");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("price");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer")
+                        .HasColumnName("product_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Term")
+                        .HasColumnType("integer")
+                        .HasColumnName("term");
+
+                    b.Property<decimal>("TotalPayable")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("total_payable");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contracts");
+
+                    b.HasIndex("ApplicationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contracts_application_id");
+
+                    b.HasIndex("CustomerId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contracts_customer_id_active")
+                        .HasFilter("status IN ('Active', 'Overdue')");
+
+                    b.HasIndex("Number")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contracts_number");
+
+                    b.HasIndex("OfferId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contracts_offer_id");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("ix_contracts_product_id");
+
+                    b.ToTable("contracts", (string)null);
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Contracts.ContractNumberCounter", b =>
+                {
+                    b.Property<string>("Month")
+                        .HasMaxLength(6)
+                        .HasColumnType("character varying(6)")
+                        .HasColumnName("month");
+
+                    b.Property<int>("LastNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_number");
+
+                    b.HasKey("Month")
+                        .HasName("pk_contract_number_counters");
+
+                    b.ToTable("contract_number_counters", (string)null);
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Contracts.ContractOutboxEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer")
+                        .HasColumnName("contract_id");
+
+                    b.Property<string>("ContractNumber")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("contract_number");
+
+                    b.Property<DateTimeOffset>("EnqueuedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("enqueued_at");
+
+                    b.Property<DateTimeOffset?>("PushedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("pushed_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_contract_outbox");
+
+                    b.HasIndex("ContractId")
+                        .HasDatabaseName("ix_contract_outbox_contract_id");
+
+                    b.HasIndex("ContractNumber")
+                        .IsUnique()
+                        .HasDatabaseName("ix_contract_outbox_contract_number");
+
+                    b.HasIndex("EnqueuedAt")
+                        .HasDatabaseName("ix_contract_outbox_pending")
+                        .HasFilter("pushed_at IS NULL");
+
+                    b.ToTable("contract_outbox", (string)null);
+                });
+
             modelBuilder.Entity("Sphone.Domain.Customers.Customer", b =>
                 {
                     b.Property<int>("Id")
@@ -398,6 +598,54 @@ namespace Sphone.Data.Migrations
                     b.ToTable("sms_codes", (string)null);
                 });
 
+            modelBuilder.Entity("Sphone.Domain.Offers.Offer", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ApplicationId")
+                        .HasColumnType("integer")
+                        .HasColumnName("application_id");
+
+                    b.Property<DateTimeOffset?>("ClosedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_id");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_offers");
+
+                    b.HasIndex("ApplicationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_offers_application_id");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_offers_customer_id");
+
+                    b.ToTable("offers", (string)null);
+                });
+
             modelBuilder.Entity("Sphone.Domain.Staff.StaffMember", b =>
                 {
                     b.Property<int>("Id")
@@ -464,6 +712,16 @@ namespace Sphone.Data.Migrations
                     b.Navigation("Product");
                 });
 
+            modelBuilder.Entity("Sphone.Domain.Applications.EligibilityRefusal", b =>
+                {
+                    b.HasOne("Sphone.Domain.Customers.Customer", null)
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_eligibility_refusals_customers_customer_id");
+                });
+
             modelBuilder.Entity("Sphone.Domain.Catalog.Product", b =>
                 {
                     b.HasOne("Sphone.Domain.Catalog.ProductCategory", "ProductCategory")
@@ -474,6 +732,83 @@ namespace Sphone.Data.Migrations
                         .HasConstraintName("fk_products_product_categories_product_category_id");
 
                     b.Navigation("ProductCategory");
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Contracts.Contract", b =>
+                {
+                    b.HasOne("Sphone.Domain.Applications.Application", "Application")
+                        .WithOne()
+                        .HasForeignKey("Sphone.Domain.Contracts.Contract", "ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contracts_applications_application_id");
+
+                    b.HasOne("Sphone.Domain.Customers.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contracts_customers_customer_id");
+
+                    b.HasOne("Sphone.Domain.Offers.Offer", "Offer")
+                        .WithOne()
+                        .HasForeignKey("Sphone.Domain.Contracts.Contract", "OfferId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contracts_offers_offer_id");
+
+                    b.HasOne("Sphone.Domain.Catalog.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contracts_products_product_id");
+
+                    b.Navigation("Application");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Offer");
+
+                    b.Navigation("Product");
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Contracts.ContractOutboxEntry", b =>
+                {
+                    b.HasOne("Sphone.Domain.Contracts.Contract", "Contract")
+                        .WithMany()
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_contract_outbox_contracts_contract_id");
+
+                    b.Navigation("Contract");
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Offers.Offer", b =>
+                {
+                    b.HasOne("Sphone.Domain.Applications.Application", "Application")
+                        .WithOne("Offer")
+                        .HasForeignKey("Sphone.Domain.Offers.Offer", "ApplicationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_offers_applications_application_id");
+
+                    b.HasOne("Sphone.Domain.Customers.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_offers_customers_customer_id");
+
+                    b.Navigation("Application");
+
+                    b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Applications.Application", b =>
+                {
+                    b.Navigation("Offer");
                 });
 
             modelBuilder.Entity("Sphone.Domain.Catalog.ProductCategory", b =>

@@ -108,10 +108,17 @@ internal sealed partial class CreditDecisionWorker(
         var identity = await RetryAsync(
             () => idVerification.VerifyAsync(application.IdNumber, new StoredIdCardPhoto(photo.Content, photo.ContentType), ct), ct);
 
-        var continueToCreditCheck = application.RecordIdVerification(
-            identity.Verified, identity.FullName, identity.DateOfBirth, clock.GetUtcNow());
+        var now = clock.GetUtcNow();
+        var outcome = application.RecordIdVerification(identity.Verified, identity.FullName, identity.DateOfBirth, now);
+        if (outcome == IdVerificationOutcome.Under20)
+        {
+            // Failing Eligibility leaves no Application: swap it for a refusal in one SaveChanges (one transaction).
+            db.EligibilityRefusals.Add(EligibilityRefusal.Under20(application, now));
+            db.Applications.Remove(application);
+        }
+
         await db.SaveChangesAsync(ct);
-        if (!continueToCreditCheck)
+        if (outcome != IdVerificationOutcome.CreditCheckNext)
         {
             return;
         }
@@ -120,8 +127,8 @@ internal sealed partial class CreditDecisionWorker(
         var credit = await RetryAsync(
             () => creditCheck.CheckAsync(application.IdNumber, application.FullName!, application.DateOfBirth!.Value, ct), ct);
 
+        // Approved comes with its Offer, saved together.
         application.RecordCreditCheck(credit.Passed, credit.CreditLimit, clock.GetUtcNow());
-        // #16 hook: an Approved Application yields an Offer — create it here, in the same SaveChanges.
         await db.SaveChangesAsync(ct);
     }
 

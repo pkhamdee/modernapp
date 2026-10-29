@@ -3,10 +3,13 @@ using System.Text;
 
 namespace Sphone.Domain.Customers;
 
-/// <summary>What an SMS code is for. Accepting an Offer will reuse the same mechanism.</summary>
+/// <summary>What an SMS code is for. A code only works for its own purpose.</summary>
 public enum SmsCodePurpose
 {
     SignIn,
+
+    /// <summary>Confirms accepting an Offer (which creates the Contract).</summary>
+    OfferAcceptance,
 }
 
 /// <summary>Outcome of checking a code the Customer typed against an <see cref="SmsCode"/>.</summary>

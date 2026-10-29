@@ -5,9 +5,11 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Sphone.Api.Auth;
 using Sphone.Api.Images;
+using Sphone.Api.Offers;
 using Sphone.Data;
 using Sphone.Domain.Applications;
 using Sphone.Domain.Catalog;
+using Sphone.Domain.Contracts;
 
 namespace Sphone.Api.Applications;
 
@@ -38,9 +40,29 @@ internal static partial class ApplicationEndpoints
         ClaimsPrincipal user, SphoneDbContext db, TimeProvider clock, CancellationToken cancellationToken)
     {
         var customerId = user.RequiredCustomerId();
-        var earlier = await db.Applications.Where(a => a.CustomerId == customerId).ToListAsync(cancellationToken);
-        var eligibility = Eligibility.Check(earlier, clock.GetUtcNow());
-        return new EligibilityResponse(eligibility.IsEligible, ReasonCode(eligibility.Reason), eligibility.ReapplyFrom);
+        var verifiedIdNumber = await db.Customers.Where(c => c.Id == customerId).Select(c => c.IdNumber).SingleAsync(cancellationToken);
+        var eligibility = await CheckEligibilityAsync(db, customerId, verifiedIdNumber, clock.GetUtcNow(), cancellationToken);
+        return new EligibilityResponse(
+            eligibility.IsEligible, ReasonCode(eligibility.Reason), eligibility.ReapplyFrom, eligibility.OfferId);
+    }
+
+    /// <summary>
+    /// Eligibility from this Customer's Applications (with their Offers) and Contracts, and any made with
+    /// <paramref name="idNumber"/> under another mobile number.
+    /// </summary>
+    private static async Task<Eligibility> CheckEligibilityAsync(
+        SphoneDbContext db, int customerId, string? idNumber, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var earlier = await db.Applications
+            .Include(a => a.Offer)
+            .Where(a => a.CustomerId == customerId || (idNumber != null && a.IdNumber == idNumber))
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+        var hasActiveContract = await db.Contracts.AnyAsync(
+            c => (c.Status == ContractStatus.Active || c.Status == ContractStatus.Overdue)
+                && (c.CustomerId == customerId || (idNumber != null && c.Application.IdNumber == idNumber)),
+            cancellationToken);
+        return Eligibility.Check(earlier, hasActiveContract, now);
     }
 
     private static async Task<Results<Accepted<ApplicationResponse>, ProblemHttpResult, NotFound>> Submit(
@@ -110,10 +132,7 @@ internal static partial class ApplicationEndpoints
 
         // Eligibility before anything is stored: this Customer's Applications and any made with this ID number.
         var now = clock.GetUtcNow();
-        var earlier = await db.Applications
-            .Where(a => a.CustomerId == customerId || a.IdNumber == idNumber)
-            .ToListAsync(cancellationToken);
-        var eligibility = Eligibility.Check(earlier, now);
+        var eligibility = await CheckEligibilityAsync(db, customerId, idNumber, now, cancellationToken);
         if (!eligibility.IsEligible)
         {
             return TypedResults.Problem(
@@ -123,6 +142,7 @@ internal static partial class ApplicationEndpoints
                 {
                     ["error"] = ReasonCode(eligibility.Reason),
                     ["reapplyFrom"] = eligibility.ReapplyFrom,
+                    ["offerId"] = eligibility.OfferId,
                 });
         }
 
@@ -138,31 +158,46 @@ internal static partial class ApplicationEndpoints
         await db.SaveChangesAsync(cancellationToken);
         decisions.Enqueue(application.Id);
 
-        return TypedResults.Accepted($"/api/applications/{application.Id}", ToResponse(application));
+        return TypedResults.Accepted($"/api/applications/{application.Id}", ToResponse(application, now));
     }
 
-    private static async Task<Results<Ok<ApplicationResponse>, NotFound>> GetApplication(
-        int id, ClaimsPrincipal user, SphoneDbContext db, CancellationToken cancellationToken)
+    /// <summary>
+    /// The Application, or (when ID Verification showed the Customer is under 20) 410 Gone with
+    /// <c>error: under-20</c>: that submission failed Eligibility and never became an Application.
+    /// </summary>
+    private static async Task<Results<Ok<ApplicationResponse>, ProblemHttpResult, NotFound>> GetApplication(
+        int id, ClaimsPrincipal user, SphoneDbContext db, TimeProvider clock, CancellationToken cancellationToken)
     {
         var customerId = user.RequiredCustomerId();
         var application = await db.Applications
             .Include(a => a.Product)
             .Include(a => a.Branch)
+            .Include(a => a.Offer)
             .AsNoTracking()
             .SingleOrDefaultAsync(a => a.Id == id && a.CustomerId == customerId, cancellationToken);
+        if (application is not null)
+        {
+            return TypedResults.Ok(ToResponse(application, clock.GetUtcNow()));
+        }
 
-        return application is null ? TypedResults.NotFound() : TypedResults.Ok(ToResponse(application));
+        var refused = await db.EligibilityRefusals
+            .AnyAsync(r => r.SubmissionId == id && r.CustomerId == customerId, cancellationToken);
+        return refused
+            ? TypedResults.Problem(
+                statusCode: StatusCodes.Status410Gone,
+                title: IneligibleTitle(IneligibleReason.Under20),
+                extensions: new Dictionary<string, object?> { ["error"] = ReasonCode(IneligibleReason.Under20) })
+            : TypedResults.NotFound();
     }
 
-    private static ApplicationResponse ToResponse(Application a) =>
+    private static ApplicationResponse ToResponse(Application a, DateTimeOffset now) =>
         new(
             a.Id,
             a.Status switch
             {
                 ApplicationStatus.Reviewing => "reviewing",
                 ApplicationStatus.Approved => "approved",
-                ApplicationStatus.Rejected => "rejected",
-                _ => "not-eligible",
+                _ => "rejected",
             },
             a.Reason switch
             {
@@ -170,8 +205,7 @@ internal static partial class ApplicationEndpoints
                 ApplicationReason.IdVerificationFailed => "id-verification-failed",
                 ApplicationReason.CreditCheckFailed => "credit-check-failed",
                 ApplicationReason.OverCreditLimit => "over-credit-limit",
-                ApplicationReason.TimedOut => "timed-out",
-                _ => "under-20",
+                _ => "timed-out",
             },
             a.ReapplyFrom,
             a.SubmittedAt,
@@ -188,14 +222,17 @@ internal static partial class ApplicationEndpoints
             a.Branch is null ? null : new ApplicationBranchResponse(a.Branch.Code, a.Branch.Name),
             a.FullName,
             a.DateOfBirth,
-            a.CreditLimit);
+            a.CreditLimit,
+            a.Offer is null ? null : new ApplicationOfferResponse(a.Offer.Id, OfferEndpoints.StatusCode(a.Offer.StatusAt(now)), a.Offer.ExpiresAt));
 
     private static string? ReasonCode(IneligibleReason? reason) =>
         reason switch
         {
             null => null,
             IneligibleReason.ActiveContract => "active-contract",
+            IneligibleReason.OfferOpen => "offer-open",
             IneligibleReason.ApplicationInProgress => "application-in-progress",
+            IneligibleReason.Under20 => "under-20",
             _ => "recently-rejected",
         };
 
@@ -203,7 +240,9 @@ internal static partial class ApplicationEndpoints
         reason switch
         {
             IneligibleReason.ActiveContract => "คุณมีสัญญาเช่าซื้อที่ยังไม่สิ้นสุด จึงยังสมัครใหม่ไม่ได้",
+            IneligibleReason.OfferOpen => "คุณมีข้อเสนอที่รอการตอบรับอยู่ กรุณายอมรับหรือปฏิเสธข้อเสนอก่อนสมัครใหม่",
             IneligibleReason.ApplicationInProgress => "คำขอก่อนหน้าของคุณกำลังอยู่ระหว่างพิจารณา",
+            IneligibleReason.Under20 => "ผู้สมัครต้องมีอายุ 20 ปีขึ้นไป",
             _ => "คำขอของคุณถูกปฏิเสธเมื่อไม่ถึง 30 วันที่ผ่านมา",
         };
 
@@ -239,11 +278,13 @@ internal sealed class ApplicationForm
     public string? DeliveryProvince { get; set; }
 }
 
-// Reason: application-in-progress | active-contract | recently-rejected (then ReapplyFrom is set).
-internal sealed record EligibilityResponse(bool Eligible, string? Reason, DateTimeOffset? ReapplyFrom);
+// Reason: active-contract | offer-open (then OfferId is set) | application-in-progress | recently-rejected (then
+// ReapplyFrom is set).
+internal sealed record EligibilityResponse(bool Eligible, string? Reason, DateTimeOffset? ReapplyFrom, int? OfferId);
 
-// Status: reviewing | approved | rejected | not-eligible.
-// Reason: id-verification-failed | credit-check-failed | over-credit-limit | timed-out (Rejected), under-20 (not-eligible).
+// Status: reviewing | approved | rejected. (Under 20: GET answers 410 error under-20; no Application exists.)
+// Reason: id-verification-failed | credit-check-failed | over-credit-limit | timed-out (Rejected).
+// Offer: the Approved Application's Offer (status open | accepted | declined | expired).
 // ReapplyFrom: when a Rejected Customer may apply again (null after a time-out). Price etc. are locked at submit.
 internal sealed record ApplicationResponse(
     int Id,
@@ -264,7 +305,10 @@ internal sealed record ApplicationResponse(
     ApplicationBranchResponse? Branch,
     string? FullName,
     DateOnly? DateOfBirth,
-    decimal? CreditLimit);
+    decimal? CreditLimit,
+    ApplicationOfferResponse? Offer);
+
+internal sealed record ApplicationOfferResponse(int Id, string Status, DateTimeOffset ExpiresAt);
 
 internal sealed record ApplicationProductResponse(int Id, string Name);
 

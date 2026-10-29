@@ -82,6 +82,25 @@ internal static class Applying
         }
     }
 
+    /// <summary>Like <see cref="WaitForDecisionAsync"/> but returns the raw response (e.g. 410 when found under 20).</summary>
+    public static async Task<HttpResponseMessage> WaitWhileReviewingAsync(this HttpClient client, int id)
+    {
+        var giveUpAt = DateTime.UtcNow.AddSeconds(15);
+        while (true)
+        {
+            var response = await client.GetAsync($"/api/applications/{id}", Ct);
+            if (!response.IsSuccessStatusCode
+                || (await response.Content.ReadFromJsonAsync<ApplicationView>(Ct))!.Status != "reviewing"
+                || DateTime.UtcNow > giveUpAt)
+            {
+                return response;
+            }
+
+            response.Dispose();
+            await Task.Delay(25, Ct);
+        }
+    }
+
     public static async Task<ApplicationView> ApplyAndWaitAsync(this HttpClient client, ApplicationForm form) =>
         await client.WaitForDecisionAsync((await client.SubmitAcceptedAsync(form)).Id);
 
@@ -139,9 +158,14 @@ internal sealed record ApplicationView(
     DateOnly? DateOfBirth,
     decimal? CreditLimit)
 {
+    /// <summary>The Offer of an Approved Application (#16).</summary>
+    public ApplicationOfferView? Offer { get; init; }
+
     [JsonExtensionData]
     public Dictionary<string, object>? Other { get; init; }
 }
+
+internal sealed record ApplicationOfferView(int Id, string Status, DateTimeOffset ExpiresAt);
 
 internal sealed record ApplicationProductView(int Id, string Name);
 
