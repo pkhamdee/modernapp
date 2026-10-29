@@ -87,11 +87,12 @@ public class Contract
     }
 
     /// <summary>
-    /// The Installment schedule: <see cref="Term"/> equal Installments. Due dates are unknown until Handover
-    /// (the first falls due one month after it; #9 sets them), so they are null for now.
+    /// The Installment schedule: <see cref="Term"/> equal Installments. Due dates are unknown until Handover;
+    /// then Installment n falls due n months after <paramref name="handedOverOn"/> (the Handover date in
+    /// Asia/Bangkok; a day missing from a shorter month becomes that month's last day).
     /// </summary>
-    public IReadOnlyList<ScheduledInstallment> Schedule() =>
-        [.. Enumerable.Range(1, Term).Select(n => new ScheduledInstallment(n, Installment, null))];
+    public IReadOnlyList<ScheduledInstallment> Schedule(DateOnly? handedOverOn) =>
+        [.. Enumerable.Range(1, Term).Select(n => new ScheduledInstallment(n, Installment, handedOverOn?.AddMonths(n)))];
 }
 
 public sealed record ScheduledInstallment(int Number, decimal Amount, DateOnly? DueDate);

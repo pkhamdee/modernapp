@@ -9,6 +9,7 @@ using Sphone.Data;
 using Sphone.Domain.Applications;
 using Sphone.Domain.Contracts;
 using Sphone.Domain.Customers;
+using Sphone.Domain.Handovers;
 using Sphone.Domain.Offers;
 
 namespace Sphone.Api.Offers;
@@ -127,6 +128,8 @@ internal static class OfferEndpoints
         var contract = offer.Accept(new ContractNumber(month, sequence), now);
         db.Contracts.Add(contract);
         db.ContractOutbox.Add(ContractOutboxEntry.For(contract));
+        var handover = Handover.For(contract);
+        db.Handovers.Add(handover);
 
         try
         {
@@ -144,7 +147,7 @@ internal static class OfferEndpoints
                 : ActiveContract();
         }
 
-        return TypedResults.Created($"/api/contracts/{contract.Number}", ContractEndpoints.ToResponse(contract));
+        return TypedResults.Created($"/api/contracts/{contract.Number}", ContractEndpoints.ToResponse(contract, handover));
     }
 
     private static async Task<Results<Ok<OfferResponse>, ProblemHttpResult, NotFound>> Decline(

@@ -731,6 +731,62 @@ namespace Sphone.Data.Migrations
                     b.ToTable("sms_codes", (string)null);
                 });
 
+            modelBuilder.Entity("Sphone.Domain.Handovers.Handover", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer")
+                        .HasColumnName("contract_id");
+
+                    b.Property<decimal?>("DownPaymentReceived")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("down_payment_received");
+
+                    b.Property<DateTimeOffset?>("DownPaymentReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("down_payment_received_at");
+
+                    b.Property<string>("DownPaymentReceivedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("down_payment_received_by");
+
+                    b.Property<DateTimeOffset?>("HandedOverAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("handed_over_at");
+
+                    b.Property<string>("Stage")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("stage");
+
+                    b.Property<DateTimeOffset>("StageChangedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("stage_changed_at");
+
+                    b.Property<string>("StageChangedBy")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("stage_changed_by");
+
+                    b.HasKey("Id")
+                        .HasName("pk_handovers");
+
+                    b.HasIndex("ContractId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_handovers_contract_id");
+
+                    b.ToTable("handovers", (string)null);
+                });
+
             modelBuilder.Entity("Sphone.Domain.Offers.Offer", b =>
                 {
                     b.Property<int>("Id")
@@ -951,6 +1007,18 @@ namespace Sphone.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_contract_outbox_contracts_contract_id");
+
+                    b.Navigation("Contract");
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Handovers.Handover", b =>
+                {
+                    b.HasOne("Sphone.Domain.Contracts.Contract", "Contract")
+                        .WithOne()
+                        .HasForeignKey("Sphone.Domain.Handovers.Handover", "ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_handovers_contracts_contract_id");
 
                     b.Navigation("Contract");
                 });

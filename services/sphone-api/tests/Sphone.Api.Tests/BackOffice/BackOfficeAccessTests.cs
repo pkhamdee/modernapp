@@ -26,6 +26,11 @@ public sealed class BackOfficeAccessTests(SphoneApiFactory api)
         { "POST", "/api/back-office/auctions/1/lots" },
         { "PUT", "/api/back-office/lots/1" },
         { "POST", "/api/back-office/lot-photos" },
+        { "GET", "/api/back-office/handovers" },
+        { "GET", "/api/back-office/handovers/SP-202601-000001" },
+        { "GET", "/api/back-office/handovers/SP-202601-000001/id-card-photo" },
+        { "POST", "/api/back-office/handovers/SP-202601-000001/stage" },
+        { "POST", "/api/back-office/handovers/SP-202601-000001/down-payment" },
     };
 
     [Theory]

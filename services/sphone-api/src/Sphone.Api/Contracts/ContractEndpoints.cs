@@ -5,6 +5,7 @@ using Sphone.Api.Auth;
 using Sphone.Data;
 using Sphone.Domain.Applications;
 using Sphone.Domain.Contracts;
+using Sphone.Domain.Handovers;
 
 namespace Sphone.Api.Contracts;
 
@@ -40,8 +41,35 @@ internal static class ContractEndpoints
     {
         var customerId = user.RequiredCustomerId();
         var contract = await Query(db).SingleOrDefaultAsync(c => c.Number == number && c.CustomerId == customerId, cancellationToken);
-        return contract is null ? TypedResults.NotFound() : TypedResults.Ok(ToResponse(contract));
+        if (contract is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        var handover = await db.Handovers.AsNoTracking().SingleOrDefaultAsync(h => h.ContractId == contract.Id, cancellationToken);
+        if (handover is not null)
+        {
+            handover.Contract = contract;
+        }
+
+        return TypedResults.Ok(ToResponse(contract, handover));
     }
+
+    /// <summary>
+    /// The Handover stage as the Customer sees it: <c>preparing | ready-for-pickup | out-for-delivery |
+    /// handed-over</c>, or <c>stopped</c> once the Contract was cancelled before the goods were handed over.
+    /// </summary>
+    public static string StageCode(Handover handover) =>
+        handover.IsStopped ? "stopped" : StageCode(handover.Stage);
+
+    public static string StageCode(HandoverStage stage) =>
+        stage switch
+        {
+            HandoverStage.Preparing => "preparing",
+            HandoverStage.ReadyForPickup => "ready-for-pickup",
+            HandoverStage.OutForDelivery => "out-for-delivery",
+            _ => "handed-over",
+        };
 
     private static IQueryable<Contract> Query(SphoneDbContext db) =>
         db.Contracts
@@ -58,8 +86,8 @@ internal static class ContractEndpoints
             _ => "cancelled",
         };
 
-    /// <summary>Needs Product and Application (with Branch) loaded.</summary>
-    public static ContractResponse ToResponse(Contract c) =>
+    /// <summary>Needs Product and Application (with Branch) loaded; <paramref name="handover"/> with its Contract.</summary>
+    public static ContractResponse ToResponse(Contract c, Handover? handover) =>
         new(
             c.Number,
             StatusCode(c.Status),
@@ -74,10 +102,13 @@ internal static class ContractEndpoints
             c.Application.DeliveryAddress,
             c.Application.DeliveryProvince,
             c.Application.Branch is null ? null : new ContractBranchResponse(c.Application.Branch.Code, c.Application.Branch.Name),
-            [.. c.Schedule().Select(i => new InstallmentResponse(i.Number, i.Amount, i.DueDate))]);
+            handover is null ? "preparing" : StageCode(handover),
+            handover?.HandedOverAt,
+            [.. c.Schedule(handover?.HandedOverOn).Select(i => new InstallmentResponse(i.Number, i.Amount, i.DueDate))]);
 }
 
 // Status: active | overdue | paid-off | cancelled (as known by the Enterprise System).
+// HandoverStage: preparing | ready-for-pickup | out-for-delivery | handed-over | stopped (cancelled before Handover).
 // Installments: the schedule; DueDate stays null until Handover (the first is due one month after it).
 internal sealed record ContractResponse(
     string Number,
@@ -93,6 +124,8 @@ internal sealed record ContractResponse(
     string? DeliveryAddress,
     string? DeliveryProvince,
     ContractBranchResponse? Branch,
+    string HandoverStage,
+    DateTimeOffset? HandedOverAt,
     List<InstallmentResponse> Installments);
 
 internal sealed record ContractSummaryResponse(
