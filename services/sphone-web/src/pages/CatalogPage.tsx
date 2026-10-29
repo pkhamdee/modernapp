@@ -60,6 +60,9 @@ function CategoryProducts({ category }: { category: ProductCategory }) {
               <Link to={`/products/${product.id}`} className="product-card">
                 <span className="product-name">{product.name}</span>
                 <span className="product-price">{formatBaht(product.price)}</span>
+                {product.fromInstallment !== null && (
+                  <span className="product-from">ผ่อนเริ่มต้น {formatBaht(product.fromInstallment)} / เดือน</span>
+                )}
               </Link>
             </li>
           ))}

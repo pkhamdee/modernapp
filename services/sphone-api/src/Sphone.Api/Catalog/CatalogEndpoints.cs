@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Sphone.Data;
+using Sphone.Domain.Catalog;
 
 namespace Sphone.Api.Catalog;
 
@@ -15,6 +16,8 @@ internal static class CatalogEndpoints
 
         var products = api.MapGroup("/products").WithTags("Catalog");
         products.MapGet("/{id:int}", GetProduct);
+        products.MapGet("/{id:int}/installment-plans", ListInstallmentPlans);
+        products.MapGet("/{id:int}/installment-plans/{term:int}", CalculateInstallment);
 
         return api;
     }
@@ -37,10 +40,18 @@ internal static class CatalogEndpoints
         var products = await db.Products
             .Where(p => p.ProductCategory.Code == code && !p.IsRetired)
             .OrderBy(p => p.Price)
-            .Select(p => new ProductSummaryResponse(p.Id, p.Name, p.Price, p.ProductCategory.Code))
+            .Include(p => p.ProductCategory)
             .ToListAsync(cancellationToken);
 
-        return TypedResults.Ok(products);
+        // "from ฿X / month": the lowest Installment offered with no Down Payment (null if none is offered).
+        return TypedResults.Ok(products
+            .Select(p => new ProductSummaryResponse(
+                p.Id,
+                p.Name,
+                p.Price,
+                p.ProductCategory.Code,
+                InstallmentPlan.Offered(p.Price, p.ProductCategory, 0m).Select(plan => (decimal?)plan.Installment).Min()))
+            .ToList());
     }
 
     private static async Task<Results<Ok<ProductDetailResponse>, NotFound>> GetProduct(
@@ -59,12 +70,81 @@ internal static class CatalogEndpoints
 
         return product is null ? TypedResults.NotFound() : TypedResults.Ok(product);
     }
+
+    private static async Task<Results<Ok<InstallmentPlansResponse>, NotFound, ValidationProblem>> ListInstallmentPlans(
+        int id, SphoneDbContext db, CancellationToken cancellationToken, decimal downPayment = 0m)
+    {
+        var product = await FindProduct(id, db, cancellationToken);
+        if (product is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        if (!InstallmentPlan.IsValidDownPayment(product.Price, downPayment))
+        {
+            return InvalidDownPayment();
+        }
+
+        var plans = InstallmentPlan.Offered(product.Price, product.ProductCategory, downPayment)
+            .Select(p => new TermPlanResponse(p.Term, p.Installment, p.TotalPayable))
+            .ToList();
+
+        return TypedResults.Ok(new InstallmentPlansResponse(product.Price, downPayment, plans));
+    }
+
+    private static async Task<Results<Ok<InstallmentPlanResponse>, NotFound, ValidationProblem>> CalculateInstallment(
+        int id, int term, SphoneDbContext db, CancellationToken cancellationToken, decimal downPayment = 0m)
+    {
+        var product = await FindProduct(id, db, cancellationToken);
+        if (product is null)
+        {
+            return TypedResults.NotFound();
+        }
+
+        if (!InstallmentPlan.IsValidDownPayment(product.Price, downPayment))
+        {
+            return InvalidDownPayment();
+        }
+
+        var plan = InstallmentPlan.For(product.Price, product.ProductCategory, term, downPayment);
+        if (plan is null)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["term"] = [$"Term {term} is not offered for this Product and Down Payment."],
+            });
+        }
+
+        return TypedResults.Ok(new InstallmentPlanResponse(
+            plan.Price, plan.DownPayment, plan.Term, plan.Installment, plan.TotalPayable));
+    }
+
+    private static Task<Product?> FindProduct(int id, SphoneDbContext db, CancellationToken cancellationToken) =>
+        db.Products
+            .Include(p => p.ProductCategory)
+            .SingleOrDefaultAsync(p => p.Id == id && !p.IsRetired, cancellationToken);
+
+    private static ValidationProblem InvalidDownPayment() =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["downPayment"] = ["Down Payment can't be negative and must be less than the price."],
+        });
 }
 
 // FlatRate: monthly Flat Rate as a fraction (0.015 = 1.5% per month).
 internal sealed record ProductCategoryResponse(string Code, string Name, decimal FlatRate, int LongestTerm);
 
-internal sealed record ProductSummaryResponse(int Id, string Name, decimal Price, string ProductCategoryCode);
+// FromInstallment: the lowest Installment offered with no Down Payment, for "from ฿X / month".
+internal sealed record ProductSummaryResponse(
+    int Id, string Name, decimal Price, string ProductCategoryCode, decimal? FromInstallment);
 
 internal sealed record ProductDetailResponse(
     int Id, string Name, string Description, decimal Price, ProductCategoryResponse ProductCategory);
+
+internal sealed record TermPlanResponse(int Term, decimal Installment, decimal TotalPayable);
+
+// TotalPayable = Down Payment + Installment x Term.
+internal sealed record InstallmentPlansResponse(decimal Price, decimal DownPayment, List<TermPlanResponse> Plans);
+
+internal sealed record InstallmentPlanResponse(
+    decimal Price, decimal DownPayment, int Term, decimal Installment, decimal TotalPayable);

@@ -242,3 +242,129 @@ h2 {
 .status-error {
   color: var(--brand-dark);
 }
+
+.product-from {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.calculator {
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--line);
+  padding-top: 1rem;
+}
+
+.calculator h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.75rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+}
+
+.field label,
+.field legend {
+  font-weight: 600;
+  padding: 0;
+}
+
+.field input[type='number'] {
+  min-height: 44px;
+  padding: 0 0.75rem;
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.field input[type='number']:focus-visible {
+  outline: 3px solid var(--brand-dark);
+  outline-offset: 1px;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.field-error {
+  color: var(--brand-dark);
+  font-size: 0.9rem;
+}
+
+fieldset.field {
+  border: 0;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.term-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.term-option {
+  position: relative;
+}
+
+.term-option input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.term-option span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.term-option input:checked + span {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+.term-option input:focus-visible + span {
+  outline: 3px solid var(--brand-dark);
+  outline-offset: 2px;
+}
+
+.installment-result {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.installment-result div {
+  background: var(--background);
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+
+.installment-result dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.installment-result dd {
+  margin: 0;
+  font-weight: 700;
+  font-size: 1.2rem;
+}
+
+.installment-result .installment-amount {
+  color: var(--brand);
+}

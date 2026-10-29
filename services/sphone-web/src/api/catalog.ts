@@ -14,6 +14,8 @@ export interface ProductSummary {
   name: string
   price: number
   productCategoryCode: string
+  /** Lowest Installment offered with no Down Payment ("from ฿X / month"); null if no Term is offered. */
+  fromInstallment: number | null
 }
 
 export interface ProductDetail {
@@ -24,8 +26,24 @@ export interface ProductDetail {
   productCategory: ProductCategory
 }
 
+/** One offered Term. totalPayable = Down Payment + Installment × Term. */
+export interface TermPlan {
+  term: number
+  installment: number
+  totalPayable: number
+}
+
+export interface InstallmentPlans {
+  price: number
+  downPayment: number
+  /** Only the Terms S Phone offers: capped by the Product Category, none under ฿500. */
+  plans: TermPlan[]
+}
+
 export const catalogPaths = {
   productCategories: () => '/product-categories',
   productsInCategory: (code: string) => `/product-categories/${encodeURIComponent(code)}/products`,
   product: (id: string | number) => `/products/${encodeURIComponent(String(id))}`,
+  installmentPlans: (id: string | number, downPayment: number) =>
+    `/products/${encodeURIComponent(String(id))}/installment-plans?downPayment=${downPayment}`,
 }
