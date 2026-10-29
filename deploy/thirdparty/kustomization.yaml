@@ -11,4 +11,4 @@ resources:
 # Tags are written by Flux image automation (image-automation.yaml); do not edit by hand.
 images:
   - name: ghcr.io/pkhamdee/thirdparty-mock
-    newTag: main-44239e3-1793282966 # {"$imagepolicy": "thirdparty:thirdparty-mock:tag"}
+    newTag: main-dbc3e2e-1793289226 # {"$imagepolicy": "thirdparty:thirdparty-mock:tag"}
