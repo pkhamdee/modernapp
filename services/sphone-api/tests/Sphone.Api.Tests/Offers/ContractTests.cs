@@ -32,7 +32,8 @@ public sealed partial class ContractTests(SphoneApiFactory api)
 
         var fetched = await customer.GetContractAsync(contract.Number);
         Assert.Equal(contract.Installments, fetched.Installments);
-        Assert.Equal(contract with { Installments = fetched.Installments }, fetched);
+        Assert.Empty(fetched.Payments);
+        Assert.Equal(contract with { Installments = fetched.Installments, Payments = fetched.Payments }, fetched);
         Assert.Equal(contract.Number, Assert.Single(await customer.GetContractsAsync()).Number);
         var offer = await customer.GetOfferAsync(application.Offer.Id);
         Assert.Equal(("accepted", contract.Number), (offer.Status, offer.ContractNumber));

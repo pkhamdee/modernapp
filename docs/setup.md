@@ -157,7 +157,13 @@ curl -k -H 'content-type: application/json' -d '{"reason":"demo"}' $B/contracts/
 **sphone-sync-master** (`deploy/apps/base/sphone-sync-master`) runs a sync cycle every 30 s: it pushes Contracts waiting in
 `contract_outbox` to `hp.contract` (MERGE on the Contract number, insert only: pushing twice leaves one copy and never
 overwrites what the Enterprise System changed), then sets `pushed_at`. From then on the Enterprise System owns the
-Contract (ADR-0001). Logs: `kubectl -n sphone-dev logs deploy/sphone-sync-master`.
+Contract (ADR-0001). In the same cycle it then pulls what changed there since the last pull: Contract status
+(`active | overdue | paid-off | cancelled`, plus `cancelled_at`) into `contracts`, and Payments into `payments` (unique
+on the Enterprise `payment_id`). It finds changes by the `row_ver` rowversion watermark, one row per table in
+`sync_watermarks`, stored in the same transaction as the copied rows; only committed changes are read
+(`row_ver < MIN_ACTIVE_ROWVERSION()`). The Customer's Contract page therefore lags the admin tool by at most one
+cycle (≈30 s). A Contract cancelled there stops its Handover (ADR-0004). S Phone never computes overdue itself.
+Logs: `kubectl -n sphone-dev logs deploy/sphone-sync-master`.
 
 Read-only look at the database (sa password from the Secret, never printed):
 

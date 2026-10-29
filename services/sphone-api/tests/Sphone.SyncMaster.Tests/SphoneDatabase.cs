@@ -6,6 +6,7 @@ using Sphone.Domain.Applications;
 using Sphone.Domain.Catalog;
 using Sphone.Domain.Contracts;
 using Sphone.Domain.Customers;
+using Sphone.Domain.Handovers;
 
 namespace Sphone.SyncMaster.Tests;
 
@@ -46,6 +47,7 @@ public sealed class SphoneDatabase(IServiceProvider services)
         var contract = application.Offer!.Accept(new ContractNumber("209912", Interlocked.Increment(ref _lastSequence)), now);
         db.Contracts.Add(contract);
         db.ContractOutbox.Add(ContractOutboxEntry.For(contract));
+        db.Handovers.Add(Handover.For(contract));
         await db.SaveChangesAsync(ct);
 
         return new QueuedContract(
@@ -74,12 +76,42 @@ public sealed class SphoneDatabase(IServiceProvider services)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.PushedAt, (DateTimeOffset?)null), TestContext.Current.CancellationToken);
     }
 
+    /// <summary>S Phone's copy of the Contract: status, Payments (by Installment number) and whether its Handover stopped.</summary>
+    public async Task<ContractCopy> ContractAsync(string contractNumber)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<SphoneDbContext>();
+        var contract = await db.Contracts.AsNoTracking().Include(c => c.Payments).SingleAsync(c => c.Number == contractNumber, ct);
+        var handover = await db.Handovers.AsNoTracking().SingleAsync(h => h.ContractId == contract.Id, ct);
+        handover.Contract = contract;
+        return new ContractCopy(
+            contract.Status.ToString(),
+            [.. contract.Payments.OrderBy(p => p.InstallmentNumber).Select(p => new PaymentCopy(p.InstallmentNumber, p.Amount, p.Channel))],
+            handover.IsStopped);
+    }
+
+    /// <summary>Changes S Phone's copy behind sync-master's back (status Active, no Payments).</summary>
+    public async Task TamperAsync(string contractNumber)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using var scope = services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<SphoneDbContext>();
+        await db.Payments.Where(p => p.Contract.Number == contractNumber).ExecuteDeleteAsync(ct);
+        await db.Contracts.Where(c => c.Number == contractNumber)
+            .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, ContractStatus.Active), ct);
+    }
+
     private static string NewMobileNumber() =>
         "08" + Random.Shared.NextInt64(0, 100_000_000).ToString("D8", CultureInfo.InvariantCulture);
 
     private static string NewIdNumber() =>
         "9" + Random.Shared.NextInt64(0, 1_000_000_000_000).ToString("D12", CultureInfo.InvariantCulture);
 }
+
+public sealed record ContractCopy(string Status, IReadOnlyList<PaymentCopy> Payments, bool HandoverStopped);
+
+public sealed record PaymentCopy(int? InstallmentNumber, decimal Amount, string Channel);
 
 public sealed record QueuedContract(
     string Number, string IdNumber, string FullName, string MobileNumber, string ProductName, decimal Price,

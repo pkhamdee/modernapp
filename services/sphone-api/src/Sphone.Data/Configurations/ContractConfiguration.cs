@@ -26,6 +26,7 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.Installment).HasPrecision(12, 2);
         builder.Property(c => c.TotalPayable).HasPrecision(12, 2);
         builder.Ignore(c => c.IsActive);
+        builder.HasMany(c => c.Payments).WithOne(p => p.Contract).HasForeignKey(p => p.ContractId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(c => c.Offer).WithOne().HasForeignKey<Contract>(c => c.OfferId).OnDelete(DeleteBehavior.Restrict);
         builder.HasOne(c => c.Application).WithOne().HasForeignKey<Contract>(c => c.ApplicationId).OnDelete(DeleteBehavior.Restrict);
@@ -54,5 +55,25 @@ internal sealed class ContractOutboxEntryConfiguration : IEntityTypeConfiguratio
         builder.Property(e => e.ContractNumber).HasMaxLength(16);
 
         builder.HasOne(e => e.Contract).WithMany().HasForeignKey(e => e.ContractId).OnDelete(DeleteBehavior.Restrict);
+    }
+}
+
+internal sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
+{
+    public void Configure(EntityTypeBuilder<Payment> builder)
+    {
+        builder.HasIndex(p => p.EnterprisePaymentId).IsUnique();
+        builder.HasIndex(p => p.ContractId);
+        builder.Property(p => p.Amount).HasPrecision(12, 2);
+        builder.Property(p => p.Channel).HasMaxLength(10);
+    }
+}
+
+internal sealed class SyncWatermarkConfiguration : IEntityTypeConfiguration<SyncWatermark>
+{
+    public void Configure(EntityTypeBuilder<SyncWatermark> builder)
+    {
+        builder.HasKey(w => w.Source);
+        builder.Property(w => w.Source).HasMaxLength(50);
     }
 }

@@ -29,7 +29,31 @@ export interface Contract {
   handoverStage: CustomerHandoverStage
   handedOverAt: string | null
   installments: ScheduledInstallment[]
+  /** Set when the Enterprise System cancelled the Contract. */
+  cancelledAt: string | null
+  /** Payments the Enterprise System recorded, oldest first (may lag it by one sync interval, 30 s). */
+  payments: Payment[]
+  amountPaid: number
 }
+
+export type PaymentChannel = 'counter' | 'transfer' | 'promptpay'
+
+/** Money received against the Contract's Installments (GLOSSARY: Payment), as known by the Enterprise System. */
+export interface Payment {
+  installmentNumber: number | null
+  amount: number
+  paidAt: string
+  channel: PaymentChannel
+}
+
+export const PAYMENT_CHANNEL_LABELS: Record<PaymentChannel, string> = {
+  counter: 'ชำระที่เคาน์เตอร์',
+  transfer: 'โอนเงิน',
+  promptpay: 'พร้อมเพย์',
+}
+
+/** How often an open Contract page re-reads the Contract: sync-master pulls every 30 s. */
+export const CONTRACT_POLL_MS = 30_000
 
 export type CustomerHandoverStage = 'preparing' | 'ready-for-pickup' | 'out-for-delivery' | 'handed-over' | 'stopped'
 

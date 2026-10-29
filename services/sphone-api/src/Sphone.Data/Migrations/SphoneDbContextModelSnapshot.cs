@@ -520,6 +520,10 @@ namespace Sphone.Data.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("application_id");
 
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
                     b.Property<int>("CustomerId")
                         .HasColumnType("integer")
                         .HasColumnName("customer_id");
@@ -658,6 +662,76 @@ namespace Sphone.Data.Migrations
                         .HasFilter("pushed_at IS NULL");
 
                     b.ToTable("contract_outbox", (string)null);
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Contracts.Payment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("character varying(10)")
+                        .HasColumnName("channel");
+
+                    b.Property<int>("ContractId")
+                        .HasColumnType("integer")
+                        .HasColumnName("contract_id");
+
+                    b.Property<long>("EnterprisePaymentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("enterprise_payment_id");
+
+                    b.Property<int?>("InstallmentNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("installment_number");
+
+                    b.Property<DateTimeOffset>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.HasKey("Id")
+                        .HasName("pk_payments");
+
+                    b.HasIndex("ContractId")
+                        .HasDatabaseName("ix_payments_contract_id");
+
+                    b.HasIndex("EnterprisePaymentId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_payments_enterprise_payment_id");
+
+                    b.ToTable("payments", (string)null);
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Contracts.SyncWatermark", b =>
+                {
+                    b.Property<string>("Source")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("source");
+
+                    b.Property<long>("LastRowVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_row_version");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Source")
+                        .HasName("pk_sync_watermarks");
+
+                    b.ToTable("sync_watermarks", (string)null);
                 });
 
             modelBuilder.Entity("Sphone.Domain.Customers.Customer", b =>
@@ -1053,6 +1127,18 @@ namespace Sphone.Data.Migrations
                     b.Navigation("Contract");
                 });
 
+            modelBuilder.Entity("Sphone.Domain.Contracts.Payment", b =>
+                {
+                    b.HasOne("Sphone.Domain.Contracts.Contract", "Contract")
+                        .WithMany("Payments")
+                        .HasForeignKey("ContractId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_payments_contracts_contract_id");
+
+                    b.Navigation("Contract");
+                });
+
             modelBuilder.Entity("Sphone.Domain.Handovers.Handover", b =>
                 {
                     b.HasOne("Sphone.Domain.Contracts.Contract", "Contract")
@@ -1104,6 +1190,11 @@ namespace Sphone.Data.Migrations
             modelBuilder.Entity("Sphone.Domain.Catalog.ProductCategory", b =>
                 {
                     b.Navigation("Products");
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Contracts.Contract", b =>
+                {
+                    b.Navigation("Payments");
                 });
 #pragma warning restore 612, 618
         }

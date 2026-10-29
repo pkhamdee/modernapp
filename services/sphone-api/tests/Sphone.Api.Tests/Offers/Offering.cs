@@ -84,7 +84,12 @@ internal sealed record ContractView(
     string Handover,
     string HandoverStage,
     DateTimeOffset? HandedOverAt,
-    List<InstallmentView> Installments);
+    List<InstallmentView> Installments,
+    DateTimeOffset? CancelledAt,
+    List<PaymentView> Payments,
+    decimal AmountPaid);
+
+internal sealed record PaymentView(int? InstallmentNumber, decimal Amount, DateTimeOffset PaidAt, string Channel);
 
 internal sealed record InstallmentView(int Number, decimal Amount, DateOnly? DueDate);
 
