@@ -1,0 +1,33 @@
+# A self-signed root bootstraps a local CA; the CA issues the site certificates.
+# Trusting the CA once (see docs/setup.md) removes browser warnings for every cert it issues.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sphone-local-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: S Phone Local CA
+  secretName: sphone-local-ca
+  duration: 87600h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: selfsigned
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: sphone-local-ca
+spec:
+  ca:
+    secretName: sphone-local-ca

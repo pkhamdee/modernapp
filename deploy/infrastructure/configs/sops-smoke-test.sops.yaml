@@ -1,0 +1,24 @@
+# Proves Flux can decrypt SOPS secrets: in the cluster, stringData.message reads in plain text.
+apiVersion: v1
+kind: Secret
+metadata:
+    name: sops-smoke-test
+    namespace: flux-system
+type: Opaque
+stringData:
+    message: ENC[AES256_GCM,data:2lVrGI3dk5zL6EVkiqq0hKU=,iv:9k5CBmp9kVWY8u+aNB7/njvHn2aya9XFKkp0pzZ283U=,tag:sze93ma4sq/vpocakPuQ/A==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBIelZaWVZrc1JFT1BVWWJl
+            MkdPd1VLcGkzVGxmYWhZSnBaL1VlV3RaMVdVCjJROWllMmxxWkZtZ283NFlybk1F
+            MmNnYWhFMjFJank5dGowd2lRQ0xrYjgKLS0tIE9RZUswelJuV2w0akVCbS83VmNo
+            bXVWOVFDUkpYQlh5blpHdDFHL3BraUkKC4vnT4JVc3pTpmRWWSCmU1P5IgBniRjK
+            42e48KLVMw5jZXJkvtuKzjyK+E9zWpNYYtYC/T6NyuzEO0CQL2V8DA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-29T12:48:59Z"
+    mac: ENC[AES256_GCM,data:iue7VGDMuLqff9CTNAjsWKK7w/AIFmy0J0k/uebkgcuq7wKBW3pANk0umuk3s0uYq1hWaKDg3XLzjiYIVflYbHcRrR/lOTZgbeEkOb4mWFpOElUjJHUnHVTxHFW+Ervw6TavJlrSf+CRbu5UtGiIbQhXxJ7P1ZhVYflyRGjJ2aI=,iv:124+JxthdwK9kP+UAVM1jpq8mKZkrGDphfJPVGC0jCQ=,tag:LOAQrJHKS8WzoSre7OOYeA==,type:str]
+    version: 3.13.3
