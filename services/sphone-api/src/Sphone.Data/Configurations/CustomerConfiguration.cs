@@ -10,5 +10,8 @@ internal sealed class CustomerConfiguration : IEntityTypeConfiguration<Customer>
     {
         builder.HasIndex(c => c.MobileNumber).IsUnique();
         builder.Property(c => c.MobileNumber).HasMaxLength(10);
+        builder.Property(c => c.IdNumber).HasMaxLength(13);
+        builder.Property(c => c.FullName).HasMaxLength(200);
+        builder.Ignore(c => c.IsIdVerified);
     }
 }

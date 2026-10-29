@@ -2,7 +2,7 @@ namespace Sphone.Api.ThirdParty;
 
 /// <summary>
 /// Registers the real adapters for the third-party ports. All of them talk to thirdparty-mock
-/// (<c>ThirdParty:BaseUrl</c>); ID Verification and Credit Check are added here the same way.
+/// (<c>ThirdParty:BaseUrl</c>).
 /// </summary>
 internal static class ThirdPartyServiceCollectionExtensions
 {
@@ -14,6 +14,18 @@ internal static class ThirdPartyServiceCollectionExtensions
         {
             http.BaseAddress = baseUrl;
             http.Timeout = TimeSpan.FromSeconds(10);
+        });
+
+        // No HttpClient time-out: a Credit Decision has its own 60 s deadline (CreditDecisionWorker).
+        services.AddHttpClient<IIdVerification, ThirdPartyMockIdVerification>(http =>
+        {
+            http.BaseAddress = baseUrl;
+            http.Timeout = Timeout.InfiniteTimeSpan;
+        });
+        services.AddHttpClient<ICreditCheck, ThirdPartyMockCreditCheck>(http =>
+        {
+            http.BaseAddress = baseUrl;
+            http.Timeout = Timeout.InfiniteTimeSpan;
         });
 
         return services;

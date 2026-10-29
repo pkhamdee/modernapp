@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Sphone.Domain.Applications;
 using Sphone.Domain.Branches;
 using Sphone.Domain.Catalog;
 using Sphone.Domain.Customers;
@@ -16,6 +17,8 @@ public class SphoneDbContext(DbContextOptions<SphoneDbContext> options) : DbCont
     public DbSet<Customer> Customers => Set<Customer>();
 
     public DbSet<SmsCode> SmsCodes => Set<SmsCode>();
+
+    public DbSet<Application> Applications => Set<Application>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder) =>
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(SphoneDbContext).Assembly);

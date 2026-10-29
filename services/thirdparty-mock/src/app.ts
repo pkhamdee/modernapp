@@ -1,18 +1,21 @@
 import express from 'express'
-import { currentDelayMs, delayRouter } from './delay.ts'
-import { page } from './html.ts'
+import { creditCheckRouter } from './creditCheck.ts'
+import { currentDelayMs, delayRouter, simulatedDelay } from './delay.ts'
+import { escapeHtml, page } from './html.ts'
+import { idVerificationRouter } from './idVerification.ts'
 import { log } from './log.ts'
 import { smsRouter } from './sms.ts'
+import { exampleIdNumber, TEST_OUTCOMES } from './testIdNumbers.ts'
 
 // thirdparty-mock: ONE service pretending to be every third party sphone-api talks to.
-// Each mocked party is a module exporting a Router, mounted below. To add one (e.g. ID Verification
-// or Credit Check for #7): create src/<party>.ts exporting `<party>Router()`, mount it here behind
-// `simulatedDelay` (from delay.ts) if its responses should honour the adjustable delay, and link it
-// from the home page.
+// Each mocked party is a module exporting a Router, mounted below. To add one: create src/<party>.ts
+// exporting `<party>Router()`, mount it here behind `simulatedDelay` (from delay.ts) if its responses
+// should honour the adjustable delay, and link it from the home page.
 export function createApp(): express.Express {
   const app = express()
   app.disable('x-powered-by')
-  app.use(express.json())
+  // ID Verification receives the ID card photo as base64 (the image service allows up to 10 MB).
+  app.use(express.json({ limit: '15mb' }))
   app.use(express.urlencoded({ extended: false }))
 
   app.use((request, response, next) => {
@@ -39,8 +42,10 @@ export function createApp(): express.Express {
 
   app.use(delayRouter())
   app.use(smsRouter())
-  // app.use(simulatedDelay, idVerificationRouter())   <- #7
-  // app.use(simulatedDelay, creditCheckRouter())      <- #7
+  app.use('/id-verification', simulatedDelay)
+  app.use('/credit-check', simulatedDelay)
+  app.use(idVerificationRouter())
+  app.use(creditCheckRouter())
 
   return app
 }
@@ -58,7 +63,14 @@ function homePage(): string {
     <label>ms <input name="ms" type="number" min="0" max="120000" step="100" value="${currentDelayMs()}"></label>
     <button type="submit">Save</button>
   </form>
-  <p class="muted">Applies to ID Verification and Credit Check (not SMS).</p>
+  <p class="muted">Applies to ID Verification and Credit Check (not SMS). sphone-api gives up after 60 s (Rejected, timed out): set 65000 to demo it.</p>
+</section>
+<section>
+  <h2>Test ID numbers</h2>
+  <p class="muted">The last two digits pick the outcome; any other ending behaves like …01.</p>
+  <ul>
+${TEST_OUTCOMES.map((o) => `    <li><code>${exampleIdNumber(o.suffix)}</code> (…${o.suffix}) ${escapeHtml(o.description)}</li>`).join('\n')}
+  </ul>
 </section>`,
   )
 }

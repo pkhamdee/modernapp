@@ -2,6 +2,8 @@ import { createBrowserRouter } from 'react-router'
 import { RequireRole } from './auth/RequireRole.tsx'
 import { AppLayout } from './layout/AppLayout.tsx'
 import { AccountPage } from './pages/AccountPage.tsx'
+import { ApplicationPage } from './pages/ApplicationPage.tsx'
+import { ApplyPage } from './pages/ApplyPage.tsx'
 import { CatalogPage } from './pages/CatalogPage.tsx'
 import { NotFoundPage } from './pages/NotFoundPage.tsx'
 import { ProductPage } from './pages/ProductPage.tsx'
@@ -24,7 +26,11 @@ export const router = createBrowserRouter([
       { path: 'sign-in/code', element: <SignInCodePage /> },
       {
         element: <RequireRole role="Customer" />,
-        children: [{ path: 'account', element: <AccountPage /> }],
+        children: [
+          { path: 'account', element: <AccountPage /> },
+          { path: 'products/:id/apply', element: <ApplyPage /> },
+          { path: 'applications/:id', element: <ApplicationPage /> },
+        ],
       },
       { path: '*', element: <NotFoundPage /> },
     ],

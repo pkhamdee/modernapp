@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
+using Sphone.Api.Images;
 using Sphone.Api.Tests.Fakes;
 using Sphone.Api.ThirdParty;
 using Testcontainers.PostgreSql;
@@ -28,6 +29,15 @@ public sealed class SphoneApiFactory : WebApplicationFactory<Program>, IAsyncLif
     /// <summary>The SMS port. Read sign-in codes with <c>Sms.LatestCodeFor(mobileNumber)</c>.</summary>
     public FakeSms Sms { get; } = new();
 
+    /// <summary>The image service port (sphone-node-api).</summary>
+    public FakeImageStore Images { get; } = new();
+
+    /// <summary>The ID Verification port, scripted per ID number.</summary>
+    public FakeIdVerification IdVerification { get; } = new();
+
+    /// <summary>The Credit Check port, scripted per ID number.</summary>
+    public FakeCreditCheck CreditCheck { get; } = new();
+
     public async ValueTask InitializeAsync()
     {
         await _postgres.StartAsync();
@@ -45,6 +55,9 @@ public sealed class SphoneApiFactory : WebApplicationFactory<Program>, IAsyncLif
         {
             services.Replace(ServiceDescriptor.Singleton<TimeProvider>(Clock));
             services.Replace(ServiceDescriptor.Singleton<ISmsSender>(Sms));
+            services.Replace(ServiceDescriptor.Singleton<IImageStore>(Images));
+            services.Replace(ServiceDescriptor.Singleton<IIdVerification>(IdVerification));
+            services.Replace(ServiceDescriptor.Singleton<ICreditCheck>(CreditCheck));
         });
     }
 

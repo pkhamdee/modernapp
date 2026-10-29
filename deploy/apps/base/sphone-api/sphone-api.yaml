@@ -39,9 +39,12 @@ spec:
                 secretKeyRef:
                   name: sphone-api-auth
                   key: signing-key
-            # SMS (and later ID Verification, Credit Check) go to the shared thirdparty-mock.
+            # SMS, ID Verification and Credit Check go to the shared thirdparty-mock.
             - name: ThirdParty__BaseUrl
               value: http://thirdparty-mock.thirdparty.svc.cluster.local/
+            # Image service (sphone-node-api) internal API, same namespace.
+            - name: ImageService__BaseUrl
+              value: http://sphone-node-api/
           ports:
             - name: http
               containerPort: 8080

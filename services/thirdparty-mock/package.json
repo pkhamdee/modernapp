@@ -2,7 +2,7 @@
   "name": "thirdparty-mock",
   "private": true,
   "version": "0.0.0",
-  "description": "Test equipment: pretends to be the SMS gateway (later also ID Verification and Credit Check), with a mock SMS inbox page.",
+  "description": "Test equipment: pretends to be the SMS gateway , ID Verification and Credit Check (outcomes driven by test ID numbers), with a mock SMS inbox page.",
   "type": "module",
   "scripts": {
     "start": "node src/server.ts",
