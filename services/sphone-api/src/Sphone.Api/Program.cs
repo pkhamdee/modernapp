@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
+using Sphone.Api.Applications;
 using Sphone.Api.Auth;
 using Sphone.Api.Branches;
 using Sphone.Api.Catalog;
+using Sphone.Api.Images;
 using Sphone.Api.ThirdParty;
 using Sphone.Data;
 
@@ -24,8 +26,15 @@ builder.Services.AddSphoneData(
     builder.Configuration.GetConnectionString("Sphone")
         ?? throw new InvalidOperationException("Connection string 'Sphone' is not configured."));
 
-// Third-party ports (SMS, later ID Verification and Credit Check) → thirdparty-mock; tests replace them.
+// Third-party ports (SMS, ID Verification, Credit Check) → thirdparty-mock; tests replace them.
 builder.Services.AddThirdParties(builder.Configuration);
+
+// Image service port (sphone-node-api internal API); tests replace it.
+builder.Services.AddImageService(builder.Configuration);
+
+// Credit Decisions are made in the background; submitting an Application only queues it.
+builder.Services.AddSingleton<CreditDecisionQueue>();
+builder.Services.AddHostedService<CreditDecisionWorker>();
 
 // sphone-api issues its own Customer and Staff tokens (Auth:SigningKey, per environment).
 builder.Services.AddSphoneAuth(builder.Configuration);
@@ -56,6 +65,7 @@ var api = app.MapGroup("/api");
 api.MapCatalogEndpoints();
 api.MapBranchEndpoints();
 api.MapAuthEndpoints();
+api.MapApplicationEndpoints();
 
 await app.RunAsync();
 

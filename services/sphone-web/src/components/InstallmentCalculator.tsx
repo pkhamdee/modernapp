@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react'
+import { Link } from 'react-router'
 import { catalogPaths, type InstallmentPlans } from '../api/catalog.ts'
 import { useApi } from '../api/client.ts'
 import { formatBaht } from '../format.ts'
@@ -102,6 +103,14 @@ export function InstallmentCalculator({ productId, price }: { productId: number;
                 <dd>{formatBaht(selected.totalPayable)}</dd>
               </div>
             </dl>
+          )}
+          {selected && (
+            <Link
+              to={`/products/${productId}/apply?term=${selected.term}&downPayment=${debouncedDownPayment}`}
+              className="button apply-button"
+            >
+              สมัครผ่อนด้วยบัตรประชาชนใบเดียว
+            </Link>
           )}
         </>
       )}

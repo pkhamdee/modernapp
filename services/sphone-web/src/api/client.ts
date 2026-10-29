@@ -9,12 +9,21 @@ export class ApiError extends Error {
   readonly status: number
   /** sphone-api's machine-readable reason (ProblemDetails `error`), e.g. "code-expired". */
   readonly error: string | undefined
+  /** When a Customer refused for Eligibility may apply again (ProblemDetails `reapplyFrom`), if given. */
+  readonly reapplyFrom: string | undefined
 
-  constructor(status: number, message: string, error?: string) {
+  constructor(status: number, message: string, error?: string, reapplyFrom?: string) {
     super(message)
     this.status = status
     this.error = error
+    this.reapplyFrom = reapplyFrom
   }
+}
+
+interface ProblemBody {
+  error?: string
+  title?: string
+  reapplyFrom?: string | null
 }
 
 // Sends the signed-in session's token. A 401 on an authenticated call means the token is no longer
@@ -23,28 +32,37 @@ async function request<T>(method: string, path: string, body: unknown, signal?: 
   const session = loadSession()
   const headers: Record<string, string> = { Accept: 'application/json' }
   if (session) headers.Authorization = `Bearer ${session.token}`
-  if (body !== undefined) headers['Content-Type'] = 'application/json'
+  const isForm = body instanceof FormData
+  // FormData sets its own multipart Content-Type (with the boundary).
+  if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json'
 
   const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
     signal,
   })
 
   if (!response.ok) {
     if (response.status === 401 && session) saveSession(null)
-    const problem = (await response.json().catch(() => null)) as { error?: string; title?: string } | null
-    throw new ApiError(response.status, problem?.title ?? `${method} ${path} failed with ${response.status}`, problem?.error)
+    const problem = (await response.json().catch(() => null)) as ProblemBody | null
+    throw new ApiError(
+      response.status,
+      problem?.title ?? `${method} ${path} failed with ${response.status}`,
+      problem?.error,
+      problem?.reapplyFrom ?? undefined,
+    )
   }
-  if (response.status === 202 || response.status === 204) return undefined as T
-  return (await response.json()) as T
+  // 202/204 may have no body (e.g. "SMS code sent"); a 202 with a body (a submitted Application) returns it.
+  const text = await response.text()
+  return (text === '' ? undefined : JSON.parse(text)) as T
 }
 
 export function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   return request<T>('GET', path, undefined, signal)
 }
 
+/** POSTs JSON, or multipart form data when `body` is a FormData. */
 export function apiPost<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>('POST', path, body, signal)
 }

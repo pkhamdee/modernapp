@@ -88,8 +88,14 @@ internal static partial class AuthEndpoints
         return TypedResults.Ok(new SessionResponse(token.Token, token.ExpiresAt, token.Role, customer.MobileNumber));
     }
 
-    private static MeResponse Me(ClaimsPrincipal user) =>
-        new(user.FindFirstValue(SphoneClaims.Role) ?? string.Empty, user.FindFirstValue(SphoneClaims.MobileNumber), user.CustomerId());
+    private static async Task<MeResponse> Me(ClaimsPrincipal user, SphoneDbContext db, CancellationToken cancellationToken)
+    {
+        var customerId = user.CustomerId();
+        var idVerified = customerId is not null
+            && await db.Customers.AnyAsync(c => c.Id == customerId && c.IdVerifiedAt != null, cancellationToken);
+        return new(
+            user.FindFirstValue(SphoneClaims.Role) ?? string.Empty, user.FindFirstValue(SphoneClaims.MobileNumber), customerId, idVerified);
+    }
 
     private static bool IsMobileNumber([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? value) => value is not null && ThaiMobileNumber().IsMatch(value);
 
@@ -123,4 +129,5 @@ internal sealed record SmsCodeVerifyRequest(string? MobileNumber, string? Code);
 
 internal sealed record SessionResponse(string Token, DateTimeOffset ExpiresAt, string Role, string? MobileNumber);
 
-internal sealed record MeResponse(string Role, string? MobileNumber, int? CustomerId);
+// IdVerified: the Customer has passed ID Verification (false for Staff).
+internal sealed record MeResponse(string Role, string? MobileNumber, int? CustomerId, bool IdVerified);

@@ -22,6 +22,144 @@ namespace Sphone.Data.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Sphone.Domain.Applications.Application", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<int?>("BranchId")
+                        .HasColumnType("integer")
+                        .HasColumnName("branch_id");
+
+                    b.Property<decimal?>("CreditLimit")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("credit_limit");
+
+                    b.Property<int>("CustomerId")
+                        .HasColumnType("integer")
+                        .HasColumnName("customer_id");
+
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("date_of_birth");
+
+                    b.Property<DateTimeOffset?>("DecidedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("decided_at");
+
+                    b.Property<string>("DeliveryAddress")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("delivery_address");
+
+                    b.Property<string>("DeliveryProvince")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("delivery_province");
+
+                    b.Property<decimal>("DownPayment")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("down_payment");
+
+                    b.Property<decimal>("FlatRate")
+                        .HasPrecision(6, 4)
+                        .HasColumnType("numeric(6,4)")
+                        .HasColumnName("flat_rate");
+
+                    b.Property<string>("FullName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("Handover")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("handover");
+
+                    b.Property<string>("IdCardContentType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("id_card_content_type");
+
+                    b.Property<string>("IdCardImageId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("id_card_image_id");
+
+                    b.Property<string>("IdNumber")
+                        .IsRequired()
+                        .HasMaxLength(13)
+                        .HasColumnType("character varying(13)")
+                        .HasColumnName("id_number");
+
+                    b.Property<decimal>("Installment")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("installment");
+
+                    b.Property<decimal>("Price")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("price");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("integer")
+                        .HasColumnName("product_id");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("submitted_at");
+
+                    b.Property<int>("Term")
+                        .HasColumnType("integer")
+                        .HasColumnName("term");
+
+                    b.Property<decimal>("TotalPayable")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("total_payable");
+
+                    b.HasKey("Id")
+                        .HasName("pk_applications");
+
+                    b.HasIndex("BranchId")
+                        .HasDatabaseName("ix_applications_branch_id");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_applications_customer_id");
+
+                    b.HasIndex("IdNumber")
+                        .HasDatabaseName("ix_applications_id_number");
+
+                    b.HasIndex("ProductId")
+                        .HasDatabaseName("ix_applications_product_id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_applications_status");
+
+                    b.ToTable("applications", (string)null);
+                });
+
             modelBuilder.Entity("Sphone.Domain.Branches.Branch", b =>
                 {
                     b.Property<int>("Id")
@@ -170,6 +308,24 @@ namespace Sphone.Data.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<DateOnly?>("DateOfBirth")
+                        .HasColumnType("date")
+                        .HasColumnName("date_of_birth");
+
+                    b.Property<string>("FullName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("full_name");
+
+                    b.Property<string>("IdNumber")
+                        .HasMaxLength(13)
+                        .HasColumnType("character varying(13)")
+                        .HasColumnName("id_number");
+
+                    b.Property<DateTimeOffset?>("IdVerifiedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("id_verified_at");
+
                     b.Property<string>("MobileNumber")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -236,6 +392,35 @@ namespace Sphone.Data.Migrations
                         .HasDatabaseName("ix_sms_codes_mobile_number_purpose_created_at");
 
                     b.ToTable("sms_codes", (string)null);
+                });
+
+            modelBuilder.Entity("Sphone.Domain.Applications.Application", b =>
+                {
+                    b.HasOne("Sphone.Domain.Branches.Branch", "Branch")
+                        .WithMany()
+                        .HasForeignKey("BranchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_applications_branches_branch_id");
+
+                    b.HasOne("Sphone.Domain.Customers.Customer", "Customer")
+                        .WithMany()
+                        .HasForeignKey("CustomerId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_applications_customers_customer_id");
+
+                    b.HasOne("Sphone.Domain.Catalog.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_applications_products_product_id");
+
+                    b.Navigation("Branch");
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Product");
                 });
 
             modelBuilder.Entity("Sphone.Domain.Catalog.Product", b =>
