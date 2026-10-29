@@ -47,7 +47,7 @@ patches:
 # Until the first release they point at a CI release dry run (0.0.0-test.N); the first real X.Y.Z replaces them.
 images:
   - name: ghcr.io/pkhamdee/sphone-api
-    newTag: 0.0.0-test.1 # {"$imagepolicy": "sphone-prod:sphone-api:tag"}
+    newTag: 0.0.0-test.2 # {"$imagepolicy": "sphone-prod:sphone-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-web
     newTag: 0.0.0-test.1 # {"$imagepolicy": "sphone-prod:sphone-web:tag"}
   - name: ghcr.io/pkhamdee/sphone-node-api
