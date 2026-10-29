@@ -18,7 +18,7 @@ images:
   - name: ghcr.io/pkhamdee/sphone-api
     newTag: main-dbc3e2e-1793289226 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-web
-    newTag: main-c4bef5e-1793285499 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
+    newTag: main-dbc3e2e-1793289226 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
   - name: ghcr.io/pkhamdee/sphone-node-api
     newTag: main-753434d-1793281459 # {"$imagepolicy": "sphone-dev:sphone-node-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-sync-master
