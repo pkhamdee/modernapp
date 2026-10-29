@@ -16,7 +16,7 @@ resources:
 # Tags are written by Flux image automation (image-automation.yaml); do not edit by hand.
 images:
   - name: ghcr.io/pkhamdee/sphone-api
-    newTag: main-dbc3e2e-1793289226 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
+    newTag: main-643c6db-1793294898 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-web
     newTag: main-dbc3e2e-1793289226 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
   - name: ghcr.io/pkhamdee/sphone-node-api
