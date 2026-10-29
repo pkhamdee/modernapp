@@ -12,4 +12,4 @@ images:
   - name: ghcr.io/pkhamdee/sphone-api
     newTag: main-pending-0 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-web
-    newTag: main-pending-0 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
+    newTag: main-d55c811-1793279679 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
