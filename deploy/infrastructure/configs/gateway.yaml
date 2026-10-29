@@ -1,6 +1,8 @@
-# The single entry point https://sphone.localhost (ADR-0002).
-# Apps attach HTTPRoutes with parentRefs {name: sphone, namespace: gateway, sectionName: https}
-# from any namespace labelled sphone.io/gateway-access: "true".
+# The single entry point (ADR-0002), one hostname per environment on the same Gateway and port 443:
+#   https://sphone.localhost       -> sphone-dev   (listener `https`; any namespace labelled sphone.io/gateway-access: "true")
+#   https://prod.sphone.localhost  -> sphone-prod  (listener `https-prod`; only the sphone-prod namespace)
+# Apps attach HTTPRoutes with parentRefs {name: sphone, namespace: gateway, sectionName: https}; the prod overlay
+# rewrites sectionName to https-prod and the hostname to prod.sphone.localhost.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -10,6 +12,7 @@ spec:
   secretName: sphone-localhost-tls
   dnsNames:
     - sphone.localhost
+    - prod.sphone.localhost
   privateKey:
     algorithm: ECDSA
     size: 256
@@ -39,10 +42,31 @@ spec:
           selector:
             matchLabels:
               sphone.io/gateway-access: "true"
+    - name: https-prod
+      protocol: HTTPS
+      port: 443
+      hostname: prod.sphone.localhost
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: sphone-localhost-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: sphone-prod
     - name: http
       protocol: HTTP
       port: 80
       hostname: sphone.localhost
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: http-prod
+      protocol: HTTP
+      port: 80
+      hostname: prod.sphone.localhost
       allowedRoutes:
         namespaces:
           from: Same
@@ -57,8 +81,11 @@ spec:
   parentRefs:
     - name: sphone
       sectionName: http
+    - name: sphone
+      sectionName: http-prod
   hostnames:
     - sphone.localhost
+    - prod.sphone.localhost
   rules:
     - filters:
         - type: RequestRedirect

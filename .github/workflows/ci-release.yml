@@ -3,10 +3,16 @@
 #   - push to main                    -> also build changed services for arm64, Trivy scan,
 #                                        push ghcr.io/pkhamdee/<service>:main-<sha>[-<unix-ts>]
 #                                        (Flux image automation deploys the newest to sphone-dev)
-#   - push tag vX.Y.Z                 -> lint + test, then publish a GitHub Release
+#   - push tag vX.Y.Z                 -> lint + test, validate the tag, build EVERY service, scan,
+#                                        push ghcr.io/pkhamdee/<service>:X.Y.Z, then publish the GitHub Release
+#                                        (Flux image automation deploys the newest X.Y.Z to sphone-prod)
+#   - workflow_dispatch               -> no input, on main: rebuild and push every service as main-<sha>
+#                                        input version=0.0.0-test.N: dry run of the release build on any
+#                                        branch; pushes every service as that pre-release tag, no GitHub Release
+#                                        (sphone-prod runs it only until the first real X.Y.Z exists)
 #
-# Adding a service: add a lint/test job below (and to `images.needs` and `release.needs`),
-# and an entry in .github/services.json (build context, Dockerfile, source paths).
+# Adding a service: add a lint/test job below and to `plan.needs`, and an entry in
+# .github/services.json (build context, Dockerfile, source paths). Release builds pick it up automatically.
 name: CI / Release
 
 on:
@@ -15,7 +21,12 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main, "release/*"]
-  workflow_dispatch: # on main: rebuilds and pushes every service
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release dry run: build and push every service as this pre-release tag (0.0.0-test.N). Empty = rebuild main-<sha> (main only)."
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -64,14 +75,22 @@ jobs:
       - name: Type-check and build
         run: npm run build
 
-  # Which services' images to build on main: those whose source changed in this push.
-  # Everything is rebuilt when the push has no usable base (first push, force push),
-  # when this workflow or services.json changes, or on workflow_dispatch.
-  changes:
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+
+  # Decides what to build, after every service's lint/test passed:
+  #   - tag vX.Y.Z: validate the tag (semver, annotated, on a release/N.x branch); build every service as X.Y.Z.
+  #   - workflow_dispatch with `version`: release dry run; build every service as that pre-release tag.
+  #   - main: build services whose `paths` changed since the previous push, tagged main-<sha>. Everything is
+  #     rebuilt when the push has no usable base (first push, force push), when this workflow or services.json
+  #     changes, or on workflow_dispatch without `version`.
+  plan:
+    needs: [sphone-api, sphone-web]
+    if: >-
+      (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
+      || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
+      version: ${{ steps.select.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -79,10 +98,39 @@ jobs:
       - id: select
         env:
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
           BEFORE: ${{ github.event.before }}
+          DRY_RUN_VERSION: ${{ inputs.version }}
         run: |
           all=$(jq -c . .github/services.json)
-          if [ "$EVENT" != "push" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+          version=""
+          if [ "$REF_TYPE" = "tag" ]; then
+            # Enforce the workflow rules: semver name, annotated tag, tagged commit on a release/N.x branch.
+            git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH"; exit 1
+            fi
+            if [ "$(git cat-file -t "$TAG")" != "tag" ]; then
+              echo "::error::Tag '$TAG' is lightweight; release tags must be annotated (git tag -a)"; exit 1
+            fi
+            if ! git branch -r --contains "$TAG" | grep -qE '^\s*origin/release/[0-9]+\.x$'; then
+              echo "::error::Tag '$TAG' is not on any release/N.x branch"; exit 1
+            fi
+            version="${TAG#v}"
+            matrix="$all"
+          elif [ "$EVENT" = "workflow_dispatch" ] && [ -n "$DRY_RUN_VERSION" ]; then
+            # Only 0.0.0-test.N: a pre-release that every real X.Y.Z outranks in Flux's sphone-prod ImagePolicy.
+            if ! [[ "$DRY_RUN_VERSION" =~ ^0\.0\.0-test\.[0-9]+$ ]]; then
+              echo "::error::Dry-run version must be 0.0.0-test.N"; exit 1
+            fi
+            version="$DRY_RUN_VERSION"
+            matrix="$all"
+          elif [ "$REF" != "refs/heads/main" ]; then
+            echo "::notice::main-<sha> images are only built from main"
+            matrix="[]"
+          elif [ "$EVENT" != "push" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
             matrix="$all"
           else
             changed=$(git diff --name-only "$BEFORE" "$GITHUB_SHA")
@@ -97,12 +145,13 @@ jobs:
             fi
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "Services to build: $(jq -r 'map(.service) | join(", ")' <<<"$matrix")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version: ${version:-main-<sha>}; services to build: $(jq -r 'map(.service) | join(", ")' <<<"$matrix")"
 
   images:
     name: image ${{ matrix.service }}
-    needs: [changes, sphone-api, sphone-web]
-    if: needs.changes.outputs.matrix != '[]'
+    needs: [plan]
+    if: needs.plan.outputs.matrix != '[]'
     runs-on: ubuntu-24.04-arm # native arm64 build for the Apple Silicon cluster
     permissions:
       contents: read
@@ -110,18 +159,25 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.changes.outputs.matrix) }}
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
       IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - id: tags
         run: |
-          sha=$(git rev-parse --short=7 HEAD)
-          ts=$(git show -s --format=%ct HEAD)
-          # main-<sha> for humans; main-<sha>-<commit-ts> is what Flux's ImagePolicy orders by.
-          echo "list=${IMAGE}:main-${sha},${IMAGE}:main-${sha}-${ts}" >> "$GITHUB_OUTPUT"
-          echo "scan=${IMAGE}:main-${sha}" >> "$GITHUB_OUTPUT"
+          if [ -n "$VERSION" ]; then
+            # Release (X.Y.Z) or dry run (0.0.0-test.N): Flux's sphone-prod ImagePolicy picks the newest.
+            echo "list=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
+            echo "scan=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
+          else
+            sha=$(git rev-parse --short=7 HEAD)
+            ts=$(git show -s --format=%ct HEAD)
+            # main-<sha> for humans; main-<sha>-<commit-ts> is what Flux's sphone-dev ImagePolicy orders by.
+            echo "list=${IMAGE}:main-${sha},${IMAGE}:main-${sha}-${ts}" >> "$GITHUB_OUTPUT"
+            echo "scan=${IMAGE}:main-${sha}" >> "$GITHUB_OUTPUT"
+          fi
       - uses: docker/setup-buildx-action@v4
       - name: Build
         uses: docker/build-push-action@v7
@@ -134,6 +190,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ needs.plan.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
       - name: Scan (fail on critical)
@@ -154,42 +211,22 @@ jobs:
         run: |
           for tag in ${TAGS//,/ }; do docker push "$tag"; done
 
+  # Publishes the GitHub Release only after every service's X.Y.Z image was built, scanned and pushed.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: [sphone-api, sphone-web]
+    if: github.ref_type == 'tag'
+    needs: [plan, images]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      # Enforce the workflow rules: semver name, annotated tag, tagged commit on a release/N.x branch.
-      - name: Validate tag
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
-
-          if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH"
-            exit 1
-          fi
-
-          if [ "$(git cat-file -t "$TAG")" != "tag" ]; then
-            echo "::error::Tag '$TAG' is lightweight; release tags must be annotated (git tag -a)"
-            exit 1
-          fi
-
-          if ! git branch -r --contains "$TAG" | grep -qE '^\s*origin/release/[0-9]+\.x$'; then
-            echo "::error::Tag '$TAG' is not on any release/N.x branch"
-            exit 1
-          fi
-
-      # Add build steps here and attach artifacts with: gh release create ... <files>
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
+          VERSION: ${{ needs.plan.outputs.version }}
+          SERVICES: ${{ needs.plan.outputs.matrix }}
+        run: |
+          images=$(jq -r --arg owner "${GITHUB_REPOSITORY_OWNER}" --arg v "$VERSION" \
+            '.[] | "- `ghcr.io/\($owner)/\(.service):\($v)`"' <<<"$SERVICES")
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG" \
+            --notes "$(printf 'Images (deployed to sphone-prod by Flux):\n%s\n' "$images")"

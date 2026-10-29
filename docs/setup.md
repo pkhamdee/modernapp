@@ -1,6 +1,6 @@
 # Local setup
 
-Takes a fresh Mac (Apple Silicon) to a Rancher Desktop k3s cluster that Flux manages from this repo, serving `https://sphone.localhost`.
+Takes a fresh Mac (Apple Silicon) to a Rancher Desktop k3s cluster that Flux manages from this repo, serving `https://sphone.localhost` (`sphone-dev`) and `https://prod.sphone.localhost` (`sphone-prod`).
 
 ## 1. Rancher Desktop
 
@@ -17,7 +17,18 @@ kubectl config use-context rancher-desktop
 kubectl get nodes
 ```
 
-Rancher Desktop forwards host ports 80 and 443 to Traefik, and macOS resolves every `*.localhost` name to `127.0.0.1`, so `https://sphone.localhost` reaches the cluster without editing `/etc/hosts`.
+Rancher Desktop forwards host ports 80 and 443 to Traefik, and macOS resolves every `*.localhost` name to `127.0.0.1`, so `https://sphone.localhost` and `https://prod.sphone.localhost` reach the cluster without editing `/etc/hosts`.
+
+### Environments and hostnames
+
+Both environments share the one `sphone` Gateway on port 443 and run the same apps with the same paths (`/`, `/api`, `/images`); they are told apart by hostname, so neither ever shadows the other's routes:
+
+| Environment | Namespace | Follows | URL | Gateway listener |
+| --- | --- | --- | --- | --- |
+| dev | `sphone-dev` | `main` (`main-<sha>` images) | `https://sphone.localhost` | `https` |
+| prod | `sphone-prod` | release tags (`X.Y.Z` images, docs/git-workflow.md) | `https://prod.sphone.localhost` | `https-prod` (accepts routes from `sphone-prod` only) |
+
+Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/sphone-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`sphone-db` in its namespace) with its own SOPS-encrypted credentials.
 
 ### DOCKER_HOST gotcha
 
@@ -71,11 +82,12 @@ Bootstrap installs Flux, commits `clusters/local/flux-system/` to `main` if it c
 ## 5. Check
 
 ```sh
-flux get kustomizations          # flux-system, infra-controllers, infra-configs, apps-dev: all Ready
+flux get kustomizations          # flux-system, infra-controllers, infra-configs, apps-dev, apps-prod: all Ready
 kubectl get gateway -n gateway   # sphone, PROGRAMMED True
 curl -k https://sphone.localhost/api/product-categories   # catalog JSON from sphone-api
 curl -k https://sphone.localhost                          # sphone-web
 curl -I http://sphone.localhost  # 301 to https
+curl -k https://prod.sphone.localhost/api/product-categories   # sphone-prod (release images, own database)
 ```
 
 The certificate comes from a local CA created by cert-manager. To stop browser warnings, trust the CA once:
@@ -97,9 +109,11 @@ Recreating the cluster creates a new CA; remove the old "S Phone Local CA" from 
 | `deploy/apps/base/` | One directory per app, environment-neutral | – |
 | `deploy/apps/dev/` | `sphone-dev` overlay, follows `main` | `apps-dev` (after configs) |
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
+| `deploy/apps/prod/` | `sphone-prod` overlay, follows release tags, served at `prod.sphone.localhost` | `apps-prod` (after configs) |
+| `deploy/apps/prod/image-automation.yaml` | Flux image automation: newest semver `X.Y.Z` image per service, committed back to `main` | `apps-prod` |
 | `services/sphone-api/` | .NET solution: `src/Sphone.Domain`, `src/Sphone.Data` (EF Core, migrations), `src/Sphone.Api`, `tests/Sphone.Api.Tests` | – |
 | `services/sphone-web/` | React + Vite + TypeScript, served by Caddy | – |
-| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths) | – |
+| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
 
