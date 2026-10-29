@@ -11,7 +11,8 @@ namespace Sphone.Api.Contracts;
 
 /// <summary>
 /// The signed-in Customer's Contracts, by Contract number. Read-only: S Phone never edits a Contract once
-/// pushed (ADR-0001); status (and later Payments) come from the Enterprise System by sync.
+/// pushed (ADR-0001); status, cancellation and Payments come from the Enterprise System by sync and may lag
+/// it by one sync interval (30 s).
 /// </summary>
 internal static class ContractEndpoints
 {
@@ -75,6 +76,8 @@ internal static class ContractEndpoints
         db.Contracts
             .Include(c => c.Product)
             .Include(c => c.Application).ThenInclude(a => a.Branch)
+            .Include(c => c.Payments)
+            .AsSplitQuery()
             .AsNoTracking();
 
     public static string StatusCode(ContractStatus status) =>
@@ -86,7 +89,16 @@ internal static class ContractEndpoints
             _ => "cancelled",
         };
 
-    /// <summary>Needs Product and Application (with Branch) loaded; <paramref name="handover"/> with its Contract.</summary>
+    public static string ChannelCode(string channel) =>
+        channel switch
+        {
+            "COUNTER" => "counter",
+            "TRANSFER" => "transfer",
+            "PROMPTPAY" => "promptpay",
+            _ => channel.ToLowerInvariant(),
+        };
+
+    /// <summary>Needs Product, Application (with Branch) and Payments loaded; <paramref name="handover"/> with its Contract.</summary>
     public static ContractResponse ToResponse(Contract c, Handover? handover) =>
         new(
             c.Number,
@@ -104,12 +116,18 @@ internal static class ContractEndpoints
             c.Application.Branch is null ? null : new ContractBranchResponse(c.Application.Branch.Code, c.Application.Branch.Name),
             handover is null ? "preparing" : StageCode(handover),
             handover?.HandedOverAt,
-            [.. c.Schedule(handover?.HandedOverOn).Select(i => new InstallmentResponse(i.Number, i.Amount, i.DueDate))]);
+            [.. c.Schedule(handover?.HandedOverOn).Select(i => new InstallmentResponse(i.Number, i.Amount, i.DueDate))],
+            c.CancelledAt,
+            [.. c.Payments.OrderBy(p => p.PaidAt).ThenBy(p => p.EnterprisePaymentId)
+                .Select(p => new PaymentResponse(p.InstallmentNumber, p.Amount, p.PaidAt, ChannelCode(p.Channel)))],
+            c.Payments.Sum(p => p.Amount));
 }
 
 // Status: active | overdue | paid-off | cancelled (as known by the Enterprise System).
 // HandoverStage: preparing | ready-for-pickup | out-for-delivery | handed-over | stopped (cancelled before Handover).
 // Installments: the schedule; DueDate stays null until Handover (the first is due one month after it).
+// CancelledAt, Payments (oldest first; channel counter | transfer | promptpay) and AmountPaid: as the Enterprise
+// System last reported them. S Phone computes no balance or overdue state of its own.
 internal sealed record ContractResponse(
     string Number,
     string Status,
@@ -126,7 +144,12 @@ internal sealed record ContractResponse(
     ContractBranchResponse? Branch,
     string HandoverStage,
     DateTimeOffset? HandedOverAt,
-    List<InstallmentResponse> Installments);
+    List<InstallmentResponse> Installments,
+    DateTimeOffset? CancelledAt,
+    List<PaymentResponse> Payments,
+    decimal AmountPaid);
+
+internal sealed record PaymentResponse(int? InstallmentNumber, decimal Amount, DateTimeOffset PaidAt, string Channel);
 
 internal sealed record ContractSummaryResponse(
     string Number, string Status, DateTimeOffset AcceptedAt, ContractProductResponse Product, decimal Installment, int Term);

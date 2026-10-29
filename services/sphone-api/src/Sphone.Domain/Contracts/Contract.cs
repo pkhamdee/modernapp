@@ -59,7 +59,27 @@ public class Contract
 
     public DateTimeOffset AcceptedAt { get; set; }
 
+    /// <summary>
+    /// As known by the Enterprise System: S Phone sets Active on acceptance and never computes Overdue or
+    /// anything else itself; later values arrive by sync (<see cref="RefreshFromEnterprise"/>).
+    /// </summary>
     public ContractStatus Status { get; set; }
+
+    /// <summary>When the Enterprise System cancelled the Contract (null unless Cancelled).</summary>
+    public DateTimeOffset? CancelledAt { get; set; }
+
+    /// <summary>Payments the Enterprise System recorded, as last pulled.</summary>
+    public List<Payment> Payments { get; } = [];
+
+    /// <summary>
+    /// Copies the Enterprise System's view of the Contract (sync-master's pull only; ADR-0001). A Contract
+    /// set to Cancelled here stops its Handover (ADR-0004).
+    /// </summary>
+    public void RefreshFromEnterprise(ContractStatus status, DateTimeOffset? cancelledAt)
+    {
+        Status = status;
+        CancelledAt = status == ContractStatus.Cancelled ? cancelledAt : null;
+    }
 
     /// <summary>Active or Overdue: blocks a new Application (Eligibility) and a second accepted Offer.</summary>
     public bool IsActive => Status is ContractStatus.Active or ContractStatus.Overdue;

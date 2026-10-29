@@ -39,6 +39,12 @@ public class SphoneDbContext(DbContextOptions<SphoneDbContext> options) : DbCont
     /// <summary>The Handover of each Contract's Product: S Phone's operational record beside the Contract.</summary>
     public DbSet<Handover> Handovers => Set<Handover>();
 
+    /// <summary>Payments pulled from the Enterprise System by sync-master (#10).</summary>
+    public DbSet<Payment> Payments => Set<Payment>();
+
+    /// <summary>sync-master's pull position per Enterprise table.</summary>
+    public DbSet<SyncWatermark> SyncWatermarks => Set<SyncWatermark>();
+
     /// <summary>Submissions that failed Eligibility after ID Verification (under 20): never Applications.</summary>
     public DbSet<EligibilityRefusal> EligibilityRefusals => Set<EligibilityRefusal>();
 

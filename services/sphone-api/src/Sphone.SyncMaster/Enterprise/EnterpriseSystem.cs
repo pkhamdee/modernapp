@@ -17,6 +17,13 @@ internal sealed record EnterpriseContract(
     decimal TotalPayable,
     DateTimeOffset ContractDate);
 
+/// <summary>A Contract's state in the Enterprise System; status is <c>ACTIVE | OVERDUE | PAID_OFF | CANCELLED</c>.</summary>
+internal sealed record EnterpriseContractState(string Number, string Status, DateTimeOffset? CancelledAt, long RowVersion);
+
+/// <summary>A Payment as the Enterprise System recorded it (<c>hp.payment</c>).</summary>
+internal sealed record EnterprisePayment(
+    long Id, string ContractNumber, int? InstallmentNumber, decimal Amount, DateTimeOffset PaidAt, string Channel, long RowVersion);
+
 /// <summary>
 /// The Enterprise System's SQL Server database (mocked by a real SQL Server, ADR-0003), reached with the
 /// production driver and dialect. One connection per call; SqlClient pools them.
@@ -60,6 +67,71 @@ internal sealed class EnterpriseSystem(string connectionString)
         command.Parameters.Add("@contract_date", System.Data.SqlDbType.DateTimeOffset).Value = contract.ContractDate;
 
         return await command.ExecuteNonQueryAsync(cancellationToken) == 1;
+    }
+
+    /// <summary>
+    /// Contracts changed after <paramref name="afterRowVersion"/>, oldest change first. Only rows whose change
+    /// has committed are returned: the upper bound is <c>MIN_ACTIVE_ROWVERSION()</c>, so a transaction still
+    /// in flight (holding a lower rowversion) can't be skipped by a watermark that moved past it.
+    /// </summary>
+    public async Task<IReadOnlyList<EnterpriseContractState>> ContractsChangedAfterAsync(
+        long afterRowVersion, int limit, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(
+            """
+            SELECT TOP (@limit) contract_no, status, cancelled_at, CAST(row_ver AS bigint)
+            FROM hp.contract
+            WHERE row_ver > CAST(@after AS binary(8)) AND row_ver < MIN_ACTIVE_ROWVERSION()
+            ORDER BY row_ver
+            """,
+            connection);
+        command.Parameters.Add("@limit", System.Data.SqlDbType.Int).Value = limit;
+        command.Parameters.Add("@after", System.Data.SqlDbType.BigInt).Value = afterRowVersion;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var rows = new List<EnterpriseContractState>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new EnterpriseContractState(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetDateTimeOffset(2),
+                reader.GetInt64(3)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>Payments inserted or changed after <paramref name="afterRowVersion"/>; same rules as Contracts.</summary>
+    public async Task<IReadOnlyList<EnterprisePayment>> PaymentsChangedAfterAsync(
+        long afterRowVersion, int limit, CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenAsync(cancellationToken);
+        await using var command = new SqlCommand(
+            """
+            SELECT TOP (@limit) payment_id, contract_no, installment_no, amount, paid_at, channel, CAST(row_ver AS bigint)
+            FROM hp.payment
+            WHERE row_ver > CAST(@after AS binary(8)) AND row_ver < MIN_ACTIVE_ROWVERSION()
+            ORDER BY row_ver
+            """,
+            connection);
+        command.Parameters.Add("@limit", System.Data.SqlDbType.Int).Value = limit;
+        command.Parameters.Add("@after", System.Data.SqlDbType.BigInt).Value = afterRowVersion;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var rows = new List<EnterprisePayment>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add(new EnterprisePayment(
+                reader.GetInt64(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                reader.GetDecimal(3),
+                reader.GetDateTimeOffset(4),
+                reader.GetString(5),
+                reader.GetInt64(6)));
+        }
+
+        return rows;
     }
 
     /// <summary>Readiness: the Enterprise database answers.</summary>

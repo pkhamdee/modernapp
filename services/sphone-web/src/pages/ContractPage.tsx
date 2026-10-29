@@ -1,20 +1,31 @@
+import { useEffect } from 'react'
 import { Link, useParams } from 'react-router'
 import { formatThaiDate } from '../api/applications.ts'
-import { useApi } from '../api/client.ts'
+import { useApi, useReloadableApi } from '../api/client.ts'
 import {
+  CONTRACT_POLL_MS,
   CONTRACT_STATUS_LABELS,
   contractPaths,
   CUSTOMER_HANDOVER_STAGE_LABELS,
+  PAYMENT_CHANNEL_LABELS,
   type Contract,
   type ContractSummary,
 } from '../api/contracts.ts'
 import { Status } from '../components/Status.tsx'
 import { formatBaht } from '../format.ts'
 
-/** One Contract: number, Product, status and the Installment schedule (due dates are set at Handover). */
+/**
+ * One Contract: number, Product, status and Payments as known by the Enterprise System, and the Installment
+ * schedule (due dates are set at Handover). Re-read every sync interval so new Payments show up by themselves.
+ */
 export function ContractPage() {
   const { number = '' } = useParams()
-  const contract = useApi<Contract>(contractPaths.contract(number))
+  const [contract, reload] = useReloadableApi<Contract>(contractPaths.contract(number))
+
+  useEffect(() => {
+    const timer = window.setInterval(reload, CONTRACT_POLL_MS)
+    return () => window.clearInterval(timer)
+  }, [reload])
 
   if (contract.status !== 'success') return <Status state={contract} />
   const c = contract.data
@@ -33,7 +44,10 @@ export function ContractPage() {
         </div>
         <div>
           <dt>สถานะ</dt>
-          <dd>{CONTRACT_STATUS_LABELS[c.status]}</dd>
+          <dd>
+            {CONTRACT_STATUS_LABELS[c.status]}
+            {c.cancelledAt && ` เมื่อ ${formatThaiDate(c.cancelledAt)}`}
+          </dd>
         </div>
         <div>
           <dt>ราคา</dt>
@@ -96,6 +110,41 @@ export function ContractPage() {
           ))}
         </tbody>
       </table>
+
+      <h2>การชำระเงิน</h2>
+      {c.payments.length === 0 ? (
+        <p className="muted">ยังไม่มีการชำระค่างวด</p>
+      ) : (
+        <table className="schedule">
+          <thead>
+            <tr>
+              <th scope="col">วันที่ชำระ</th>
+              <th scope="col">งวดที่</th>
+              <th scope="col">ช่องทาง</th>
+              <th scope="col">จำนวนเงิน</th>
+            </tr>
+          </thead>
+          <tbody>
+            {c.payments.map((p, index) => (
+              <tr key={`${p.paidAt}-${index}`}>
+                <td>{formatThaiDate(p.paidAt)}</td>
+                <td>{p.installmentNumber ?? '–'}</td>
+                <td>{PAYMENT_CHANNEL_LABELS[p.channel] ?? p.channel}</td>
+                <td>{formatBaht(p.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <th scope="row" colSpan={3}>
+                ชำระแล้วทั้งหมด
+              </th>
+              <td>{formatBaht(c.amountPaid)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      )}
+      <p className="muted">สถานะและการชำระเงินมาจากระบบสัญญาของบริษัท อาจล่าช้าได้ไม่เกิน 30 วินาที</p>
     </section>
   )
 }

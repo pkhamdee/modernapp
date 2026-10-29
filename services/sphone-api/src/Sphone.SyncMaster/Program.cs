@@ -27,7 +27,9 @@ builder.Services.AddSingleton(new EnterpriseSystem(
         ?? throw new InvalidOperationException("Connection string 'Enterprise' is not configured.")));
 
 builder.Services.AddScoped<ContractPush>();
-builder.Services.AddScoped(services => new SyncCycle(services.GetRequiredService<ContractPush>()));
+builder.Services.AddScoped<ContractPull>();
+builder.Services.AddScoped(services => new SyncCycle(
+    services.GetRequiredService<ContractPush>(), services.GetRequiredService<ContractPull>()));
 builder.Services.AddHostedService<SyncWorker>();
 
 builder.Services.AddHealthChecks()
