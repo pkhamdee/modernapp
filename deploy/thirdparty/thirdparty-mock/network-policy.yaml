@@ -1,0 +1,38 @@
+# Arrows: Gateway (Traefik) -> thirdparty-mock (developer pages: home, SMS inbox, Enterprise admin);
+# sphone-api (sphone-dev, sphone-prod) -> thirdparty-mock; thirdparty-mock -> SQL Server (admin tool).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: thirdparty-mock
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: thirdparty-mock
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [sphone-dev, sphone-prod]
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sphone-api
+      ports:
+        - port: http
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mssql
+      ports:
+        - port: 1433

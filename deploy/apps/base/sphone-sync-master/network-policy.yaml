@@ -1,0 +1,29 @@
+# Arrows: sphone-sync-master -> its PostgreSQL and SQL Server (thirdparty). Nothing calls it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sphone-sync-master
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: sphone-sync-master
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: sphone-db
+      ports:
+        - port: 5432
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: thirdparty
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mssql
+      ports:
+        - port: 1433

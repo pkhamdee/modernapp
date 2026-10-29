@@ -1,0 +1,16 @@
+# Namespace-wide baseline for every S Phone namespace (sphone-dev, sphone-prod, thirdparty):
+# deny all ingress and egress, then allow DNS to CoreDNS. Included by deploy/apps/dev, deploy/apps/prod
+# and deploy/thirdparty.
+#
+# Adding a service: give it a `network-policy.yaml` next to its Deployment (in its base folder) selecting
+# its pods by `app.kubernetes.io/name`, listing its arrows from the reference architecture:
+#   - ingress: who may call it (Gateway = kube-system pods `app.kubernetes.io/name: traefik`; same-namespace
+#     callers by podSelector only, so sphone-dev never reaches sphone-prod; thirdparty components select
+#     callers with a namespaceSelector on kubernetes.io/metadata.name In [sphone-dev, sphone-prod]);
+#   - egress: whom it calls (target pod + container port).
+# An arrow needs BOTH ends: the caller's egress and the callee's ingress. Kubelet probes are allowed by
+# kube-router (k3s) without a rule; anything else not listed is refused.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - default-deny.yaml

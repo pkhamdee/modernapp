@@ -1,0 +1,25 @@
+# Arrows: sphone-node-api (sphone-dev, sphone-prod) -> Samba. Samba calls nothing.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: samba
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: samba
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values: [sphone-dev, sphone-prod]
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: sphone-node-api
+      ports:
+        - port: 445
+  egress: []
