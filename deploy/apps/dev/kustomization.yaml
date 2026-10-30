@@ -17,10 +17,10 @@ resources:
 # Tags are written by Flux image automation (image-automation.yaml); do not edit by hand.
 images:
   - name: ghcr.io/pkhamdee/sphone-api
-    newTag: main-ef175aa-1793327051 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
+    newTag: main-c4a9188-1793333730 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-web
     newTag: main-c4a9188-1793333730 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
   - name: ghcr.io/pkhamdee/sphone-node-api
-    newTag: main-ef175aa-1793327051 # {"$imagepolicy": "sphone-dev:sphone-node-api:tag"}
+    newTag: main-c4a9188-1793333730 # {"$imagepolicy": "sphone-dev:sphone-node-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-sync-master
-    newTag: main-ef175aa-1793327051 # {"$imagepolicy": "sphone-dev:sphone-sync-master:tag"}
+    newTag: main-c4a9188-1793333730 # {"$imagepolicy": "sphone-dev:sphone-sync-master:tag"}
