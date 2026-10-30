@@ -1,4 +1,4 @@
-# Namespace-wide baseline for every S Phone namespace (sphone-dev, sphone-prod, thirdparty):
+# Namespace-wide baseline for every eShop namespace (sphone-dev, sphone-prod, thirdparty):
 # deny all ingress and egress, then allow DNS to CoreDNS. Included by deploy/apps/dev, deploy/apps/prod
 # and deploy/thirdparty.
 #

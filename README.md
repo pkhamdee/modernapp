@@ -1,15 +1,15 @@
-# S Phone
+# eShop
 
-Mobile-first web app for buying a phone on hire purchase with one ID card, plus weekly auctions of used iPhones,
-running on a local Kubernetes cluster (Rancher Desktop, Flux, Gateway API). Spec: issue #1; vocabulary:
-[GLOSSARY.md](GLOSSARY.md); decisions: [docs/adr/](docs/adr/).
+eShop (อีช้อป), run by eShop Co.: a mobile-first web app for buying a phone on hire purchase with one ID card,
+plus weekly auctions of used iPhones, running on a local Kubernetes cluster (Rancher Desktop, Flux, Gateway API).
+Spec: issue #1; vocabulary: [GLOSSARY.md](GLOSSARY.md); decisions: [docs/adr/](docs/adr/).
 
 | Environment | URL | Deployed from |
 | --- | --- | --- |
 | sphone-dev | https://sphone.localhost | every push to `main` |
 | sphone-prod | https://prod.sphone.localhost | release tags `vX.Y.Z` |
 
-Mocks (SMS inbox, ID Verification / Credit Check, Enterprise System admin tool): https://sphone.localhost/thirdparty-mock/
+Mocks (SMS inbox, ID Verification / Credit Check, eShop Co. Enterprise System admin tool): https://sphone.localhost/thirdparty-mock/
 
 ## The demo
 

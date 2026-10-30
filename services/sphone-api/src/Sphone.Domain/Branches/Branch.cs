@@ -1,7 +1,7 @@
 namespace Sphone.Domain.Branches;
 
 /// <summary>
-/// An S Phone shop where a Customer can collect goods and pay at Handover (GLOSSARY: Branch).
+/// An eShop Branch where a Customer can collect goods and pay at Handover (GLOSSARY: Branch).
 /// </summary>
 public class Branch
 {

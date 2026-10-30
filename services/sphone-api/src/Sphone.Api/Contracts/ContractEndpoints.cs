@@ -10,7 +10,7 @@ using Sphone.Domain.Handovers;
 namespace Sphone.Api.Contracts;
 
 /// <summary>
-/// The signed-in Customer's Contracts, by Contract number. Read-only: S Phone never edits a Contract once
+/// The signed-in Customer's Contracts, by Contract number. Read-only: eShop never edits a Contract once
 /// pushed (ADR-0001); status, cancellation and Payments come from the Enterprise System by sync and may lag
 /// it by one sync interval (30 s).
 /// </summary>
@@ -127,7 +127,7 @@ internal static class ContractEndpoints
 // HandoverStage: preparing | ready-for-pickup | out-for-delivery | handed-over | stopped (cancelled before Handover).
 // Installments: the schedule; DueDate stays null until Handover (the first is due one month after it).
 // CancelledAt, Payments (oldest first; channel counter | transfer | promptpay) and AmountPaid: as the Enterprise
-// System last reported them. S Phone computes no balance or overdue state of its own.
+// System last reported them. eShop computes no balance or overdue state of its own.
 internal sealed record ContractResponse(
     string Number,
     string Status,

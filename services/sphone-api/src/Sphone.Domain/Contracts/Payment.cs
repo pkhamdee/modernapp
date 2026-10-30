@@ -2,7 +2,7 @@ namespace Sphone.Domain.Contracts;
 
 /// <summary>
 /// Money received against a Contract's Installments (GLOSSARY: Payment), as recorded by the Enterprise System.
-/// S Phone never records one (ADR-0001): sphone-sync-master copies them here, keyed by the Enterprise System's
+/// eShop never records one (ADR-0001): sphone-sync-master copies them here, keyed by the Enterprise System's
 /// payment id so pulling the same Payment again only refreshes it.
 /// </summary>
 public class Payment

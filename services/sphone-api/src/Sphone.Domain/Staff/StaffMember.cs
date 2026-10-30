@@ -5,7 +5,7 @@ using System.Text;
 namespace Sphone.Domain.Staff;
 
 /// <summary>
-/// An S Phone employee's back-office account (GLOSSARY: Staff). Staff sign in with a username and
+/// An eShop Co. employee's back-office account (GLOSSARY: Staff). Staff sign in with a username and
 /// password; only a salted PBKDF2 hash of the password is stored. Accounts are provisioned from
 /// per-environment configuration (a SOPS-encrypted Secret in the cluster), not created in the app.
 /// </summary>

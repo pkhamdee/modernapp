@@ -16,7 +16,7 @@ builder.Logging.AddJsonConsole(options =>
 
 builder.Services.AddSingleton(TimeProvider.System);
 
-// S Phone's PostgreSQL. sphone-api owns and migrates the schema; sync-master never migrates.
+// eShop's PostgreSQL. sphone-api owns and migrates the schema; sync-master never migrates.
 builder.Services.AddSphoneData(
     builder.Configuration.GetConnectionString("Sphone")
         ?? throw new InvalidOperationException("Connection string 'Sphone' is not configured."));

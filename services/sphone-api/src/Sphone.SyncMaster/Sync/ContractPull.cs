@@ -10,7 +10,7 @@ namespace Sphone.SyncMaster.Sync;
 /// changed in the Enterprise System since the last pull. Each Enterprise table has a watermark in
 /// <c>sync_watermarks</c> (the highest rowversion copied), saved in the same transaction as the copied rows,
 /// so a crash re-pulls a batch at worst and never skips one. Each batch holds a PostgreSQL advisory lock, so
-/// two pullers (e.g. old and new pod during a rolling update) take turns instead of copying a row twice. Unchanged rows are never read again. S Phone
+/// two pullers (e.g. old and new pod during a rolling update) take turns instead of copying a row twice. Unchanged rows are never read again. eShop
 /// computes no status itself (overdue included): it takes what the Enterprise System says (ADR-0001). A
 /// Contract set to Cancelled stops its Handover by itself (ADR-0004).
 /// </summary>

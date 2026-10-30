@@ -11,7 +11,7 @@ using Sphone.Domain.Handovers;
 namespace Sphone.SyncMaster.Tests;
 
 /// <summary>
-/// S Phone's PostgreSQL seen from sync-master's side: Contracts queued in the outbox the way sphone-api's
+/// eShop's PostgreSQL seen from sync-master's side: Contracts queued in the outbox the way sphone-api's
 /// Offer acceptance queues them (Contract + outbox entry in one save), and the outbox state afterwards.
 /// </summary>
 public sealed class SphoneDatabase(IServiceProvider services)
@@ -76,7 +76,7 @@ public sealed class SphoneDatabase(IServiceProvider services)
             .ExecuteUpdateAsync(s => s.SetProperty(e => e.PushedAt, (DateTimeOffset?)null), TestContext.Current.CancellationToken);
     }
 
-    /// <summary>S Phone's copy of the Contract: status, Payments (by Installment number) and whether its Handover stopped.</summary>
+    /// <summary>eShop's copy of the Contract: status, Payments (by Installment number) and whether its Handover stopped.</summary>
     public async Task<ContractCopy> ContractAsync(string contractNumber)
     {
         var ct = TestContext.Current.CancellationToken;
@@ -91,7 +91,7 @@ public sealed class SphoneDatabase(IServiceProvider services)
             handover.IsStopped);
     }
 
-    /// <summary>Changes S Phone's copy behind sync-master's back (status Active, no Payments).</summary>
+    /// <summary>Changes eShop's copy behind sync-master's back (status Active, no Payments).</summary>
     public async Task TamperAsync(string contractNumber)
     {
         var ct = TestContext.Current.CancellationToken;

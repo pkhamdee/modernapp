@@ -1,7 +1,7 @@
 namespace Sphone.Domain;
 
 /// <summary>
-/// Asia/Bangkok (UTC+7, no daylight saving): the time zone of every S Phone date rule (age, Contract month,
+/// Asia/Bangkok (UTC+7, no daylight saving): the time zone of every eShop date rule (age, Contract month,
 /// Handover date, Auction schedule).
 /// </summary>
 public static class Bangkok

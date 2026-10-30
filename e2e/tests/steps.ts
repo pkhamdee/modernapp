@@ -1,7 +1,7 @@
 import { expect, type Browser, type Page } from '@playwright/test'
 import { baseURL, mockBaseURL } from '../environment'
 
-// Browser steps shared by the demo test. Everything goes through the UI a person would use: the S Phone web app,
+// Browser steps shared by the demo test. Everything goes through the UI a person would use: the eShop web app,
 // the mock SMS inbox and the mock Enterprise System admin tool (thirdparty-mock).
 
 /** 1×1 PNG: good enough for the mock ID Verification and for a Lot photo. */

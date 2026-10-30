@@ -13,7 +13,7 @@ using Testcontainers.PostgreSql;
 namespace Sphone.SyncMaster.Tests;
 
 /// <summary>
-/// Seam-2 harness: hosts sphone-sync-master in-process against a real PostgreSQL (S Phone's database, migrated
+/// Seam-2 harness: hosts sphone-sync-master in-process against a real PostgreSQL (eShop's database, migrated
 /// here the way sphone-api does it) and a real SQL Server holding the fake enterprise schema. The 30-second
 /// timer is switched off; tests trigger one sync cycle with <see cref="RunSyncCycleAsync"/>.
 /// </summary>
@@ -25,7 +25,7 @@ public sealed class SyncMasterFactory : WebApplicationFactory<Program>, IAsyncLi
 
     private readonly MsSqlContainer _sqlServer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04").Build();
 
-    /// <summary>S Phone's PostgreSQL, as sphone-api would write it.</summary>
+    /// <summary>eShop's PostgreSQL, as sphone-api would write it.</summary>
     public SphoneDatabase Sphone { get; private set; } = null!;
 
     /// <summary>The mock Enterprise System's database, as its admin tool would see it.</summary>

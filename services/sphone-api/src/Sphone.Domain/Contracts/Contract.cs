@@ -7,7 +7,7 @@ using Sphone.Domain.Offers;
 
 namespace Sphone.Domain.Contracts;
 
-/// <summary>Contract status as known by the Enterprise System (story 34). S Phone only ever creates Active ones.</summary>
+/// <summary>Contract status as known by the Enterprise System (story 34). eShop only ever creates Active ones.</summary>
 public enum ContractStatus
 {
     Active,
@@ -18,8 +18,8 @@ public enum ContractStatus
 
 /// <summary>
 /// The binding hire-purchase agreement created when a Customer accepts an Offer (GLOSSARY: Contract).
-/// S Phone owns it only until sphone-sync-master has pushed it to the Enterprise System (ADR-0001); after
-/// that its status and Payments arrive by sync and S Phone never edits it. A Customer holds at most one
+/// eShop owns it only until sphone-sync-master has pushed it to the Enterprise System (ADR-0001); after
+/// that its status and Payments arrive by sync and eShop never edits it. A Customer holds at most one
 /// active Contract.
 /// </summary>
 public class Contract
@@ -61,7 +61,7 @@ public class Contract
     public DateTimeOffset AcceptedAt { get; private set; }
 
     /// <summary>
-    /// As known by the Enterprise System: S Phone sets Active on acceptance and never computes Overdue or
+    /// As known by the Enterprise System: eShop sets Active on acceptance and never computes Overdue or
     /// anything else itself; later values arrive by sync (<see cref="RefreshFromEnterprise"/>).
     /// </summary>
     public ContractStatus Status { get; private set; }
@@ -165,7 +165,7 @@ public class ContractOutboxEntry
 
     public DateTimeOffset EnqueuedAt { get; set; }
 
-    /// <summary>Set by sync-master once the Enterprise System has the Contract; S Phone stops owning it then.</summary>
+    /// <summary>Set by sync-master once the Enterprise System has the Contract; eShop stops owning it then.</summary>
     public DateTimeOffset? PushedAt { get; set; }
 
     public static ContractOutboxEntry For(Contract contract) =>

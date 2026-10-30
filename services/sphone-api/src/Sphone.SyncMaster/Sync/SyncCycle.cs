@@ -1,7 +1,7 @@
 namespace Sphone.SyncMaster.Sync;
 
 /// <summary>
-/// One sync run between S Phone (PostgreSQL) and the Enterprise System (SQL Server): first push the queued
+/// One sync run between eShop (PostgreSQL) and the Enterprise System (SQL Server): first push the queued
 /// Contracts, then pull Contract status and Payments changed since the last run. <see cref="SyncWorker"/>
 /// runs it every 30 seconds; Seam-2 tests run it once. Resolve it from a fresh DI scope per run.
 /// </summary>

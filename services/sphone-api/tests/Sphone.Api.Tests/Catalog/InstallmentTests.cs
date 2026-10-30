@@ -82,7 +82,7 @@ public sealed class InstallmentTests(SphoneApiFactory api)
     }
 
     [Theory]
-    [InlineData("mobile-phone", "iPhone 17 128GB", 9, 0)]                        // not a Term S Phone offers
+    [InlineData("mobile-phone", "iPhone 17 128GB", 9, 0)]                        // not a Term eShop offers
     [InlineData("electrical-appliance", "ตู้เย็น 2 ประตู Samsung 13.8 คิว", 24, 0)] // beyond the category's longest Term
     [InlineData("ipad", "iPad (A16) Wi-Fi 128GB", 10, 10_150)]                    // Installment under ฿500
     [InlineData("mobile-phone", "iPhone 17 128GB", 12, -1)]                       // negative Down Payment

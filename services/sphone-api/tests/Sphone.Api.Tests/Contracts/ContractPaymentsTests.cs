@@ -4,7 +4,7 @@ using Sphone.Api.Tests.Offers;
 namespace Sphone.Api.Tests.Contracts;
 
 // Stories 34, 35: the Customer sees their Contract's status and Payments as known by the Enterprise System.
-// Both arrive through sphone-sync-master (#10), which writes S Phone's copy; the tests play its part (EnterpriseSync).
+// Both arrive through sphone-sync-master (#10), which writes eShop's copy; the tests play its part (EnterpriseSync).
 public sealed class ContractPaymentsTests(SphoneApiFactory api)
 {
     [Fact]

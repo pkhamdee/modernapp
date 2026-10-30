@@ -96,7 +96,7 @@ public sealed class SubmitApplicationTests(SphoneApiFactory api)
     }
 
     [Theory]
-    [InlineData(9, 0)]          // not a Term S Phone offers
+    [InlineData(9, 0)]          // not a Term eShop offers
     [InlineData(12, 29_900)]    // Down Payment reaches the price
     public async Task A_plan_that_is_not_offered_is_refused(int term, int downPayment)
     {

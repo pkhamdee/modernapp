@@ -40,8 +40,8 @@ public enum HandoverRefusal
 }
 
 /// <summary>
-/// The Handover of a Contract's Product (GLOSSARY: Handover), by Delivery or Store Pickup. It is S Phone's own
-/// operational record, kept beside the Contract rather than on it: S Phone never edits a Contract once pushed
+/// The Handover of a Contract's Product (GLOSSARY: Handover), by Delivery or Store Pickup. It is eShop's own
+/// operational record, kept beside the Contract rather than on it: eShop never edits a Contract once pushed
 /// (ADR-0001, ADR-0004), while Staff move the Handover along for as long as it takes. Created with the Contract.
 /// The first Installment falls due one month after the Handover date.
 /// </summary>

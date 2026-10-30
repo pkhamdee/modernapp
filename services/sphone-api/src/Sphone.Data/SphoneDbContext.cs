@@ -36,7 +36,7 @@ public class SphoneDbContext(DbContextOptions<SphoneDbContext> options) : DbCont
     /// <summary>Contracts queued for sphone-sync-master to push to the Enterprise System (ADR-0001).</summary>
     public DbSet<ContractOutboxEntry> ContractOutbox => Set<ContractOutboxEntry>();
 
-    /// <summary>The Handover of each Contract's Product: S Phone's operational record beside the Contract.</summary>
+    /// <summary>The Handover of each Contract's Product: eShop's operational record beside the Contract.</summary>
     public DbSet<Handover> Handovers => Set<Handover>();
 
     /// <summary>Payments pulled from the Enterprise System by sync-master (#10).</summary>

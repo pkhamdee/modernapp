@@ -8,7 +8,7 @@ namespace Sphone.SyncMaster.Sync;
 /// Push step of a sync cycle (stories 58, 59): every Contract waiting in the outbox (<c>contract_outbox</c>,
 /// <c>pushed_at</c> null), oldest first, goes to the Enterprise System and is then marked pushed. The
 /// Enterprise insert is idempotent on the Contract number, so a crash between the two steps only means the
-/// Contract is pushed again next cycle, never duplicated. After the mark, S Phone no longer owns the Contract
+/// Contract is pushed again next cycle, never duplicated. After the mark, eShop no longer owns the Contract
 /// (ADR-0001): nothing here or in sphone-api writes it again; changes come back by the pull (#10).
 /// </summary>
 internal sealed class ContractPush(

@@ -19,7 +19,7 @@ internal static class EnterpriseSync
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    /// <summary>The Contract's status as pulled: <c>Active|Overdue|PaidOff|Cancelled</c> (S Phone's stored names).</summary>
+    /// <summary>The Contract's status as pulled: <c>Active|Overdue|PaidOff|Cancelled</c> (eShop's stored names).</summary>
     public static Task PullStatusAsync(this SphoneApiFactory api, string contractNumber, string status, DateTimeOffset? cancelledAt = null) =>
         api.ExecuteAsync(db => db.Database.ExecuteSqlAsync(
             $"UPDATE contracts SET status = {status}, cancelled_at = {cancelledAt} WHERE number = {contractNumber}", Ct));

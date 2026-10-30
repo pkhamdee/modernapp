@@ -2,7 +2,7 @@ namespace Sphone.SyncMaster.Tests;
 
 /// <summary>
 /// Stories 34, 35, 41, 60: Contract status, cancellations and Payments that changed in the Enterprise System
-/// come back to S Phone on the next sync cycle, found by a last-updated watermark.
+/// come back to eShop on the next sync cycle, found by a last-updated watermark.
 /// </summary>
 public sealed class ContractPullTests(SyncMasterFactory sync)
 {
@@ -58,7 +58,7 @@ public sealed class ContractPullTests(SyncMasterFactory sync)
         await sync.Enterprise.SetStatusAsync(contract.Number, "OVERDUE");
         await sync.RunSyncCycleAsync();
 
-        // If the next cycle re-read these unchanged Enterprise rows, it would restore the S Phone copy.
+        // If the next cycle re-read these unchanged Enterprise rows, it would restore the eShop copy.
         await sync.Sphone.TamperAsync(contract.Number);
         await sync.RunSyncCycleAsync();
 

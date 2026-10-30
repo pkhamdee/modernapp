@@ -164,7 +164,7 @@ Contract (ADR-0001). In the same cycle it then pulls what changed there since th
 on the Enterprise `payment_id`). It finds changes by the `row_ver` rowversion watermark, one row per table in
 `sync_watermarks`, stored in the same transaction as the copied rows; only committed changes are read
 (`row_ver < MIN_ACTIVE_ROWVERSION()`). The Customer's Contract page therefore lags the admin tool by at most one
-cycle (≈30 s). A Contract cancelled there stops its Handover (ADR-0004). S Phone never computes overdue itself.
+cycle (≈30 s). A Contract cancelled there stops its Handover (ADR-0004). eShop never computes overdue itself.
 Logs: `kubectl -n sphone-dev logs deploy/sphone-sync-master`.
 
 Read-only look at the database (sa password from the Secret, never printed):

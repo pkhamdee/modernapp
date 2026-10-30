@@ -131,7 +131,7 @@ public sealed class CreditDecisionTests(SphoneApiFactory api)
     {
         var customer = await api.CreateCustomerClientAsync();
         var idNumber = TestData.NewIdNumber();
-        api.IdVerification.Verifies(idNumber, "กมลา ศรีสวัสดิ์", Adult);
+        api.IdVerification.Verifies(idNumber, "กมลา ทองดี", Adult);
         api.CreditCheck.Passes(idNumber, 50_000m);
         var submitted = await customer.SubmitAcceptedAsync(new ApplicationForm(await customer.IPhone17Async(), idNumber));
 

@@ -6,7 +6,7 @@ namespace Sphone.Domain.Catalog;
 /// </summary>
 public sealed record InstallmentPlan(decimal Price, decimal DownPayment, int Term, decimal Installment, decimal TotalPayable)
 {
-    /// <summary>The Terms S Phone offers, before the Product Category's cap and the ฿500 floor.</summary>
+    /// <summary>The Terms eShop offers, before the Product Category's cap and the ฿500 floor.</summary>
     public static readonly IReadOnlyList<int> Terms = [6, 10, 12, 18, 24];
 
     /// <summary>No Installment may be smaller than this, in baht.</summary>
@@ -22,7 +22,7 @@ public sealed record InstallmentPlan(decimal Price, decimal DownPayment, int Ter
     public static IReadOnlyList<InstallmentPlan> Offered(decimal price, ProductCategory category, decimal downPayment) =>
         Terms.Select(term => For(price, category, term, downPayment)).OfType<InstallmentPlan>().ToList();
 
-    /// <summary>The plan for one Term, or null when S Phone doesn't offer it.</summary>
+    /// <summary>The plan for one Term, or null when eShop doesn't offer it.</summary>
     public static InstallmentPlan? For(decimal price, ProductCategory category, int term, decimal downPayment)
     {
         if (!IsValidDownPayment(price, downPayment) || !Terms.Contains(term) || term > category.LongestTerm)

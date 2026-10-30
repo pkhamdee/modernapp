@@ -2,7 +2,7 @@
   "name": "sphone-node-api",
   "private": true,
   "version": "0.0.0",
-  "description": "S Phone image service: stores images on the SMB share, serves public ones under /images/public",
+  "description": "eShop image service: stores images on the SMB share, serves public ones under /images/public",
   "type": "module",
   "scripts": {
     "start": "node src/server.ts",
