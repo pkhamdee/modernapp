@@ -160,7 +160,16 @@ eshop-sync-master:
   in `e2e/tests/steps.ts` (menu on phone, top bar on desktop), Staff sections with `navigateStaffTo(page, …)`
   (slide-out menu on phone, sidebar on desktop); `isPhone()` tells the projects apart. `expectResponsiveList`
   checks a list is a table on desktop and labelled cards on phone.
+- Card lists (catalog Products, Auction Lots) use `ul.card-grid` (1 / 2 / 3 / 4 columns at phone / tablet / wide /
+  desktop). Product and Lot pages use `.detail-layout` with `.detail-media` (photo) and `.detail-panel`: stacked
+  below 1024 px, side by side from it. e2e checks layouts by position, not class: `gridColumns(list)` and
+  `placement(photo, panel)` (`'beside' | 'below'`) in `e2e/tests/steps.ts`.
 - The image drops all capabilities: Caddy's file capability is removed with `setcap -r` and it listens on 8080.
+- Service worker (ADR 0006, #59): hand-written `src/pwa/sw.js`, built to `/sw.js` by the `serviceWorker()` plugin in
+  `vite.config.ts` (it injects the build's file list and a content hash), registered in production builds only.
+  It pre-caches built static files and `public/offline.html` and never intercepts `/api/*`, `/images/*` or
+  `/thirdparty-mock/*`; don't add runtime caching of API responses. Anything in `public/` is pre-cached, so keep
+  it small. `vite dev` has no worker; test it with `vite build && vite preview` or the image.
 
 ## Deploy and Flux
 

@@ -246,19 +246,69 @@ h2 {
   font-size: 0.9rem;
 }
 
-.product-list {
+/* ---- Card grid and detail layout (#53) ----------------------------------------------------------------------
+ * .card-grid: a list of cards (catalog Products; Auction Lots in #54) in 1 column on phones, 2 on tablet, 3 from
+ * the wide breakpoint and 4 on desktop. Put it on the <ul>; each <li> holds one card.
+ * .detail-layout: a Product (or Lot) page. Its .detail-media (the photo) sits above .detail-panel (name, terms,
+ * calculator or bidding panel) on phones and tablets, and to its left from the wide breakpoint. Anything else in
+ * .detail-layout (a back link) spans both columns.
+ */
+.card-grid {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
 }
 
-@media (min-width: 480px) {
-  .product-list {
-    grid-template-columns: 1fr 1fr;
+@media (min-width: 768px) {
+  /* tablet */
+  .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  /* The Product Category filter scrolls sideways on phones; from tablet every category stays on screen. */
+  .category-tabs {
+    flex-wrap: wrap;
   }
 }
+
+@media (min-width: 1024px) {
+  /* wide */
+  .card-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1280px) {
+  /* desktop */
+  .card-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  /* wide */
+  .detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 2rem;
+    align-items: start;
+  }
+
+  .detail-layout > :not(.detail-media, .detail-panel) {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .detail-media .product-photo.large {
+    max-width: none;
+    margin: 0;
+  }
+}
+/* ---- end card grid and detail layout (#53) ---- */
 
 .product-card {
   display: flex;

@@ -21,6 +21,8 @@ export default defineConfig({
     baseURL,
     // The local cluster's certificate comes from a self-signed CA.
     ignoreHTTPSErrors: true,
+    // ...but Chromium still refuses to register a service worker (#59) on an untrusted origin without this flag.
+    launchOptions: { args: ['--ignore-certificate-errors'] },
     locale: 'th-TH',
     timezoneId: 'Asia/Bangkok',
     // Traces record request bodies (the Staff sign-in) and SMS codes: keep them local, never in CI artifacts.

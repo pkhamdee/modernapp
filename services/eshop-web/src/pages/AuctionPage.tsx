@@ -35,7 +35,7 @@ export function AuctionPage() {
       {lots.length === 0 ? (
         <p className="status">ยังไม่มีรายการประมูล</p>
       ) : (
-        <ul className="product-list">
+        <ul className="card-grid">
           {lots.map((lot) => (
             <li key={lot.id}>
               <Link to={`/auction/lots/${lot.id}`} className="product-card">
