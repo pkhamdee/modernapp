@@ -146,7 +146,14 @@ eshop-sync-master:
 - Fetch only through `src/api/client.ts` (`useApi`, `useReloadableApi`, `apiGet/Post/Put/GetBlob`,
   `problemMessage`): it adds the Bearer token and clears the session on a 401. Format money, dates and Flat Rate
   with `src/format.ts` (Asia/Bangkok).
-- Thai copy, mobile-first (`src/index.css`, 640 px column, 44 px touch targets).
+- Thai copy, mobile-first, plain CSS in one file (`src/index.css`), 44 px touch targets, visible `:focus-visible`.
+- Breakpoints are defined once, in the comment at the top of `src/index.css`: phone (base, 360 px and up), tablet
+  `min-width: 768px`, wide `min-width: 1024px`, desktop `min-width: 1280px`. Use only these widths in media
+  queries and name the breakpoint in a comment. Customer content sits in `.frame` (centred, max 1200 px); the
+  header shows a menu button below 768 px and a top bar from 768 px (`AppLayout.tsx`). Staff screens keep the old
+  640 px column (`.staff-app`) until their sidebar lands.
+- e2e: Customer sections are reached with `navigateTo(page, 'สินค้า' | 'ประมูล' | 'บัญชีของฉัน' | 'เข้าสู่ระบบ')`
+  in `e2e/tests/steps.ts` (menu on phone, top bar on desktop); `isPhone()` tells the projects apart.
 - The image drops all capabilities: Caddy's file capability is removed with `setcap -r` and it listens on 8080.
 - Service worker (ADR 0006, #59): hand-written `src/pwa/sw.js`, built to `/sw.js` by the `serviceWorker()` plugin in
   `vite.config.ts` (it injects the build's file list and a content hash), registered in production builds only.

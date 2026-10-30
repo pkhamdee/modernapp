@@ -3,7 +3,10 @@ import { environment, mockBaseURL } from '../environment'
 import {
   applyForHirePurchase,
   bangkokLocal,
+  customerHeader,
   expectPageFits,
+  isPhone,
+  navigateTo,
   newIdNumber,
   newLotTitle,
   newMobileNumber,
@@ -38,6 +41,54 @@ test('brand: Customer and Staff screens show eShop', async ({ page, browser }) =
     await expect(page).toHaveURL(/\/$/)
     await expectPageFits(page)
   })
+
+  await test.step('the header opens Catalog, Auctions and Account: a menu on phone, a top bar on desktop', async () => {
+    await visit(page, '/')
+    const { menuButton, nav } = customerHeader(page)
+    if (isPhone()) {
+      // The menu button announces open/closed, names the menu it controls, and Escape closes it again.
+      await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+      await expect(nav).toBeHidden()
+      await menuButton.click()
+      await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+      await expect(nav).toBeVisible()
+      await expect(nav).toHaveAttribute('id', (await menuButton.getAttribute('aria-controls')) ?? 'no aria-controls')
+      await page.keyboard.press('Escape')
+      await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+      await expect(nav).toBeHidden()
+      await expect(menuButton).toBeFocused()
+      expect((await menuButton.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+      await menuButton.click()
+    } else {
+      await expect(menuButton).toBeHidden()
+    }
+    // Touch targets at least 44px tall.
+    for (const link of await nav.getByRole('link').all()) {
+      expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+    }
+    if (isPhone()) await page.keyboard.press('Escape')
+
+    await navigateTo(page, 'ประมูล')
+    await expect(page).toHaveURL(/\/auction$/)
+    await expectPageFits(page)
+    await navigateTo(page, 'เข้าสู่ระบบ')
+    await expect(page).toHaveURL(/\/sign-in$/)
+    await expectPageFits(page)
+    await navigateTo(page, 'สินค้า')
+    await expect(page).toHaveURL(/\/$/)
+    await expectPageFits(page)
+  })
+
+  if (!isPhone()) {
+    await test.step('at 200% zoom the page reflows to the phone header without scrolling sideways', async () => {
+      // A 1280×800 window at 200% zoom lays out like a 640×400 one.
+      await page.setViewportSize({ width: 640, height: 400 })
+      await visit(page, '/')
+      await expect(customerHeader(page).menuButton).toBeVisible()
+      await expect(customerHeader(page).nav).toBeHidden()
+      await page.setViewportSize({ width: 1280, height: 800 })
+    })
+  }
 
   await test.step('the mock Enterprise System admin tool is eShop Co.’s', async () => {
     const context = await browser.newContext({ baseURL: mockBaseURL, ignoreHTTPSErrors: true })
@@ -198,7 +249,11 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     // The Lot page polls every 3 s; once the Auction is closed it shows the result.
     await expect(page.getByText('คุณชนะการประมูล!')).toBeVisible({ timeout: 4 * 60_000 })
     await expectPageFits(page)
-    await page.goto('/won-lots')
+    await navigateTo(page, 'บัญชีของฉัน')
+    await expect(page).toHaveURL(/\/account$/)
+    await expectPageFits(page)
+    await page.getByRole('link', { name: 'ประมูลที่ชนะ' }).click()
+    await expect(page).toHaveURL(/\/won-lots$/)
     await expect(page.getByRole('link', { name: title })).toBeVisible()
     await expectPageFits(page)
   })
