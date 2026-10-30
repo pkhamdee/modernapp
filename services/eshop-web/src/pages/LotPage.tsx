@@ -1,6 +1,14 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useLocation, useParams } from 'react-router'
-import { auctionPaths, auctionStatusLabel, LOT_POLL_MS, lotStatusLabel, placeBid, type Lot } from '../api/auctions.ts'
+import {
+  auctionPaths,
+  auctionStatusLabel,
+  LOT_POLL_MS,
+  lotStatusLabel,
+  MINIMUM_INCREMENT,
+  placeBid,
+  type Lot,
+} from '../api/auctions.ts'
 import { authPaths, type Me } from '../api/auth.ts'
 import { ApiError, useApi, useReloadableApi } from '../api/client.ts'
 import { useAuth } from '../auth/context.ts'
@@ -11,7 +19,10 @@ import { NotFoundPage } from './NotFoundPage.tsx'
 
 const VERIFY_FIRST = 'ต้องยืนยันตัวตนด้วยบัตรประชาชนก่อนจึงจะร่วมประมูลได้ ยืนยันได้โดยยื่นคำขอผ่อนสินค้าพร้อมรูปบัตรประชาชน'
 
-/** One Lot (/auction/lots/:id): photos, condition notes, the current highest Bid (polled) and the Bid form. */
+/**
+ * One Lot (/auction/lots/:id): the bidding panel (current highest Bid, polled; minimum increment; closing time; Bid
+ * form), then the photos and condition notes. From 1024px the photos sit to the left of the panel (#54).
+ */
 export function LotPage() {
   const { id = '' } = useParams()
   const [lot, reload] = useReloadableApi<Lot>(auctionPaths.lot(id))
@@ -29,59 +40,67 @@ export function LotPage() {
 
   const l = lot.data
   return (
-    <article className="product-detail">
+    <article className="product-detail detail-layout lot-detail">
       <Link to="/auction" className="back-link">
         ← การประมูล
       </Link>
-      <div className="lot-photos">
-        {l.photoUrls.map((url, i) => (
-          <ProductPhoto key={url} src={url} alt={`${l.title} รูปที่ ${i + 1}`} large={i === 0} />
-        ))}
+      {/* The bidding panel comes first: on a phone it is on screen without scrolling, the photos follow it. */}
+      <section className="detail-panel" aria-label="การเสนอราคา">
+        <h1>{l.title}</h1>
+        <p className="lot-status-line">
+          <span className={`auction-status auction-status-${l.auctionStatus}`}>
+            {auctionStatusLabel[l.auctionStatus]}
+          </span>{' '}
+          <span className="muted">เสนอราคาแล้ว {l.bidCount} ครั้ง</span>
+        </p>
+        <dl className="terms">
+          <div>
+            <dt>{l.highestBid === null ? 'ราคาเริ่มต้น' : 'ราคาสูงสุดตอนนี้'}</dt>
+            <dd className="product-detail-price" aria-live="polite">
+              {formatBaht(l.highestBid ?? l.startingPrice)}
+            </dd>
+          </div>
+          <div>
+            <dt>เพิ่มขั้นต่ำครั้งละ</dt>
+            <dd>{formatBaht(MINIMUM_INCREMENT)}</dd>
+          </div>
+          <div className="terms-wide">
+            <dt>{l.auctionStatus === 'upcoming' ? 'เปิดประมูล' : 'ปิดประมูล'}</dt>
+            <dd>{formatDateTime(l.auctionStatus === 'upcoming' ? l.opensAt : l.closesAt)}</dd>
+          </div>
+        </dl>
+        {l.lotStatus !== 'in-auction' && (
+          <p className={l.youWon ? 'form-notice' : 'muted'}>
+            ผลการประมูล: {lotStatusLabel[l.lotStatus]}
+            {l.reofferedAsLotId !== null && (
+              <>
+                {' '}
+                · <Link to={`/auction/lots/${l.reofferedAsLotId}`}>นำกลับมาประมูลใหม่</Link>
+              </>
+            )}
+          </p>
+        )}
+        {l.youWon === true && <WinnerNotice lot={l} />}
+        {l.youAreHighestBidder === true && l.auctionStatus !== 'closed' && (
+          <p className="form-notice" role="status">
+            คุณเป็นผู้เสนอราคาสูงสุดตอนนี้
+          </p>
+        )}
+        {l.youAreHighestBidder === false && l.bidCount > 0 && l.auctionStatus === 'open' && (
+          <p className="muted">ราคาของคุณยังไม่ใช่ราคาสูงสุด</p>
+        )}
+        {l.auctionStatus === 'open' && <BidForm lot={l} onBid={reload} />}
+        <p className="muted">ผู้ชนะชำระเงินสดที่สาขาภายใน 3 วัน (ไม่สามารถผ่อนชำระได้) · ไม่มีการต่อเวลาประมูล</p>
+      </section>
+      <div className="detail-media">
+        <div className="lot-photos">
+          {l.photoUrls.map((url, i) => (
+            <ProductPhoto key={url} src={url} alt={`${l.title} รูปที่ ${i + 1}`} large={i === 0} />
+          ))}
+        </div>
+        <h2 className="lot-condition-heading">สภาพเครื่อง</h2>
+        <p className="muted">{l.conditionNotes}</p>
       </div>
-      <h1>{l.title}</h1>
-      <p className="muted">{l.conditionNotes}</p>
-      <dl className="terms">
-        <div>
-          <dt>{l.highestBid === null ? 'ราคาเริ่มต้น' : 'ราคาสูงสุดตอนนี้'}</dt>
-          <dd className="product-detail-price" aria-live="polite">
-            {formatBaht(l.highestBid ?? l.startingPrice)}
-          </dd>
-        </div>
-        <div>
-          <dt>เสนอราคาแล้ว</dt>
-          <dd>{l.bidCount} ครั้ง</dd>
-        </div>
-        <div>
-          <dt>สถานะ</dt>
-          <dd>{auctionStatusLabel[l.auctionStatus]}</dd>
-        </div>
-        <div>
-          <dt>{l.auctionStatus === 'upcoming' ? 'เปิดประมูล' : 'ปิดประมูล'}</dt>
-          <dd>{formatDateTime(l.auctionStatus === 'upcoming' ? l.opensAt : l.closesAt)}</dd>
-        </div>
-      </dl>
-      {l.lotStatus !== 'in-auction' && (
-        <p className={l.youWon ? 'form-notice' : 'muted'}>
-          ผลการประมูล: {lotStatusLabel[l.lotStatus]}
-          {l.reofferedAsLotId !== null && (
-            <>
-              {' '}
-              · <Link to={`/auction/lots/${l.reofferedAsLotId}`}>นำกลับมาประมูลใหม่</Link>
-            </>
-          )}
-        </p>
-      )}
-      {l.youWon === true && <WinnerNotice lot={l} />}
-      {l.youAreHighestBidder === true && l.auctionStatus !== 'closed' && (
-        <p className="form-notice" role="status">
-          คุณเป็นผู้เสนอราคาสูงสุดตอนนี้
-        </p>
-      )}
-      {l.youAreHighestBidder === false && l.bidCount > 0 && l.auctionStatus === 'open' && (
-        <p className="muted">ราคาของคุณยังไม่ใช่ราคาสูงสุด</p>
-      )}
-      {l.auctionStatus === 'open' && <BidForm lot={l} onBid={reload} />}
-      <p className="muted">ผู้ชนะชำระเงินสดที่สาขาภายใน 3 วัน (ไม่สามารถผ่อนชำระได้) · ไม่มีการต่อเวลาประมูล</p>
     </article>
   )
 }
@@ -91,10 +110,18 @@ export function WinnerNotice({ lot }: { lot: Lot }) {
   switch (lot.lotStatus) {
     case 'awaiting-payment':
       return (
-        <div className="form-notice" role="status">
-          <strong>คุณชนะการประมูล!</strong> กรุณาชำระเงินสด {formatBaht(lot.highestBid ?? 0)} ที่สาขาของ eShop ภายใน{' '}
-          {lot.paymentDueAt ? formatDateTime(lot.paymentDueAt) : '3 วัน'} พร้อมบัตรประชาชน แล้วรับเครื่องได้ทันที
-          (ชำระเงินสดเท่านั้น ไม่สามารถผ่อนชำระได้)
+        <div className="form-notice winner-notice" role="status">
+          <strong>คุณชนะการประมูล!</strong>
+          {/* The deadline on its own line: unpaid after 3 days, the Lot is Forfeited (#54). */}
+          {lot.paymentDueAt && (
+            <p className="payment-deadline">
+              ชำระเงินภายใน <strong>{formatDateTime(lot.paymentDueAt)}</strong>
+            </p>
+          )}
+          <p>
+            กรุณาชำระเงินสด {formatBaht(lot.highestBid ?? 0)} ที่สาขาของ eShop ภายใน 3 วันหลังปิดประมูล พร้อมบัตรประชาชน
+            แล้วรับเครื่องได้ทันที (ชำระเงินสดเท่านั้น ไม่สามารถผ่อนชำระได้)
+          </p>
         </div>
       )
     case 'sold':
