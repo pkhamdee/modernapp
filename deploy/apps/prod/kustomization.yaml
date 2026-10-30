@@ -1,8 +1,9 @@
 # sphone-prod: same apps as sphone-dev, its own database, served at https://prod.sphone.localhost.
-# Image tags follow release tags (vX.Y.Z -> X.Y.Z images); see image-automation.yaml and docs/git-workflow.md.
-# To add a service to prod: add ../base/<service> to resources, an ImageRepository + ImagePolicy in
-# image-automation.yaml, and an `images:` entry below with the sphone-prod marker. HTTPRoutes are moved to the
-# prod hostname by the patch below automatically.
+# Flux applies this folder as it is in the newest release tag vX.Y.Z, with the X.Y.Z images (apps-prod in
+# clusters/local/apps.yaml, clusters/local/prod-release.yaml, docs/git-workflow.md); there are no image tags here.
+# To add a service to prod: add ../base/<service> to resources and an `images:` entry to apps-prod in
+# clusters/local/apps.yaml (with the flux-system:sphone-release marker). HTTPRoutes are moved to the prod hostname
+# by the patch below automatically.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: sphone-prod
@@ -18,7 +19,6 @@ resources:
   - ../base/sphone-web
   - ../base/sphone-node-api
   - ../base/sphone-sync-master
-  - image-automation.yaml
 patches:
   # Every app route: prod hostname on the Gateway's prod listener (base routes use sphone.localhost / https).
   - target:
@@ -64,14 +64,3 @@ patches:
                 env:
                   - name: ENTERPRISE_DATABASE
                     value: enterprise_prod
-# Tags are written by Flux image automation (image-automation.yaml); do not edit by hand.
-# Until the first release they point at a CI release dry run (0.0.0-test.N); the first real X.Y.Z replaces them.
-images:
-  - name: ghcr.io/pkhamdee/sphone-api
-    newTag: 0.0.0-test.2 # {"$imagepolicy": "sphone-prod:sphone-api:tag"}
-  - name: ghcr.io/pkhamdee/sphone-web
-    newTag: 0.0.0-test.2 # {"$imagepolicy": "sphone-prod:sphone-web:tag"}
-  - name: ghcr.io/pkhamdee/sphone-node-api
-    newTag: 0.0.0-test.2 # {"$imagepolicy": "sphone-prod:sphone-node-api:tag"}
-  - name: ghcr.io/pkhamdee/sphone-sync-master
-    newTag: 0.0.0-test.0 # {"$imagepolicy": "sphone-prod:sphone-sync-master:tag"}
