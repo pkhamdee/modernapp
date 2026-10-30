@@ -51,7 +51,7 @@ internal static class LotSaleAdministration
             return TypedResults.ValidationProblem(errors);
         }
 
-        var recordedBy = user.FindFirstValue(SphoneClaims.Username);
+        var recordedBy = user.RequiredStaffUsername();
         var updated = await db.Lots
             .Where(l => l.Id == id && l.HighestBidderId != null && l.PaidAt == null && l.ForfeitedAt == null)
             .ExecuteUpdateAsync(s => s
@@ -83,10 +83,7 @@ internal static class LotSaleAdministration
 
         if (!lot.MayBeForfeitedAt(now))
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "ผู้ชนะยังมีเวลาชำระเงินภายใน 3 วัน",
-                extensions: new Dictionary<string, object?> { ["error"] = "payment-window-open", ["paymentDueAt"] = lot.PaymentDueAt });
+            return Refusal.Conflict("payment-window-open", "ผู้ชนะยังมีเวลาชำระเงินภายใน 3 วัน", ("paymentDueAt", lot.PaymentDueAt));
         }
 
         var updated = await db.Lots
@@ -125,18 +122,12 @@ internal static class LotSaleAdministration
 
         if (!lot.MayBeReofferedAt(now))
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "นำรายการนี้กลับมาประมูลใหม่ไม่ได้ (เฉพาะรายการที่ถูกริบสิทธิ์หรือไม่มีผู้ประมูล และยังไม่เคยนำกลับมา)",
-                extensions: new Dictionary<string, object?> { ["error"] = "lot-not-reofferable" });
+            return Refusal.Conflict("lot-not-reofferable", "นำรายการนี้กลับมาประมูลใหม่ไม่ได้ (เฉพาะรายการที่ถูกริบสิทธิ์หรือไม่มีผู้ประมูล และยังไม่เคยนำกลับมา)");
         }
 
         if (target!.StatusAt(now) == AuctionStatus.Closed)
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "การประมูลนี้ปิดแล้ว",
-                extensions: new Dictionary<string, object?> { ["error"] = "auction-closed" });
+            return Refusal.Conflict("auction-closed", "การประมูลนี้ปิดแล้ว");
         }
 
         var again = new Lot
@@ -157,10 +148,7 @@ internal static class LotSaleAdministration
         if (linked == 0)
         {
             await transaction.RollbackAsync(cancellationToken);
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "รายการนี้ถูกนำกลับมาประมูลแล้ว",
-                extensions: new Dictionary<string, object?> { ["error"] = "lot-not-reofferable" });
+            return Refusal.Conflict("lot-not-reofferable", "รายการนี้ถูกนำกลับมาประมูลแล้ว");
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -178,10 +166,7 @@ internal static class LotSaleAdministration
     }
 
     private static ProblemHttpResult NotAwaitingPayment() =>
-        TypedResults.Problem(
-            statusCode: StatusCodes.Status409Conflict,
-            title: "รายการนี้ไม่ได้รอการชำระเงินจากผู้ชนะ",
-            extensions: new Dictionary<string, object?> { ["error"] = "lot-not-awaiting-payment" });
+        Refusal.Conflict("lot-not-awaiting-payment", "รายการนี้ไม่ได้รอการชำระเงินจากผู้ชนะ");
 }
 
 // The Branch where the winner paid cash and took the iPhone (payment and Handover happen together at the counter).

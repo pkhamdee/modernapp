@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using Sphone.Domain.Applications;
 using Sphone.Domain.Catalog;
 using Sphone.Domain.Customers;
@@ -82,8 +83,13 @@ public class Contract
         CancelledAt = status == ContractStatus.Cancelled ? cancelledAt : null;
     }
 
-    /// <summary>Active or Overdue: blocks a new Application (Eligibility) and a second accepted Offer.</summary>
-    public bool IsActive => Status is ContractStatus.Active or ContractStatus.Overdue;
+    /// <summary>
+    /// Active or Overdue: blocks a new Application (Eligibility) and a second accepted Offer. An expression so EF
+    /// can translate it: <c>db.Contracts.Where(Contract.IsActive)</c>. (The partial unique index
+    /// <c>ix_contracts_customer_id_active</c> states the same rule in SQL.)
+    /// </summary>
+    public static readonly Expression<Func<Contract, bool>> IsActive =
+        c => c.Status == ContractStatus.Active || c.Status == ContractStatus.Overdue;
 
     internal static Contract From(Offer offer, ContractNumber number, DateTimeOffset now)
     {

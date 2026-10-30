@@ -73,7 +73,7 @@ internal static partial class AuthEndpoints
 
         if (check != SmsCodeCheck.Accepted)
         {
-            return CodeRefused(check);
+            return Refusal.SmsCode(check);
         }
 
         var customer = await db.Customers.SingleOrDefaultAsync(c => c.MobileNumber == request.MobileNumber, cancellationToken);
@@ -133,33 +133,16 @@ internal static partial class AuthEndpoints
             user.FindFirstValue(SphoneClaims.MobileNumber),
             customerId,
             idVerified,
-            user.IsInRole(Roles.Staff) ? user.FindFirstValue(SphoneClaims.Username) : null);
+            user.StaffUsername());
     }
 
     private static ProblemHttpResult InvalidCredentials() =>
-        Refused("credentials-invalid", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+        Refusal.BadRequest("credentials-invalid", "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
 
     private static bool IsMobileNumber([System.Diagnostics.CodeAnalysis.NotNullWhen(true)] string? value) => value is not null && ThaiMobileNumber().IsMatch(value);
 
     private static ProblemHttpResult InvalidMobileNumber() =>
-        TypedResults.Problem(
-            statusCode: StatusCodes.Status400BadRequest,
-            title: "เบอร์โทรศัพท์มือถือไม่ถูกต้อง",
-            extensions: new Dictionary<string, object?> { ["error"] = "mobile-number-invalid" });
-
-    private static ProblemHttpResult CodeRefused(SmsCodeCheck check) =>
-        check switch
-        {
-            SmsCodeCheck.Expired => Refused("code-expired", "รหัสหมดอายุแล้ว กรุณาขอรหัสใหม่"),
-            SmsCodeCheck.Locked => Refused("code-locked", "ใส่รหัสผิดเกินจำนวนครั้งที่กำหนด กรุณาขอรหัสใหม่"),
-            _ => Refused("code-invalid", "รหัสไม่ถูกต้อง"),
-        };
-
-    private static ProblemHttpResult Refused(string error, string title) =>
-        TypedResults.Problem(
-            statusCode: StatusCodes.Status400BadRequest,
-            title: title,
-            extensions: new Dictionary<string, object?> { ["error"] = error });
+        Refusal.BadRequest("mobile-number-invalid", "เบอร์โทรศัพท์มือถือไม่ถูกต้อง");
 
     [GeneratedRegex(@"^0[6-9][0-9]{8}$")]
     private static partial Regex ThaiMobileNumber();

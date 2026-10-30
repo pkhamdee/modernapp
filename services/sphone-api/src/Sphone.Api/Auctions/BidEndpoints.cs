@@ -34,7 +34,7 @@ internal static class BidEndpoints
         var amount = request.Amount;
         if (amount is <= 0m or >= 10_000_000m || decimal.Truncate(amount) != amount)
         {
-            return Refused(StatusCodes.Status400BadRequest, "bid-amount-invalid", "ราคาที่เสนอต้องเป็นจำนวนเต็มบาท");
+            return Refusal.BadRequest("bid-amount-invalid", "ราคาที่เสนอต้องเป็นจำนวนเต็มบาท");
         }
 
         var lot = await db.Lots.Include(l => l.Auction).AsNoTracking().SingleOrDefaultAsync(l => l.Id == id, cancellationToken);
@@ -48,23 +48,23 @@ internal static class BidEndpoints
             .Select(c => new { c.IdVerifiedAt, c.DateOfBirth }).SingleAsync(cancellationToken);
         if (bidder.IdVerifiedAt is null || bidder.DateOfBirth is not { } dateOfBirth)
         {
-            return Refused(StatusCodes.Status403Forbidden, "id-verification-required",
+            return Refusal.Of(StatusCodes.Status403Forbidden, "id-verification-required",
                 "กรุณายืนยันตัวตนด้วยบัตรประชาชนก่อนร่วมประมูล");
         }
 
         // Passing ID Verification is not enough: like hire purchase, bidding needs the Customer to be 20 or over.
         if (!Eligibility.IsOldEnough(dateOfBirth, now))
         {
-            return Refused(StatusCodes.Status403Forbidden, "under-20", "ผู้ร่วมประมูลต้องมีอายุ 20 ปีขึ้นไป");
+            return Refusal.Of(StatusCodes.Status403Forbidden, "under-20", "ผู้ร่วมประมูลต้องมีอายุ 20 ปีขึ้นไป");
         }
 
         // An Auction's open and close times never change once created, so checking them here is final.
         switch (lot.Auction.StatusAt(now))
         {
             case AuctionStatus.Upcoming:
-                return Refused(StatusCodes.Status409Conflict, "auction-not-open", "การประมูลยังไม่เปิด");
+                return Refusal.Conflict("auction-not-open", "การประมูลยังไม่เปิด");
             case AuctionStatus.Closed:
-                return Refused(StatusCodes.Status409Conflict, "auction-closed", "การประมูลปิดแล้ว");
+                return Refusal.Conflict("auction-closed", "การประมูลปิดแล้ว");
         }
 
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -82,7 +82,7 @@ internal static class BidEndpoints
             await transaction.RollbackAsync(cancellationToken);
             var current = await db.Lots.AsNoTracking().Where(l => l.Id == id)
                 .Select(l => new { l.HighestBid, l.StartingPrice }).SingleAsync(cancellationToken);
-            return Refused(StatusCodes.Status409Conflict, "bid-too-low",
+            return Refusal.Conflict("bid-too-low",
                 "ราคาที่เสนอต้องสูงกว่าราคาสูงสุดปัจจุบันอย่างน้อย 100 บาท",
                 ("minimumBid", Lot.MinimumBidOver(current.HighestBid, current.StartingPrice)));
         }
@@ -94,17 +94,6 @@ internal static class BidEndpoints
         // The Lot as it is now (someone may already have outbid this Bid).
         var after = await db.Lots.Include(l => l.Auction).AsNoTracking().SingleAsync(l => l.Id == id, cancellationToken);
         return TypedResults.Created($"/api/lots/{id}", LotResponse.Of(after, after.Auction, now, user));
-    }
-
-    private static ProblemHttpResult Refused(int status, string error, string title, (string Key, object Value)? extra = null)
-    {
-        var extensions = new Dictionary<string, object?> { ["error"] = error };
-        if (extra is { } e)
-        {
-            extensions[e.Key] = e.Value;
-        }
-
-        return TypedResults.Problem(statusCode: status, title: title, extensions: extensions);
     }
 }
 

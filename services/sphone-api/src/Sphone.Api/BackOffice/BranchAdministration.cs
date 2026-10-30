@@ -41,10 +41,7 @@ internal static partial class BranchAdministration
 
         if (await db.Branches.AnyAsync(b => b.Code == request.Code, cancellationToken))
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "มีรหัสสาขานี้อยู่แล้ว",
-                extensions: new Dictionary<string, object?> { ["error"] = "branch-code-taken" });
+            return Refusal.Conflict("branch-code-taken", "มีรหัสสาขานี้อยู่แล้ว");
         }
 
         var branch = new Branch
