@@ -156,17 +156,14 @@ curl -k https://prod.sphone.localhost/api/product-categories
 
 ### Releasing
 
-The first release (and every later minor release) is the lifecycle above, nothing more:
+Releasing is a **human step**: agents are not allowed to push release tags, so an agent hands this to the user. `scripts/release.sh X.Y.Z` runs the lifecycle above (steps 2 to 4):
+- It forks `release/<MAJOR>.x` from `origin/main` if that branch doesn't exist yet.
+- It tags the branch head with an annotated `vX.Y.Z` and pushes it, after you confirm.
+- It waits until the tag's CI run has started and prints its URL.
 
-```bash
-git checkout main && git pull origin main
-git checkout -b release/0.x
-git push origin release/0.x
-git tag -a v0.1.0 -m "Release 0.1.0"
-git push origin v0.1.0
-```
+It refuses when the commit to tag carries a GitHub skip-ci marker (`[skip ci]`, `[ci skip]`, …). GitHub skips every push workflow on such a commit, and a tag push counts. The tag would then never build and, being immutable, could only be replaced by the next version. That is what happened to `v0.1.0`, so the first release is `v0.1.1`. For the same reason, Flux's commit templates carry no skip-ci marker: CI ignores pushes that only touch `deploy/**` or `clusters/**` instead, and CI's `repo rules` job fails if a marker comes back. Keep markers out of your own commit messages too, even quoted, unless you mean them.
 
-Before the first release there is nothing for prod to run: the GitRepository `sphone-release` points at `v0.0.0` (which never exists), so it, the ImagePolicy `sphone-release` and `apps-prod` show not Ready (`no match found for semver: 0.0.0`). That is expected; they turn Ready a few minutes after `v0.1.0` is pushed.
+Before the first release there is nothing for prod to run: the GitRepository `sphone-release` points at `v0.0.0` (which never exists), so it, the ImagePolicy `sphone-release` and `apps-prod` show not Ready (`no match found for semver: 0.0.0`). That is expected; they turn Ready a few minutes after the first release tag is pushed.
 
 Things to know:
 

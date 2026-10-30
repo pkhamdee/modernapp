@@ -215,37 +215,28 @@ npm run report                                       # HTML report of the last r
   from outside contributors' pull requests always wait for approval (repo setting), so nobody else's workflow
   can reach a runner here unreviewed.
 
-## Releasing (v0.1.0 and later)
+## Releasing
 
-Tag-based, per [git-workflow.md](git-workflow.md). Cut the release, let CI build it and Flux deploy it to
-`sphone-prod`, then run the smoke test there:
+Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is your step: agents can't push release tags. Cut the release, let CI build it and Flux deploy it to `sphone-prod`, then run the smoke test there:
 
 ```sh
-# 1. Code freeze: fork the series branch from main (first release of 0.x only)
-git checkout main && git pull origin main
-git checkout -b release/0.x
-git push origin release/0.x
+# 1. Tag (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
+scripts/release.sh 0.2.0
 
-# 2. Tag the release on the release branch (annotated) and push the tag
-git checkout release/0.x && git pull origin release/0.x
-git tag -a v0.1.0 -m "Release 0.1.0"
-git push origin v0.1.0
+# 2. Watch CI: test → validate tag → build/scan/push ghcr.io/pkhamdee/<service>:0.2.0 → GitHub Release
+gh run watch "$(gh run list --workflow ci-release.yml --branch v0.2.0 --limit 1 --json databaseId --jq '.[0].databaseId')"
 
-# 3. Watch CI: test → validate tag → build/scan/push ghcr.io/pkhamdee/<service>:0.1.0 → GitHub Release
-gh run list --workflow ci-release.yml --branch v0.1.0
-gh run watch <run-id>
-
-# 4. Flux picks the new semver tags (a few minutes), commits them to deploy/apps/prod and rolls out
-flux get images policy -n sphone-prod                 # every policy at 0.1.0
-flux get kustomization apps-prod
-kubectl -n sphone-prod get deploy -o wide             # images :0.1.0, all READY
+# 3. Flux follows the release a few minutes later (clusters/local/prod-release.yaml)
+flux get images policy sphone-release -n flux-system  # 0.2.0
+flux get kustomization apps-prod                      # Applied revision: v0.2.0@…
+kubectl -n sphone-prod get deploy -o wide             # images :0.2.0, all READY
 curl -k https://prod.sphone.localhost/api/product-categories
 
-# 5. Post-release smoke test against sphone-prod
-cd e2e && E2E_BASE_URL=https://prod.sphone.localhost npm run e2e
+# 4. Post-release smoke test against sphone-prod (locally, or on GitHub Actions)
+cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh
 ```
 
-A fix after the release goes to `release/0.x` **and** `main`, then `v0.1.1` (git-workflow.md, "Patch release").
+A fix after the release goes to `release/0.x` **and** `main`, then the next patch, e.g. `scripts/release.sh 0.1.2` (git-workflow.md, "Patch release").
 
 ## Repo layout
 
@@ -265,6 +256,7 @@ A fix after the release goes to `release/0.x` **and** `main`, then `v0.1.1` (git
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/sphone-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
+| `scripts/` | Human-run repo tasks: `release.sh X.Y.Z` cuts a release | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
