@@ -21,6 +21,6 @@ images:
   - name: ghcr.io/pkhamdee/eshop-web
     newTag: main-b070357-1793334094 # {"$imagepolicy": "eshop-dev:eshop-web:tag"}
   - name: ghcr.io/pkhamdee/eshop-node-api
-    newTag: main-b070357-1793334094 # {"$imagepolicy": "eshop-dev:eshop-node-api:tag"}
+    newTag: main-a1618fa-1793369184 # {"$imagepolicy": "eshop-dev:eshop-node-api:tag"}
   - name: ghcr.io/pkhamdee/eshop-sync-master
     newTag: main-b070357-1793334094 # {"$imagepolicy": "eshop-dev:eshop-sync-master:tag"}
