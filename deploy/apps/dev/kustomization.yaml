@@ -19,8 +19,8 @@ images:
   - name: ghcr.io/pkhamdee/sphone-api
     newTag: main-ef175aa-1793327051 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-web
-    newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
+    newTag: main-ef175aa-1793327051 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
   - name: ghcr.io/pkhamdee/sphone-node-api
-    newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-node-api:tag"}
+    newTag: main-ef175aa-1793327051 # {"$imagepolicy": "sphone-dev:sphone-node-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-sync-master
-    newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-sync-master:tag"}
+    newTag: main-ef175aa-1793327051 # {"$imagepolicy": "sphone-dev:sphone-sync-master:tag"}
