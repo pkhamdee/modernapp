@@ -174,6 +174,75 @@ kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
   '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -d enterprise_dev -Q "SELECT contract_no, status, last_updated_at FROM hp.contract"'
 ```
 
+## End-to-end smoke test (Seam 4)
+
+`e2e/` holds one Playwright browser test of the definition-of-done demo (spec #1), run against a **deployed**
+environment, never on every CI run. In a phone-sized Chromium it:
+
+1. signs a Customer in by SMS (the code is read from the mock inbox `/thirdparty-mock/sms/inbox`), applies for the
+   iPhone with an ID card photo (thirdparty-mock ID ending `01`), waits for **Approved** (≤ 60 s) and accepts the Offer
+   with a second SMS code;
+2. waits until the Contract shows in the mock Enterprise System admin tool (`/thirdparty-mock/enterprise/<env>/`);
+3. signs Staff in, records the Down Payment and moves the Handover to handed over; the Customer's Contract shows it;
+4. clicks **Simulate Payment** in the admin tool and waits until the Payment shows on the Customer's Contract;
+5. separately: a second Customer passes ID Verification (ID ending `02`, Credit Check fails), Staff create an Auction
+   with their own times (open now, **closing about two minutes ahead**, so nobody waits for the weekly Sunday close),
+   add a Lot with a photo, the Customer bids and, once the Auction closes, has won the Lot.
+
+Each run uses fresh mobile and ID numbers (ID prefix `3`) and leaves its Customers, Contract and Auction behind as
+demo data. It takes about 3–4 minutes (the two parts run in parallel).
+
+```sh
+cd e2e
+npm ci && npx playwright install chromium            # once
+npm run e2e                                          # sphone-dev: https://sphone.localhost
+E2E_BASE_URL=https://prod.sphone.localhost npm run e2e   # sphone-prod (same as npm run e2e:prod)
+npm run report                                       # HTML report of the last run (traces of failures)
+```
+
+- **Staff credentials** come from the environment's SOPS Secret (`deploy/apps/<env>/sphone-api-staff.sops.yaml`),
+  decrypted at run time by `global-setup.ts` with `sops` and the age key (`SOPS_AGE_KEY_FILE`, default
+  `~/.config/sops/age/keys.txt`) into the test process's environment only; it is never printed or written to the
+  report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|prod` overrides the environment name
+  derived from the host (it picks the Enterprise database in the admin tool and the Secret).
+- The certificate is self-signed; the test accepts it.
+- **GitHub Actions**: `.github/workflows/e2e.yml` (Actions → *E2E smoke test* → Run workflow, inputs `base_url`
+  and `runner`). It is manual only. The cluster is local, so GitHub-hosted runners can't reach it: it needs a
+  self-hosted runner on this machine (label `self-hosted` by default) and repo secrets `E2E_STAFF_USERNAME` /
+  `E2E_STAFF_PASSWORD`.
+
+## Releasing (v0.1.0 and later)
+
+Tag-based, per [git-workflow.md](git-workflow.md). Cut the release, let CI build it and Flux deploy it to
+`sphone-prod`, then run the smoke test there:
+
+```sh
+# 1. Code freeze: fork the series branch from main (first release of 0.x only)
+git checkout main && git pull origin main
+git checkout -b release/0.x
+git push origin release/0.x
+
+# 2. Tag the release on the release branch (annotated) and push the tag
+git checkout release/0.x && git pull origin release/0.x
+git tag -a v0.1.0 -m "Release 0.1.0"
+git push origin v0.1.0
+
+# 3. Watch CI: test → validate tag → build/scan/push ghcr.io/pkhamdee/<service>:0.1.0 → GitHub Release
+gh run list --workflow ci-release.yml --branch v0.1.0
+gh run watch <run-id>
+
+# 4. Flux picks the new semver tags (a few minutes), commits them to deploy/apps/prod and rolls out
+flux get images policy -n sphone-prod                 # every policy at 0.1.0
+flux get kustomization apps-prod
+kubectl -n sphone-prod get deploy -o wide             # images :0.1.0, all READY
+curl -k https://prod.sphone.localhost/api/product-categories
+
+# 5. Post-release smoke test against sphone-prod
+cd e2e && E2E_BASE_URL=https://prod.sphone.localhost npm run e2e
+```
+
+A fix after the release goes to `release/0.x` **and** `main`, then `v0.1.1` (git-workflow.md, "Patch release").
+
 ## Repo layout
 
 | Path | What | Flux Kustomization |
@@ -191,6 +260,7 @@ kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
 | `services/sphone-web/` | React + Vite + TypeScript, served by Caddy | – |
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/sphone-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
+| `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.

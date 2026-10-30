@@ -1,0 +1,65 @@
+# Seam 4: the definition-of-done demo as one Playwright browser test against a DEPLOYED environment.
+# A post-release smoke test, run by hand (Actions -> E2E smoke test -> Run workflow): never on push or PR.
+#
+# The environments live on a local cluster (https://sphone.localhost, https://prod.sphone.localhost), which
+# GitHub-hosted runners cannot reach. Run it on a self-hosted runner on the machine that hosts the cluster
+# (default runner label `self-hosted`), or simply run `npm run e2e` there (docs/setup.md "End-to-end smoke test").
+#
+# Secrets: E2E_STAFF_USERNAME / E2E_STAFF_PASSWORD = the environment's demo Staff account
+# (from deploy/apps/<env>/sphone-api-staff.sops.yaml). Without them the test decrypts that file with sops,
+# which needs sops and the age key on the runner.
+name: E2E smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Environment to test: https://prod.sphone.localhost (sphone-prod) or https://sphone.localhost (sphone-dev)"
+        required: true
+        default: "https://prod.sphone.localhost"
+      runner:
+        description: "Runner label that can reach the cluster"
+        required: true
+        default: "self-hosted"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ inputs.base_url }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: Playwright demo (${{ inputs.base_url }})
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: e2e
+    env:
+      E2E_BASE_URL: ${{ inputs.base_url }}
+      STAFF_USERNAME: ${{ secrets.E2E_STAFF_USERNAME }}
+      STAFF_PASSWORD: ${{ secrets.E2E_STAFF_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      - run: npm ci
+      - name: Type-check
+        run: npm run typecheck
+      - name: Install Chromium
+        run: npx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
+      - name: Run the demo
+        run: npm run e2e
+      - name: Upload the Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          # The report carries no traces in CI (see playwright.config.ts) and never the Staff password.
+          path: e2e/playwright-report
+          retention-days: 14
