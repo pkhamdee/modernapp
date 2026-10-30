@@ -41,7 +41,7 @@ export function StaffSignInPage() {
   }
 
   return (
-    <section className="card staff-sign-in" aria-labelledby="staff-sign-in-heading">
+    <section className="card column-narrow" aria-labelledby="staff-sign-in-heading">
       <h1 id="staff-sign-in-heading">เข้าสู่ระบบพนักงาน</h1>
       <p className="muted">สำหรับพนักงาน eShop Co. เท่านั้น</p>
       {session?.role === 'Customer' && (

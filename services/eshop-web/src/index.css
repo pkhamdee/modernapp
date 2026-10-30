@@ -1165,24 +1165,6 @@ button.header-link {
   letter-spacing: 0.02em;
 }
 
-.schedule {
-  width: 100%;
-  border-collapse: collapse;
-  font-variant-numeric: tabular-nums;
-}
-
-.schedule th,
-.schedule td {
-  padding: 0.5rem 0.25rem;
-  border-bottom: 1px solid var(--line);
-  text-align: left;
-}
-
-.schedule th:last-child,
-.schedule td:last-child {
-  text-align: right;
-}
-
 .contract-list {
   list-style: none;
   margin: 0;
@@ -1269,20 +1251,104 @@ button.header-link {
   color: var(--brand);
 }
 
+/* ---- Customer forms and personal screens (#57) ------------------------------------------------------------
+ * Forms (sign-in, SMS code, Apply, Offer acceptance) and the short personal screens (Application status, Account,
+ * the list of Contracts) are one ~480px column centred in the frame at every size. A Contract, with its terms,
+ * Installments and Payments, gets a wider column: its terms in two columns on a phone and three from tablet, and
+ * its lists as cards below desktop and tables from it (ResponsiveList).
+ */
+.column-narrow {
+  width: 100%;
+  max-width: 480px;
+  margin-inline: auto;
+}
+
+/* Fields never grow wider than the column (a long Branch name in a select, a file input's own width). */
+.column-narrow .form,
+.column-narrow .form-field {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.column-narrow .form-field select {
+  max-width: 100%;
+}
+.column-wide {
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+}
+
+/* Terms (label over value): long values wrap rather than push the page wider than a 360px phone. */
+.column-narrow .terms,
+.column-wide .terms {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.column-narrow .terms dd,
+.column-wide .terms dd {
+  overflow-wrap: anywhere;
+}
+
+.column-wide h2 {
+  margin-top: 1.5rem;
+}
+
+/* Amounts and dates line up in the Contract's lists. */
+.column-wide .list-cards,
+.column-wide .list-table,
+.column-wide .list-summary {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (min-width: 768px) {
+  /* tablet */
+  .column-wide .terms {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* The shared list inside a white card: cards and the total stand out on the page background colour. */
+.card .list-card,
+.card .list-summary {
+  background: var(--background);
+}
+
+/* ResponsiveList's summary (e.g. the Payments total): a line after the cards on a phone, a footer row on desktop. */
+.list-summary {
+  margin: 0.75rem 0 0;
+  padding: 0.9rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.list-summary .list-field {
+  grid-template-columns: minmax(6rem, 35%) minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.list-summary dd,
+.list-table tfoot th,
+.list-table tfoot td {
+  font-weight: 700;
+}
+
+.list-table tfoot th,
+.list-table tfoot td {
+  border-top: 2px solid var(--line);
+  border-bottom: 0;
+}
+
+/* ---- end Customer forms and personal screens (#57) ---- */
+
 /* ==========================================================================================================
  * Staff forms (#56)
  * Every Staff form fits a 360px phone with its fields stacked. Staff sign-in is one ~480px centred column at
  * every size; the other forms stop at a readable width on a desktop and put related fields side by side.
  * ========================================================================================================== */
 
-/* With no sidebar (sign-in) the page column is centred in the window; beside the sidebar it fills the rest. */
+/* With no sidebar (sign-in, a .column-narrow card) the page column is centred in the window; beside the sidebar
+   it fills the rest. */
 .staff-main {
-  margin-inline: auto;
-}
-
-.staff-sign-in {
-  width: 100%;
-  max-width: 480px;
   margin-inline: auto;
 }
 

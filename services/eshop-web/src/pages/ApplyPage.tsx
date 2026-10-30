@@ -53,7 +53,7 @@ export function ApplyPage() {
 
   if (!eligibility.data.eligible) {
     return (
-      <section className="card">
+      <section className="card column-narrow">
         {backToProduct}
         <h1>ยังสมัครไม่ได้</h1>
         <p role="alert">{ineligibleMessage(eligibility.data.reason, eligibility.data.reapplyFrom)}</p>
@@ -69,7 +69,7 @@ export function ApplyPage() {
   const plan = plans.data.plans.find((p) => p.term === term)
   if (!plan) {
     return (
-      <section className="card">
+      <section className="card column-narrow">
         {backToProduct}
         <h1>เลือกแผนผ่อนชำระก่อน</h1>
         <p>กรุณาเลือกจำนวนงวดและเงินดาวน์ในหน้าสินค้า</p>
@@ -147,7 +147,7 @@ function ApplyForm(props: {
   }
 
   return (
-    <section className="card">
+    <section className="card column-narrow">
       {props.backLink}
       <h1>สมัครผ่อน {props.product.name}</h1>
       <dl className="terms">

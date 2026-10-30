@@ -45,7 +45,7 @@ export function ApplicationPage() {
   // Under 20 (known once the ID is verified): Eligibility failed, so no Application exists.
   if (error instanceof ApiError && error.status === 410) {
     return (
-      <section className="card application">
+      <section className="card application column-narrow">
         <div className="decision decision-rejected" role="alert">
           <h1>ไม่ผ่านคุณสมบัติผู้สมัคร</h1>
           <p>ผู้สมัครต้องมีอายุ 20 ปีขึ้นไป</p>
@@ -63,7 +63,7 @@ export function ApplicationPage() {
   }
 
   return (
-    <section className="card application">
+    <section className="card application column-narrow">
       <Decision application={application} />
       <dl className="terms">
         <div>

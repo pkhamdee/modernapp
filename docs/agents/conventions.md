@@ -154,8 +154,16 @@ eshop-sync-master:
   (`StaffLayout.tsx`) have a sidebar from 1280 px and a slide-out menu behind a button below it.
 - Lists of rows (Staff lists, a Contract's Installments and Payments) use `components/ResponsiveList.tsx`, not
   per-page markup: give it `label`, `columns` (`{ label, cell, align?, block? }`, the first one names the row),
-  `rows`, `rowKey`, and optionally `rowLink` / `dimmed`. It renders a `<table>` from 1280 px and a list of cards
+  `rows`, `rowKey`, and optionally `rowLink` / `dimmed` / `summary` (a total line: a table footer row, or a line
+  after the cards). It renders a `<table>` from 1280 px and a list of cards
   (each value beside its column label) below, never both.
+- Customer forms (sign-in, SMS code, Apply, Offer) and short personal screens (Application, Account, Contracts)
+  sit in `.column-narrow` (~480 px, centred, at every size); a Contract in `.column-wide` (960 px). e2e checks a
+  form with `expectFormColumn(field)` and the 360 px phone with `expectFitsNarrowestPhone(page)`.
+- Staff sign-in is a `.column-narrow` card too. Other Staff forms (Product, Lot, new Auction) are `.staff-form`
+  cards (full width on a phone, at most 760 px) and put two related fields in a `.staff-field-pair` (stacked on a
+  phone, side by side from 768 px). e2e runs a Staff session at 360 px with `atNarrowestPhone(page)` and checks
+  pairs with `placement(first, second)`.
 - e2e: Customer sections are reached with `navigateTo(page, 'สินค้า' | 'ประมูล' | 'บัญชีของฉัน' | 'เข้าสู่ระบบ')`
   in `e2e/tests/steps.ts` (menu on phone, top bar on desktop), Staff sections with `navigateStaffTo(page, …)`
   (slide-out menu on phone, sidebar on desktop); `isPhone()` tells the projects apart. `expectResponsiveList`

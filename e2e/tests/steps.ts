@@ -208,10 +208,12 @@ export class Phone {
 export async function signInCustomer(page: Page, phone: Phone, mobileNumber: string) {
   const before = await phone.received()
   await visit(page, '/sign-in?next=/account')
+  await expectFormColumn(page.getByLabel('เบอร์มือถือ'))
   await page.getByLabel('เบอร์มือถือ').fill(mobileNumber)
   await page.getByRole('button', { name: 'ขอรหัส SMS' }).click()
   await expect(page.getByRole('heading', { name: 'กรอกรหัสยืนยัน' })).toBeVisible()
   await expectPageFits(page)
+  await expectFormColumn(page.getByLabel('รหัส SMS'))
   await page.getByLabel('รหัส SMS').fill(await phone.codeAfter(before))
   await page.getByRole('button', { name: 'ยืนยัน', exact: true }).click()
   await expect(page).toHaveURL(/\/account$/)
@@ -249,8 +251,14 @@ export async function applyForHirePurchase(
 
   await expect(page.getByLabel('เลขประจำตัวประชาชน')).toBeVisible()
   await expectPageFits(page)
+  await expectFormColumn(page.getByLabel('เลขประจำตัวประชาชน'))
   await page.getByLabel('เลขประจำตัวประชาชน').fill(application.idNumber)
-  await page.getByLabel('รูปถ่ายบัตรประชาชน (1 รูป)').setInputFiles(PHOTO)
+  // The ID card photo asks phones for the rear camera; a desktop browser ignores that and opens its file picker.
+  const idCardPhoto = page.getByLabel('รูปถ่ายบัตรประชาชน (1 รูป)')
+  await expect(idCardPhoto).toHaveAttribute('capture', 'environment')
+  const fileChooser = page.waitForEvent('filechooser')
+  await idCardPhoto.click()
+  await (await fileChooser).setFiles(PHOTO)
   await page.getByRole('radio', { name: 'รับสินค้าที่สาขา' }).check()
   await page.getByRole('combobox', { name: 'สาขา', exact: true }).selectOption(application.branch)
   await page.getByRole('button', { name: 'ส่งคำขอ' }).click()
@@ -312,6 +320,42 @@ export async function placement(first: Locator, second: Locator): Promise<'besid
   if (b.x >= a.x + a.width && b.y < a.y + a.height) return 'beside'
   if (b.y >= a.y + a.height) return 'below'
   return 'overlapping'
+}
+
+/**
+ * A Customer form (sign-in, SMS code, Apply, Offer acceptance) is one narrow column centred in the window at every
+ * size (#57): `field` is a full-width field of the form, so it is at most 480px wide and its middle is the
+ * window's middle (within a pixel).
+ */
+export async function expectFormColumn(field: Locator) {
+  await expect(field).toBeVisible()
+  const box = await field.boundingBox()
+  if (!box) throw new Error('expectFormColumn: the field must be visible')
+  const windowWidth = await field.page().evaluate(() => document.documentElement.clientWidth)
+  expect(box.width, 'form column width (px)').toBeLessThanOrEqual(480)
+  expect(Math.abs(box.x + box.width / 2 - windowWidth / 2), 'form column off centre by (px)').toBeLessThanOrEqual(1)
+}
+
+/**
+ * In the phone project, also checks the page at the narrowest supported phone, 360px wide (#57), then goes back
+ * to the project's size. A no-op on desktop.
+ */
+export async function expectFitsNarrowestPhone(page: Page) {
+  if (!isPhone()) return
+  const size = page.viewportSize()
+  await page.setViewportSize({ width: 360, height: size?.height ?? 800 })
+  await expectPageFits(page)
+  if (size) await page.setViewportSize(size)
+}
+
+/**
+ * The rows of a list shown with the shared table/cards pattern (#55), named `name`: the table's body rows on
+ * desktop (not its header or total), the cards on a phone.
+ */
+export function listRows(page: Page, name: string): Locator {
+  return isPhone()
+    ? page.getByRole('list', { name, exact: true }).getByRole('listitem')
+    : page.getByRole('table', { name, exact: true }).locator('tbody').getByRole('row')
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   type Contract,
   type ContractSummary,
 } from '../api/contracts.ts'
+import { ResponsiveList } from '../components/ResponsiveList.tsx'
 import { Status } from '../components/Status.tsx'
 import { formatBaht, formatDate } from '../format.ts'
 
@@ -30,7 +31,7 @@ export function ContractPage() {
   const c = contract.data
 
   return (
-    <section className="card application">
+    <section className="card application column-wide">
       <Link to="/contracts" className="back-link">
         ← สัญญาของฉัน
       </Link>
@@ -91,57 +92,34 @@ export function ContractPage() {
       {c.installments.some((i) => i.dueDate === null) && (
         <p className="muted">กำหนดชำระจะแสดงหลังรับสินค้า งวดแรกครบกำหนด 1 เดือนหลังวันรับสินค้า</p>
       )}
-      <table className="schedule">
-        <thead>
-          <tr>
-            <th scope="col">งวดที่</th>
-            <th scope="col">กำหนดชำระ</th>
-            <th scope="col">ค่างวด</th>
-          </tr>
-        </thead>
-        <tbody>
-          {c.installments.map((i) => (
-            <tr key={i.number}>
-              <td>{i.number}</td>
-              <td>{i.dueDate ? formatDate(i.dueDate) : 'รอรับสินค้า'}</td>
-              <td>{formatBaht(i.amount)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ResponsiveList
+        label="ตารางผ่อนชำระ"
+        columns={[
+          { label: 'งวดที่', cell: (i) => i.number },
+          { label: 'กำหนดชำระ', cell: (i) => (i.dueDate ? formatDate(i.dueDate) : 'รอรับสินค้า') },
+          { label: 'ค่างวด', cell: (i) => formatBaht(i.amount), align: 'end' },
+        ]}
+        rows={c.installments}
+        rowKey={(i) => i.number}
+      />
 
       <h2>การชำระเงิน</h2>
       {c.payments.length === 0 ? (
         <p className="muted">ยังไม่มีการชำระค่างวด</p>
       ) : (
-        <table className="schedule">
-          <thead>
-            <tr>
-              <th scope="col">วันที่ชำระ</th>
-              <th scope="col">งวดที่</th>
-              <th scope="col">ช่องทาง</th>
-              <th scope="col">จำนวนเงิน</th>
-            </tr>
-          </thead>
-          <tbody>
-            {c.payments.map((p, index) => (
-              <tr key={`${p.paidAt}-${index}`}>
-                <td>{formatDate(p.paidAt)}</td>
-                <td>{p.installmentNumber ?? '–'}</td>
-                <td>{PAYMENT_CHANNEL_LABELS[p.channel] ?? p.channel}</td>
-                <td>{formatBaht(p.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row" colSpan={3}>
-                ชำระแล้วทั้งหมด
-              </th>
-              <td>{formatBaht(c.amountPaid)}</td>
-            </tr>
-          </tfoot>
-        </table>
+        <ResponsiveList
+          label="การชำระเงิน"
+          columns={[
+            { label: 'วันที่ชำระ', cell: (p) => formatDate(p.paidAt) },
+            { label: 'งวดที่', cell: (p) => p.installmentNumber ?? '–' },
+            { label: 'ช่องทาง', cell: (p) => PAYMENT_CHANNEL_LABELS[p.channel] ?? p.channel },
+            { label: 'จำนวนเงิน', cell: (p) => formatBaht(p.amount), align: 'end' },
+          ]}
+          // Payments have no id of their own here: the order the Enterprise System gave them keeps keys unique.
+          rows={c.payments.map((payment, index) => ({ ...payment, index }))}
+          rowKey={(p) => `${p.paidAt}-${p.index}`}
+          summary={{ label: 'ชำระแล้วทั้งหมด', value: formatBaht(c.amountPaid) }}
+        />
       )}
       <p className="muted">สถานะและการชำระเงินมาจากระบบสัญญาของบริษัท อาจล่าช้าได้ไม่เกิน 30 วินาที</p>
     </section>
@@ -155,7 +133,7 @@ export function ContractsPage() {
   if (contracts.status !== 'success') return <Status state={contracts} />
 
   return (
-    <section className="card">
+    <section className="card column-narrow">
       <h1>สัญญาของฉัน</h1>
       {contracts.data.length === 0 ? (
         <p className="muted">ยังไม่มีสัญญาเช่าซื้อ</p>

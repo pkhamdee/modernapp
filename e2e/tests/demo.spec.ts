@@ -6,10 +6,13 @@ import {
   bangkokLocal,
   cardsAcross,
   customerHeader,
+  expectFitsNarrowestPhone,
+  expectFormColumn,
   expectPageFits,
   expectResponsiveList,
   gridColumns,
   isPhone,
+  listRows,
   navigateStaffTo,
   navigateTo,
   newIdNumber,
@@ -176,16 +179,10 @@ test('staff forms: a narrow centred sign-in, and the Product form with its photo
       await page.setViewportSize({ width, height: 800 })
       await visit(page, '/staff/sign-in')
       const column = page.getByRole('region', { name: 'เข้าสู่ระบบพนักงาน' })
-      await expect(column.getByLabel('ชื่อผู้ใช้')).toBeVisible()
+      await expectFormColumn(column) // at most 480px, centred in the window
       const box = await column.boundingBox()
-      if (!box) throw new Error('sign-in column not on screen')
-      expect(box.width).toBeLessThanOrEqual(480)
-      if (isPhone()) {
-        expect(box.width).toBeGreaterThanOrEqual(width - 2 * 24) // nearly the whole phone
-      } else {
-        expect(box.width).toBeGreaterThanOrEqual(440)
-        expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThanOrEqual(1) // centred
-      }
+      // ...and not much narrower: nearly the whole phone, the full ~480px column wherever it fits.
+      expect(box?.width).toBeGreaterThanOrEqual(isPhone() ? width - 2 * 24 : 440)
     })
   }
 
@@ -294,6 +291,8 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
 
   await test.step('Customer signs in by SMS (code from the mock inbox)', async () => {
     await signInCustomer(page, phone, mobileNumber)
+    await expect(page.getByRole('heading', { name: 'บัญชีของฉัน' })).toBeVisible()
+    await expectFitsNarrowestPhone(page)
   })
 
   await test.step('Customer applies for an iPhone with an ID card photo and is Approved within 60 s', async () => {
@@ -306,6 +305,7 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
     })
     await expect(page.getByRole('heading', { name: 'อนุมัติแล้ว' })).toBeVisible({ timeout: 60_000 })
     await expectPageFits(page)
+    await expectFitsNarrowestPhone(page)
   })
 
   let contractNumber = ''
@@ -313,14 +313,32 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
     await page.getByRole('link', { name: 'ดูข้อเสนอและยืนยัน' }).click()
     await expect(page.getByRole('heading', { name: 'ข้อเสนอเช่าซื้อ' })).toBeVisible()
     await expectPageFits(page)
+    // The Offer's terms: price, Down Payment, Term, Installment and expiry.
+    for (const term of ['ราคา (ล็อกไว้ ณ วันที่สมัคร)', 'เงินดาวน์', 'จำนวนงวด', 'ค่างวด']) {
+      await expect(page.getByRole('term').filter({ hasText: term })).toBeVisible()
+    }
+    await expect(page.getByRole('definition').filter({ hasText: '฿1,000' })).toBeVisible()
+    await expect(page.getByRole('definition').filter({ hasText: '12 งวด' })).toBeVisible()
+    await expect(page.getByText(/ข้อเสนอนี้ใช้ได้ถึง/)).toBeVisible()
+    await expectFitsNarrowestPhone(page)
     const before = await phone.received()
     await page.getByRole('button', { name: 'ยอมรับข้อเสนอ (รับรหัสทาง SMS)' }).click()
+    await expectFormColumn(page.getByLabel('รหัส SMS เพื่อยืนยันการยอมรับข้อเสนอ'))
     await page.getByLabel('รหัส SMS เพื่อยืนยันการยอมรับข้อเสนอ').fill(await phone.codeAfter(before))
     await page.getByRole('button', { name: 'ยืนยันและทำสัญญา' }).click()
     await expect(page).toHaveURL(/\/contracts\/SP-\d{6}-\d{6}$/)
     contractNumber = (await page.locator('.contract-number').innerText()).trim()
     expect(contractNumber).toMatch(/^SP-\d{6}-\d{6}$/)
     await expectPageFits(page)
+  })
+
+  await test.step('the Contract lists its Installments: a table on desktop, cards on phone', async () => {
+    await expectResponsiveList(page, 'ตารางผ่อนชำระ', ['งวดที่', 'กำหนดชำระ', 'ค่างวด'])
+    await expect(listRows(page, 'ตารางผ่อนชำระ')).toHaveCount(12)
+    // Due dates are set at Handover.
+    await expect(listRows(page, 'ตารางผ่อนชำระ').filter({ hasText: 'รอรับสินค้า' })).toHaveCount(12)
+    await expect(page.getByText('ยังไม่มีการชำระค่างวด')).toBeVisible()
+    await expectFitsNarrowestPhone(page)
   })
 
   const enterpriseContract = () =>
@@ -365,7 +383,8 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
 
     await page.reload()
     await expect(page.locator('.handover-stage')).toContainText('รับสินค้าแล้ว')
-    await expect(page.getByRole('cell', { name: 'รอรับสินค้า' })).toHaveCount(0) // due dates are set now
+    await expect(listRows(page, 'ตารางผ่อนชำระ')).toHaveCount(12)
+    await expect(listRows(page, 'ตารางผ่อนชำระ').filter({ hasText: 'รอรับสินค้า' })).toHaveCount(0) // due dates set
     await expectPageFits(page)
   })
 
@@ -378,7 +397,9 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
       await page.reload()
       await expect(page.getByText('ชำระแล้วทั้งหมด')).toBeVisible({ timeout: 1_000 })
     }).toPass({ timeout: 120_000, intervals: [5_000] })
-    await expect(page.locator('table.schedule').last().locator('tbody tr')).toHaveCount(1)
+    await expectResponsiveList(page, 'การชำระเงิน', ['วันที่ชำระ', 'งวดที่', 'ช่องทาง', 'จำนวนเงิน'])
+    await expect(listRows(page, 'การชำระเงิน')).toHaveCount(1)
+    await expectFitsNarrowestPhone(page)
     await expectPageFits(page)
   })
 
