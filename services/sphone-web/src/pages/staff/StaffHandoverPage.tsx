@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { formatThaiDate } from '../../api/applications.ts'
 import { problemMessage, useReloadableApi } from '../../api/client.ts'
 import { CONTRACT_STATUS_LABELS } from '../../api/contracts.ts'
 import {
@@ -13,7 +12,7 @@ import {
   type Handover,
 } from '../../api/handovers.ts'
 import { Status } from '../../components/Status.tsx'
-import { formatBaht } from '../../format.ts'
+import { formatBaht, formatDate } from '../../format.ts'
 
 /**
  * One Handover: who and what, the Customer's ID card photo (to check identity), recording the Down Payment
@@ -97,7 +96,7 @@ export function StaffHandoverPage() {
         {h.handedOverAt && (
           <div>
             <dt>ส่งมอบเมื่อ</dt>
-            <dd>{formatThaiDate(h.handedOverAt)}</dd>
+            <dd>{formatDate(h.handedOverAt)}</dd>
           </div>
         )}
       </dl>

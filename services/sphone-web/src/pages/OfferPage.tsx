@@ -5,7 +5,7 @@ import { ApiError, useReloadableApi } from '../api/client.ts'
 import { acceptOffer, declineOffer, offerPaths, requestAcceptanceCode, type Offer } from '../api/offers.ts'
 import { useAuth } from '../auth/context.ts'
 import { Status } from '../components/Status.tsx'
-import { formatBaht } from '../format.ts'
+import { formatBaht, formatDateTime } from '../format.ts'
 
 const MESSAGES: Record<string, string> = {
   'code-invalid': 'รหัสไม่ถูกต้อง กรุณาตรวจสอบแล้วลองใหม่',
@@ -16,12 +16,6 @@ const MESSAGES: Record<string, string> = {
   'offer-accepted': 'ข้อเสนอนี้ได้รับการยอมรับแล้ว',
   'active-contract': 'คุณมีสัญญาเช่าซื้อที่ยังไม่สิ้นสุดอยู่แล้ว',
 }
-
-const dateTimeFormat = new Intl.DateTimeFormat('th-TH', {
-  dateStyle: 'long',
-  timeStyle: 'short',
-  timeZone: 'Asia/Bangkok',
-})
 
 /**
  * The Offer of an Approved Application: the locked price, Down Payment, Term, Installment and total payable.
@@ -80,7 +74,7 @@ export function OfferPage() {
 function OfferState({ offer }: { offer: Offer }) {
   switch (offer.status) {
     case 'open':
-      return <p className="muted">ข้อเสนอนี้ใช้ได้ถึง {dateTimeFormat.format(new Date(offer.expiresAt))}</p>
+      return <p className="muted">ข้อเสนอนี้ใช้ได้ถึง {formatDateTime(offer.expiresAt)}</p>
     case 'accepted':
       return (
         <div className="decision decision-approved" role="status">

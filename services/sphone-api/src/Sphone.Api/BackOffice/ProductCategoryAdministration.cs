@@ -42,7 +42,7 @@ internal static class ProductCategoryAdministration
         errors.Require(
             request.FlatRate is > 0m and <= MaxFlatRate && decimal.Round(request.FlatRate, 4) == request.FlatRate,
             "flatRate",
-            "อัตราดอกเบี้ยต้องมากกว่า 0% และไม่เกิน 10% ต่อเดือน (ทศนิยมไม่เกิน 2 ตำแหน่ง)");
+            "อัตราดอกเบี้ยคงที่ต้องมากกว่า 0% และไม่เกิน 10% ต่อเดือน (ทศนิยมไม่เกิน 2 ตำแหน่ง)");
         errors.Require(
             InstallmentPlan.Terms.Contains(request.LongestTerm),
             "longestTerm",

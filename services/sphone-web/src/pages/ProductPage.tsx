@@ -4,7 +4,7 @@ import { ApiError, useApi } from '../api/client.ts'
 import { InstallmentCalculator } from '../components/InstallmentCalculator.tsx'
 import { ProductPhoto } from '../components/ProductPhoto.tsx'
 import { Status } from '../components/Status.tsx'
-import { formatBaht, formatMonthlyRate } from '../format.ts'
+import { formatBaht, formatFlatRate } from '../format.ts'
 import { NotFoundPage } from './NotFoundPage.tsx'
 
 export function ProductPage() {
@@ -29,8 +29,8 @@ export function ProductPage() {
       <p>{description}</p>
       <dl className="terms">
         <div>
-          <dt>ดอกเบี้ยคงที่</dt>
-          <dd>{formatMonthlyRate(productCategory.flatRate)} ต่อเดือน</dd>
+          <dt>อัตราดอกเบี้ยคงที่</dt>
+          <dd>{formatFlatRate(productCategory.flatRate)} ต่อเดือน</dd>
         </div>
         <div>
           <dt>ผ่อนได้สูงสุด</dt>
