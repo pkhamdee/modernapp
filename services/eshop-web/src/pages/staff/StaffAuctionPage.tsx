@@ -17,6 +17,7 @@ import { formatMobileNumber } from '../../api/auth.ts'
 import { backOfficePaths, type BackOfficeBranch } from '../../api/backOffice.ts'
 import { problemMessage, useApi, useReloadableApi } from '../../api/client.ts'
 import { ProductPhoto } from '../../components/ProductPhoto.tsx'
+import { ResponsiveList } from '../../components/ResponsiveList.tsx'
 import { Status } from '../../components/Status.tsx'
 import { formatBaht, formatDateTime } from '../../format.ts'
 
@@ -59,44 +60,66 @@ export function StaffAuctionPage() {
           }}
         />
       )}
-      <ul className="staff-list">
-        {a.lots.map((lot) =>
-          editing === lot.id ? (
-            <li key={lot.id}>
-              <LotForm
-                auctionId={a.id}
-                lot={lot}
-                onDone={() => {
-                  setEditing(null)
-                  reload()
-                }}
-              />
-            </li>
-          ) : (
-            <li key={lot.id} className="staff-item">
-              <ProductPhoto src={lot.photoUrls[0] ?? null} alt="" />
-              <div className="staff-item-body">
-                <strong>{lot.title}</strong>
-                <span className="muted">
-                  เริ่มต้น {formatBaht(lot.startingPrice)} · {lot.photoUrls.length} รูป ·{' '}
-                  {lot.highestBid === null ? 'ยังไม่มีผู้เสนอราคา' : `สูงสุด ${formatBaht(lot.highestBid)} (${lot.bidCount} ครั้ง)`}
+      {typeof editing === 'number' && (
+        <LotForm
+          auctionId={a.id}
+          lot={a.lots.find((lot) => lot.id === editing) ?? null}
+          onDone={() => {
+            setEditing(null)
+            reload()
+          }}
+        />
+      )}
+      {a.lots.length > 0 && (
+        <ResponsiveList
+          label="รายการประมูล"
+          rows={a.lots}
+          rowKey={(lot) => lot.id}
+          columns={[
+            {
+              label: 'รายการ',
+              cell: (lot) => (
+                <span className="list-title">
+                  <ProductPhoto src={lot.photoUrls[0] ?? null} alt="" />
+                  {lot.title}
                 </span>
-                <div className="staff-actions">
-                  <Link to={`/auction/lots/${lot.id}`} className="button button-small button-outline">
-                    ดูหน้าประมูล
-                  </Link>
-                  {!closed && lot.bidCount === 0 && editing === null && (
-                    <button type="button" className="button button-small button-outline" onClick={() => setEditing(lot.id)}>
-                      แก้ไข
-                    </button>
-                  )}
+              ),
+            },
+            { label: 'ราคาเริ่มต้น', cell: (lot) => formatBaht(lot.startingPrice), align: 'end' },
+            { label: 'รูป', cell: (lot) => `${lot.photoUrls.length} รูป`, align: 'end' },
+            {
+              label: 'การเสนอราคา',
+              cell: (lot) =>
+                lot.highestBid === null
+                  ? 'ยังไม่มีผู้เสนอราคา'
+                  : `สูงสุด ${formatBaht(lot.highestBid)} (${lot.bidCount} ครั้ง)`,
+            },
+            {
+              label: 'จัดการ',
+              block: true,
+              cell: (lot) => (
+                <div className="lot-manage">
+                  <div className="staff-actions">
+                    <Link to={`/auction/lots/${lot.id}`} className="button button-small button-outline">
+                      ดูหน้าประมูล
+                    </Link>
+                    {!closed && lot.bidCount === 0 && editing === null && (
+                      <button
+                        type="button"
+                        className="button button-small button-outline"
+                        onClick={() => setEditing(lot.id)}
+                      >
+                        แก้ไข
+                      </button>
+                    )}
+                  </div>
+                  {closed && <LotAfterClose lot={lot} auctionId={a.id} onChange={reload} />}
                 </div>
-                {closed && <LotAfterClose lot={lot} auctionId={a.id} onChange={reload} />}
-              </div>
-            </li>
-          ),
-        )}
-      </ul>
+              ),
+            },
+          ]}
+        />
+      )}
       {a.lots.length === 0 && editing === null && <p className="muted">ยังไม่มีรายการประมูล</p>}
     </section>
   )

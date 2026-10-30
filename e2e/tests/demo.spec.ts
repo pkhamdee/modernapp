@@ -467,7 +467,9 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     await expect(staff.getByRole('img', { name: 'รูปที่ 1' })).toBeVisible()
     await expectPageFits(staff)
     await staff.getByRole('button', { name: 'บันทึก', exact: true }).click()
-    const lot = staff.locator('li', { hasText: title })
+    // The Auction's Lots use the shared Staff list (#46): a table on desktop, cards on a phone.
+    await expectResponsiveList(staff, 'รายการประมูล', ['รายการ', 'ราคาเริ่มต้น', 'รูป', 'การเสนอราคา', 'จัดการ'])
+    const lot = listRows(staff, 'รายการประมูล').filter({ hasText: title })
     lotPath = (await lot.getByRole('link', { name: 'ดูหน้าประมูล' }).getAttribute('href')) ?? ''
     expect(lotPath).toMatch(/^\/auction\/lots\/\d+$/)
     await expectPageFits(staff)
