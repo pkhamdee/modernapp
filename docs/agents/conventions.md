@@ -194,7 +194,7 @@ eshop-sync-master:
   header of `deploy/apps/dev/image-automation.yaml`. Prod: see the header of `deploy/apps/prod/kustomization.yaml`
   and `docs/git-workflow.md` ("Adding a service"). Prod has no image automation of its own; it follows the newest
   release tag via `clusters/local/prod-release.yaml`.
-- Base Deployments use untagged `ghcr.io/pkhamdee/<svc>`; tags are set only by the setter markers
+- Base Deployments use untagged `docker.io/pkhamdee/<svc>`; tags are set only by the setter markers
   (`# {"$imagepolicy": "<ns>:<policy>:tag"}`) that Flux rewrites. Leave the tag values to Flux.
 - Flux image-automation commits touch only `deploy/**` and `clusters/**`, which CI ignores (`paths-ignore`); a commit
   mixing code with those paths still runs CI.

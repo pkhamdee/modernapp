@@ -1,4 +1,4 @@
-# eshop-dev follows main: CI pushes ghcr.io/pkhamdee/<service>:main-<sha>-<unix-ts>; each ImagePolicy picks the
+# eshop-dev follows main: CI pushes docker.io/pkhamdee/<service>:main-<sha>-<unix-ts>; each ImagePolicy picks the
 # newest by timestamp, and the ImageUpdateAutomation rewrites the setter markers in kustomization.yaml and
 # commits to main. To add a service: one ImageRepository + ImagePolicy below, and one `images:` entry with a
 # `# {"$imagepolicy": "eshop-dev:<service>:tag"}` marker in kustomization.yaml.
@@ -7,7 +7,7 @@ kind: ImageRepository
 metadata:
   name: eshop-api
 spec:
-  image: ghcr.io/pkhamdee/eshop-api
+  image: docker.io/pkhamdee/eshop-api
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -29,7 +29,7 @@ kind: ImageRepository
 metadata:
   name: eshop-web
 spec:
-  image: ghcr.io/pkhamdee/eshop-web
+  image: docker.io/pkhamdee/eshop-web
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -51,7 +51,7 @@ kind: ImageRepository
 metadata:
   name: eshop-node-api
 spec:
-  image: ghcr.io/pkhamdee/eshop-node-api
+  image: docker.io/pkhamdee/eshop-node-api
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -73,7 +73,7 @@ kind: ImageRepository
 metadata:
   name: eshop-sync-master
 spec:
-  image: ghcr.io/pkhamdee/eshop-sync-master
+  image: docker.io/pkhamdee/eshop-sync-master
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1

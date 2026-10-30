@@ -1,5 +1,5 @@
 # The shared mocks follow main (they are test equipment, not released): CI pushes
-# ghcr.io/pkhamdee/<service>:main-<sha>-<unix-ts>, each ImagePolicy picks the newest by timestamp, and the
+# docker.io/pkhamdee/<service>:main-<sha>-<unix-ts>, each ImagePolicy picks the newest by timestamp, and the
 # ImageUpdateAutomation rewrites the setter markers in deploy/thirdparty/kustomization.yaml and commits to main.
 # To add a built mock: one ImageRepository + ImagePolicy below, and one `images:` entry with a
 # `# {"$imagepolicy": "thirdparty:<service>:tag"}` marker in kustomization.yaml.
@@ -8,7 +8,7 @@ kind: ImageRepository
 metadata:
   name: thirdparty-mock
 spec:
-  image: ghcr.io/pkhamdee/thirdparty-mock
+  image: docker.io/pkhamdee/thirdparty-mock
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1

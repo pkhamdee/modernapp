@@ -1,7 +1,7 @@
 # eshop-prod = one release tag, manifests and images alike (docs/git-workflow.md "How a tag reaches eshop-prod").
 #
 #   git push origin vX.Y.Z
-#     -> CI builds every service as ghcr.io/pkhamdee/<service>:X.Y.Z
+#     -> CI builds every service as docker.io/pkhamdee/<service>:X.Y.Z
 #     -> ImagePolicy eshop-release sees X.Y.Z, the newest release (plain X.Y.Z only: never main-<sha> or the
 #        CI dry run's 0.0.0-test.N)
 #     -> ImageUpdateAutomation eshop-prod commits ONE change to main (clusters/local): GitRepository
@@ -41,7 +41,7 @@ metadata:
   name: eshop-release
   namespace: flux-system
 spec:
-  image: ghcr.io/pkhamdee/eshop-api
+  image: docker.io/pkhamdee/eshop-api
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1

@@ -16,11 +16,11 @@ resources:
   - image-automation.yaml
 # Tags are written by Flux image automation (image-automation.yaml); do not edit by hand.
 images:
-  - name: ghcr.io/pkhamdee/eshop-api
+  - name: docker.io/pkhamdee/eshop-api
     newTag: main-b070357-1793334094 # {"$imagepolicy": "eshop-dev:eshop-api:tag"}
-  - name: ghcr.io/pkhamdee/eshop-web
+  - name: docker.io/pkhamdee/eshop-web
     newTag: main-b070357-1793334094 # {"$imagepolicy": "eshop-dev:eshop-web:tag"}
-  - name: ghcr.io/pkhamdee/eshop-node-api
+  - name: docker.io/pkhamdee/eshop-node-api
     newTag: main-b070357-1793334094 # {"$imagepolicy": "eshop-dev:eshop-node-api:tag"}
-  - name: ghcr.io/pkhamdee/eshop-sync-master
+  - name: docker.io/pkhamdee/eshop-sync-master
     newTag: main-b070357-1793334094 # {"$imagepolicy": "eshop-dev:eshop-sync-master:tag"}

@@ -21,7 +21,7 @@ spec:
       containers:
         - name: eshop-api
           # Tag set per environment by the overlay (Flux image automation).
-          image: ghcr.io/pkhamdee/eshop-api
+          image: docker.io/pkhamdee/eshop-api
           env:
             - name: DB_PASSWORD
               valueFrom:
