@@ -33,6 +33,19 @@ public sealed class CustomerSignInTests(SphoneApiFactory api)
     }
 
     [Fact]
+    public async Task The_sign_in_code_SMS_names_eShop()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var mobileNumber = TestData.NewMobileNumber();
+
+        await RequestCodeAsync(mobileNumber, ct);
+
+        var text = api.Sms.SentTo(mobileNumber).Last().Text;
+        Assert.Contains("eShop", text);
+        Assert.DoesNotContain("S Phone", text);
+    }
+
+    [Fact]
     public async Task First_sign_in_creates_the_Customer_and_later_sign_ins_reach_the_same_Customer()
     {
         var ct = TestContext.Current.CancellationToken;

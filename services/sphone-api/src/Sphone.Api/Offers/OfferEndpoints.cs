@@ -70,7 +70,7 @@ internal static class OfferEndpoints
         var minutes = (int)SmsCode.Lifetime.TotalMinutes;
         await sms.SendAsync(
             offer.Customer.MobileNumber,
-            $"รหัสยืนยันการยอมรับข้อเสนอเช่าซื้อ S Phone คือ {code} (ใช้ได้ภายใน {minutes} นาที) ห้ามบอกรหัสนี้กับผู้อื่น",
+            $"รหัสยืนยันการยอมรับข้อเสนอเช่าซื้อ eShop คือ {code} (ใช้ได้ภายใน {minutes} นาที) ห้ามบอกรหัสนี้กับผู้อื่น",
             cancellationToken);
 
         return TypedResults.Accepted((string?)null);

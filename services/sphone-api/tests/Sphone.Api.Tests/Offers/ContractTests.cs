@@ -49,7 +49,10 @@ public sealed partial class ContractTests(SphoneApiFactory api)
 
         Assert.Equal(HttpStatusCode.Accepted, (await customer.RequestAcceptanceCodeAsync(application.Offer!.Id)).StatusCode);
 
-        Assert.Contains("ยอมรับข้อเสนอ", api.Sms.SentTo(mobile).Last().Text);
+        var text = api.Sms.SentTo(mobile).Last().Text;
+        Assert.Contains("ยอมรับข้อเสนอ", text);
+        Assert.Contains("eShop", text);
+        Assert.DoesNotContain("S Phone", text);
     }
 
     [Fact]

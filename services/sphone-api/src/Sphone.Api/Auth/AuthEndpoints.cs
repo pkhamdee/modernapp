@@ -46,7 +46,7 @@ internal static partial class AuthEndpoints
         var minutes = (int)SmsCode.Lifetime.TotalMinutes;
         await sms.SendAsync(
             request.MobileNumber,
-            $"รหัสเข้าสู่ระบบ S Phone ของคุณคือ {code} (ใช้ได้ภายใน {minutes} นาที) ห้ามบอกรหัสนี้กับผู้อื่น",
+            $"รหัสเข้าสู่ระบบ eShop ของคุณคือ {code} (ใช้ได้ภายใน {minutes} นาที) ห้ามบอกรหัสนี้กับผู้อื่น",
             cancellationToken);
 
         return TypedResults.Accepted((string?)null);
