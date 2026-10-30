@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { baseURL, environment } from '../environment'
+import { environment, mockBaseURL } from '../environment'
 import {
   applyForHirePurchase,
   bangkokLocal,
@@ -19,7 +19,7 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
 }) => {
   const mobileNumber = newMobileNumber()
   const phone = await Phone.open(browser, mobileNumber)
-  const enterprise = await (await browser.newContext({ baseURL, ignoreHTTPSErrors: true })).newPage()
+  const enterprise = await (await browser.newContext({ baseURL: mockBaseURL, ignoreHTTPSErrors: true })).newPage()
 
   await test.step('Customer signs in by SMS (code from the mock inbox)', async () => {
     await signInCustomer(page, phone, mobileNumber)
