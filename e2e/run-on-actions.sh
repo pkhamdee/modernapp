@@ -45,13 +45,13 @@ dir=$(mktemp -d "$CACHE/run.XXXXXX")
 name="$LABEL-$(hostname -s)-$(date +%s)"
 runner_pid=
 cleanup() {
-  [ -n "$runner_pid" ] && kill "$runner_pid" 2>/dev/null && wait "$runner_pid" 2>/dev/null || true
+  if [ -n "$runner_pid" ] && kill "$runner_pid" 2>/dev/null; then wait "$runner_pid" 2>/dev/null || true; fi
   if [ -f "$dir/.runner" ]; then
     removal=$(gh api -X POST "repos/$REPO/actions/runners/remove-token" --jq .token)
     (cd "$dir" && ./config.sh remove --token "$removal" >/dev/null 2>&1) || true
   fi
   id=$(gh api "repos/$REPO/actions/runners" --jq ".runners[] | select(.name == \"$name\") | .id")
-  [ -n "$id" ] && gh api -X DELETE "repos/$REPO/actions/runners/$id" >/dev/null || true
+  if [ -n "$id" ]; then gh api -X DELETE "repos/$REPO/actions/runners/$id" >/dev/null || true; fi
   rm -rf "$dir"
 }
 trap cleanup EXIT
