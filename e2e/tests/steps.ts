@@ -1,5 +1,5 @@
 import { expect, type Browser, type Page } from '@playwright/test'
-import { baseURL } from '../environment'
+import { baseURL, mockBaseURL } from '../environment'
 
 // Browser steps shared by the demo test. Everything goes through the UI a person would use: the S Phone web app,
 // the mock SMS inbox and the mock Enterprise System admin tool (thirdparty-mock).
@@ -36,7 +36,7 @@ export class Phone {
   ) {}
 
   static async open(browser: Browser, mobileNumber: string): Promise<Phone> {
-    const context = await browser.newContext({ baseURL, ignoreHTTPSErrors: true })
+    const context = await browser.newContext({ baseURL: mockBaseURL, ignoreHTTPSErrors: true })
     return new Phone(await context.newPage(), mobileNumber)
   }
 
