@@ -10,6 +10,7 @@ import {
   type Contract,
   type ContractSummary,
 } from '../api/contracts.ts'
+import { ResponsiveList } from '../components/ResponsiveList.tsx'
 import { Status } from '../components/Status.tsx'
 import { formatBaht, formatDate } from '../format.ts'
 
@@ -91,24 +92,16 @@ export function ContractPage() {
       {c.installments.some((i) => i.dueDate === null) && (
         <p className="muted">กำหนดชำระจะแสดงหลังรับสินค้า งวดแรกครบกำหนด 1 เดือนหลังวันรับสินค้า</p>
       )}
-      <table className="schedule">
-        <thead>
-          <tr>
-            <th scope="col">งวดที่</th>
-            <th scope="col">กำหนดชำระ</th>
-            <th scope="col">ค่างวด</th>
-          </tr>
-        </thead>
-        <tbody>
-          {c.installments.map((i) => (
-            <tr key={i.number}>
-              <td>{i.number}</td>
-              <td>{i.dueDate ? formatDate(i.dueDate) : 'รอรับสินค้า'}</td>
-              <td>{formatBaht(i.amount)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ResponsiveList
+        label="ตารางผ่อนชำระ"
+        columns={[
+          { label: 'งวดที่', cell: (i) => i.number },
+          { label: 'กำหนดชำระ', cell: (i) => (i.dueDate ? formatDate(i.dueDate) : 'รอรับสินค้า') },
+          { label: 'ค่างวด', cell: (i) => formatBaht(i.amount), align: 'end' },
+        ]}
+        rows={c.installments}
+        rowKey={(i) => i.number}
+      />
 
       <h2>การชำระเงิน</h2>
       {c.payments.length === 0 ? (

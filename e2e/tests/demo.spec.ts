@@ -10,6 +10,7 @@ import {
   expectResponsiveList,
   gridColumns,
   isPhone,
+  listRows,
   navigateStaffTo,
   navigateTo,
   newIdNumber,
@@ -277,6 +278,15 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
     contractNumber = (await page.locator('.contract-number').innerText()).trim()
     expect(contractNumber).toMatch(/^SP-\d{6}-\d{6}$/)
     await expectPageFits(page)
+  })
+
+  await test.step('the Contract lists its Installments: a table on desktop, cards on phone', async () => {
+    await expectResponsiveList(page, 'ตารางผ่อนชำระ', ['งวดที่', 'กำหนดชำระ', 'ค่างวด'])
+    await expect(listRows(page, 'ตารางผ่อนชำระ')).toHaveCount(12)
+    // Due dates are set at Handover.
+    await expect(listRows(page, 'ตารางผ่อนชำระ').filter({ hasText: 'รอรับสินค้า' })).toHaveCount(12)
+    await expect(page.getByText('ยังไม่มีการชำระค่างวด')).toBeVisible()
+    await expectFitsNarrowestPhone(page)
   })
 
   const enterpriseContract = () =>

@@ -347,3 +347,13 @@ export async function expectFitsNarrowestPhone(page: Page) {
   await expectPageFits(page)
   if (size) await page.setViewportSize(size)
 }
+
+/**
+ * The rows of a list shown with the shared table/cards pattern (#55), named `name`: the table's body rows on
+ * desktop (not its header or total), the cards on a phone.
+ */
+export function listRows(page: Page, name: string): Locator {
+  return isPhone()
+    ? page.getByRole('list', { name, exact: true }).getByRole('listitem')
+    : page.getByRole('table', { name, exact: true }).locator('tbody').getByRole('row')
+}
