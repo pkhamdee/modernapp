@@ -38,6 +38,44 @@ export async function visit(page: Page, path: string) {
   await expectPageFits(page)
 }
 
+/** The Customer header's sections (#52). Account reads เข้าสู่ระบบ until the Customer signs in. */
+export type Section = 'สินค้า' | 'ประมูล' | 'บัญชีของฉัน' | 'เข้าสู่ระบบ'
+
+/** True in the phone project: the Customer header shows a menu button instead of the top bar. */
+export function isPhone(): boolean {
+  return test.info().project.name === 'phone'
+}
+
+/** The Customer header's menu button (phone) and its navigation (the menu on phone, the top bar from 768px). */
+export function customerHeader(page: Page) {
+  return {
+    menuButton: page.getByRole('banner').getByRole('button', { name: 'เมนู' }),
+    nav: page.getByRole('navigation', { name: 'เมนูหลัก' }),
+  }
+}
+
+/**
+ * Opens a Customer section the way a person would (#52): on a phone through the menu button, which announces
+ * open/closed and closes again once a link is followed; on a desktop straight from the top bar. Callers check the
+ * page they land on and then run expectPageFits.
+ */
+export async function navigateTo(page: Page, section: Section) {
+  const { menuButton, nav } = customerHeader(page)
+  if (isPhone()) {
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+    await expect(nav).toBeHidden()
+    await menuButton.click()
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+  } else {
+    await expect(menuButton).toBeHidden()
+  }
+  await nav.getByRole('link', { name: section, exact: true }).click()
+  if (isPhone()) {
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+    await expect(nav).toBeHidden()
+  }
+}
+
 /**
  * Which of the parallel workers runs this test (0, 1, …). Tests running at the same moment always have
  * different indexes, so putting it in generated numbers keeps the phone and desktop runs' Customers apart.
@@ -133,7 +171,10 @@ export async function applyForHirePurchase(
   page: Page,
   application: { product: RegExp; downPayment: number; term: number; idNumber: string; branch: string },
 ) {
-  await page.goto('/categories/mobile-phone')
+  await navigateTo(page, 'สินค้า')
+  await expect(page).toHaveURL(/\/$/)
+  await page.getByRole('navigation', { name: 'ประเภทสินค้า' }).getByRole('link', { name: 'มือถือ' }).click()
+  await expect(page).toHaveURL(/\/categories\/mobile-phone$/)
   await expect(page.getByRole('link', { name: application.product }).first()).toBeVisible()
   await expectPageFits(page)
   await page.getByRole('link', { name: application.product }).click()

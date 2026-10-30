@@ -1,3 +1,17 @@
+/*
+ * Breakpoints (#52), shared by every screen. Mobile-first: the base rules are the phone layout, and each wider
+ * layout adds a min-width query using exactly one of these widths. CSS can't put a variable in a media query, so
+ * write the literal and name it in a comment: @media (min-width: 768px) { tablet ... }.
+ *
+ *   phone    base, no query     designed for 360px and up; nothing may scroll sideways at 360px
+ *   tablet   min-width: 768px   full top bar instead of the menu button; two-column grids
+ *   wide     min-width: 1024px  Product and Lot pages put the photo beside the calculator / bidding panel
+ *   desktop  min-width: 1280px  desktop grids (3-4 columns), Staff sidebar and tables
+ *
+ * Content sits in .frame: centred, at most 1200px wide, with a 1rem gutter. At 200% zoom a 1280px window is
+ * 640 CSS px wide and gets the phone layout, so reflow comes from the same queries.
+ */
+
 :root {
   --brand: #c8102e;
   --brand-dark: #9e0c24;
@@ -35,11 +49,17 @@ h2 {
 }
 
 .app {
-  max-width: 640px;
-  margin: 0 auto;
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
+}
+
+/* The centred content frame: the header bar, main and footer line up at every width. */
+.frame {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 1rem;
 }
 
 .app-header {
@@ -91,6 +111,77 @@ h2 {
   font-size: 0.75rem;
   font-weight: 600;
   opacity: 1;
+}
+
+/* Customer header (#52): the red bar spans the window and its content sits in the frame. Phone: the logo and a
+   menu button that opens the sections below them; tablet and up: the logo and the sections in one top bar. */
+.site-header {
+  display: block;
+  padding-inline: 0;
+}
+
+.header-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.menu-button {
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.site-nav {
+  display: none;
+}
+
+.site-nav.open {
+  display: flex;
+  flex-direction: column;
+  flex-basis: 100%;
+  gap: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.site-nav .header-link {
+  border-color: transparent;
+}
+
+.site-nav .header-link.active {
+  background: #fff;
+  color: var(--brand);
+}
+
+/* Focus on the red bar: a white ring, since the brand-dark one would not show. */
+.app-header .header-link:focus-visible,
+.app-header .brand:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+
+@media (min-width: 768px) {
+  /* tablet */
+  .header-bar .menu-button {
+    display: none;
+  }
+
+  .site-nav,
+  .site-nav.open {
+    display: flex;
+    flex-direction: row;
+    flex-basis: auto;
+    gap: 0.5rem;
+    padding-bottom: 0;
+  }
+
+  .site-nav .header-link {
+    border-color: rgb(255 255 255 / 0.7);
+  }
 }
 
 .app-main {
@@ -588,6 +679,13 @@ fieldset.field {
 }
 
 /* Staff back office (/staff) */
+/* Until the Staff layout gets its sidebar, it keeps the old single 640px column. */
+.staff-app {
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
+}
+
 .staff-header {
   background: var(--ink);
 }
@@ -787,11 +885,6 @@ button.header-link {
 }
 
 /* Auction (#11) */
-.header-nav {
-  display: flex;
-  gap: 0.5rem;
-}
-
 .auction-status {
   display: inline-block;
   padding: 0.1rem 0.6rem;

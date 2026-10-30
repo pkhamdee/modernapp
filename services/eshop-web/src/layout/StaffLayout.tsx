@@ -9,7 +9,7 @@ export function StaffLayout() {
   const isStaff = session?.role === 'Staff'
 
   return (
-    <div className="app">
+    <div className="app staff-app">
       <header className="app-header staff-header">
         <Link to="/staff" className="brand">
           <BrandLogo />
