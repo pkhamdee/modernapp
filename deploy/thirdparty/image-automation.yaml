@@ -44,7 +44,7 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
       messageTemplate: |
-        thirdparty: update images [skip ci]
+        thirdparty: update images
 
         {{ range .Changed.Changes -}}
         - {{ .OldValue }} -> {{ .NewValue }}
