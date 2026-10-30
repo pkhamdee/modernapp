@@ -7,7 +7,7 @@ import {
   type Eligibility,
 } from '../api/applications.ts'
 import { catalogPaths, type InstallmentPlans, type ProductDetail } from '../api/catalog.ts'
-import { ApiError, useApi } from '../api/client.ts'
+import { ApiError, MAX_PHOTO_BYTES, useApi } from '../api/client.ts'
 import { Status } from '../components/Status.tsx'
 import { formatBaht } from '../format.ts'
 
@@ -17,8 +17,6 @@ interface Branch {
   address: string
   province: string
 }
-
-const MAX_PHOTO_BYTES = 10 * 1024 * 1024
 
 /**
  * Application form: one ID number, one ID card photo, and Delivery (Bangkok Metropolitan Region only) or

@@ -93,6 +93,9 @@ export async function apiGetBlob(path: string, signal?: AbortSignal): Promise<Bl
   return response.blob()
 }
 
+/** The largest photo the API accepts (ID card, Product and Lot photos; eshop-api's IImageStore.MaxBytes). */
+export const MAX_PHOTO_BYTES = 10 * 1024 * 1024
+
 /** POSTs JSON, multipart form data when `body` is a FormData, or a raw Blob/File. */
 export function apiPost<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   return request<T>('POST', path, body, signal)

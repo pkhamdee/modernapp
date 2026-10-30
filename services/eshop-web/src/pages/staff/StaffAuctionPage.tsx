@@ -15,13 +15,12 @@ import {
 } from '../../api/auctions.ts'
 import { formatMobileNumber } from '../../api/auth.ts'
 import { backOfficePaths, type BackOfficeBranch } from '../../api/backOffice.ts'
-import { problemMessage, useApi, useReloadableApi } from '../../api/client.ts'
+import { MAX_PHOTO_BYTES, problemMessage, useApi, useReloadableApi } from '../../api/client.ts'
 import { ProductPhoto } from '../../components/ProductPhoto.tsx'
 import { ResponsiveList } from '../../components/ResponsiveList.tsx'
 import { Status } from '../../components/Status.tsx'
 import { formatBaht, formatDateTime } from '../../format.ts'
 
-const MAX_PHOTO_BYTES = 10 * 1024 * 1024
 const MAX_PHOTOS = 10
 
 /** One Auction (/staff/auctions/:id): its Lots with bids so far, adding a Lot, and correcting one before its first Bid. */

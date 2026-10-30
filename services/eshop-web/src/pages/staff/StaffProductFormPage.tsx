@@ -8,11 +8,9 @@ import {
   type BackOfficeProduct,
   type BackOfficeProductCategory,
 } from '../../api/backOffice.ts'
-import { problemMessage, useApi } from '../../api/client.ts'
+import { MAX_PHOTO_BYTES, problemMessage, useApi } from '../../api/client.ts'
 import { ProductPhoto } from '../../components/ProductPhoto.tsx'
 import { Status } from '../../components/Status.tsx'
-
-const MAX_PHOTO_BYTES = 10 * 1024 * 1024
 
 /** Add (/staff/products/new) or edit (/staff/products/:id) a Product, with photo upload. */
 export function StaffProductFormPage() {
