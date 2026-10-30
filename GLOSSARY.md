@@ -27,7 +27,7 @@ A grouping of Products (mobile phone, iPad, electrical appliance, furniture, ele
 _Avoid_: Type, class
 
 **Eligibility** (คุณสมบัติผู้สมัคร):
-The rules a Customer must meet before an Application can be submitted: aged 20 or over, no active Contract, and not within 30 days of a Rejected Application.
+The rules a Customer must meet before an Application can be submitted: aged 20 or over, no active Contract, no open Offer, no Application still being reviewed, and not within 30 days of a Rejected Application (a timed-out one does not count).
 _Avoid_: Pre-approval, screening
 
 **Application** (คำขอเช่าซื้อ):
@@ -105,5 +105,5 @@ One used iPhone, complete with its box, offered in an Auction; if the winner doe
 _Avoid_: Listing, item
 
 **Bid** (การเสนอราคา):
-A Customer's offer for a Lot, which must beat the current highest Bid by at least the minimum increment.
+A Customer's offer for a Lot, which must beat the current highest Bid by at least the minimum increment; only a Customer who has passed ID Verification and is aged 20 or over may bid.
 _Avoid_: Offer
