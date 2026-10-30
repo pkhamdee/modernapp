@@ -47,20 +47,22 @@ export function isPhone(): boolean {
 }
 
 /** The Customer header's menu button (phone) and its navigation (the menu on phone, the top bar from 768px). */
-export function customerHeader(page: Page) {
+export function customerHeader(page: Page): HeaderMenu {
   return {
     menuButton: page.getByRole('banner').getByRole('button', { name: 'เมนู' }),
     nav: page.getByRole('navigation', { name: 'เมนูหลัก' }),
   }
 }
 
+/** A header's menu button and the navigation it opens (customerHeader, staffMenu). */
+export type HeaderMenu = { menuButton: Locator; nav: Locator }
+
 /**
- * Opens a Customer section the way a person would (#52): on a phone through the menu button, which announces
- * open/closed and closes again once a link is followed; on a desktop straight from the top bar. Callers check the
- * page they land on and then run expectPageFits.
+ * Follows the link named `section` in `menu`: on a phone through the menu button, which announces open/closed and
+ * closes the menu again once a link is followed; on a desktop straight from the navigation, which is always shown
+ * and has no menu button. Callers check the page they land on and then run expectPageFits.
  */
-export async function navigateTo(page: Page, section: Section) {
-  const { menuButton, nav } = customerHeader(page)
+async function navigateThrough({ menuButton, nav }: HeaderMenu, section: string) {
   if (isPhone()) {
     await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
     await expect(nav).toBeHidden()
@@ -74,39 +76,27 @@ export async function navigateTo(page: Page, section: Section) {
     await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
     await expect(nav).toBeHidden()
   }
+}
+
+/** Opens a Customer section the way a person would (#52): the header menu on a phone, the top bar on a desktop. */
+export async function navigateTo(page: Page, section: Section) {
+  await navigateThrough(customerHeader(page), section)
 }
 
 /** The Staff back office's sections (#55), in its sidebar (desktop) or slide-out menu (phone). */
 export type StaffSection = 'สินค้า' | 'ประเภทสินค้า' | 'สาขา' | 'ประมูล' | 'ส่งมอบสินค้า'
 
 /** The Staff header's menu button (below 1280px) and the back-office menu (a sidebar from 1280px). */
-export function staffMenu(page: Page) {
+export function staffMenu(page: Page): HeaderMenu {
   return {
     menuButton: page.getByRole('banner').getByRole('button', { name: 'เมนู' }),
     nav: page.getByRole('navigation', { name: 'เมนูหลังร้าน' }),
   }
 }
 
-/**
- * Opens a Staff section the way Staff would (#55), mirroring navigateTo: on a phone through the menu button,
- * which announces open/closed and closes the slide-out menu once a link is followed; on a desktop straight from
- * the sidebar, which is always there. Callers check the page they land on and then run expectPageFits.
- */
+/** Opens a Staff section the way Staff would (#55): the slide-out menu on a phone, the sidebar on a desktop. */
 export async function navigateStaffTo(page: Page, section: StaffSection) {
-  const { menuButton, nav } = staffMenu(page)
-  if (isPhone()) {
-    await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
-    await expect(nav).toBeHidden()
-    await menuButton.click()
-    await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
-  } else {
-    await expect(menuButton).toBeHidden()
-  }
-  await nav.getByRole('link', { name: section, exact: true }).click()
-  if (isPhone()) {
-    await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
-    await expect(nav).toBeHidden()
-  }
+  await navigateThrough(staffMenu(page), section)
 }
 
 /**
@@ -337,13 +327,13 @@ export async function expectFormColumn(field: Locator) {
 }
 
 /**
- * In the phone project, also checks the page at the narrowest supported phone, 360px wide (#57), then goes back
- * to the project's size. A no-op on desktop.
+ * In the phone project, also checks the page at the narrowest supported phone (PHONE_MIN_WIDTH, #57), then goes
+ * back to the project's size. A no-op on desktop.
  */
 export async function expectFitsNarrowestPhone(page: Page) {
   if (!isPhone()) return
   const size = page.viewportSize()
-  await page.setViewportSize({ width: 360, height: size?.height ?? 800 })
+  await atNarrowestPhone(page)
   await expectPageFits(page)
   if (size) await page.setViewportSize(size)
 }
