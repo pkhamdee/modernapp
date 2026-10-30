@@ -63,27 +63,34 @@ h2 {
   text-decoration: none;
 }
 
-.brand strong {
-  display: block;
-  font-size: 1.1rem;
-  line-height: 1.1;
-}
-
 .brand small {
   display: block;
   font-size: 0.8rem;
   opacity: 0.9;
 }
 
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 2.2rem;
-  height: 2.2rem;
-  border-radius: 50%;
+/* Text logo: "eShop" over "อีช้อป" in the brand red, on a white badge so it reads on the red header. */
+.brand-logo {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.25rem 0.7rem;
+  border-radius: 10px;
   background: #fff;
   color: var(--brand);
+  line-height: 1.1;
+}
+
+.brand-logo strong {
+  font-size: 1.15rem;
   font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.brand-logo small {
+  font-size: 0.75rem;
+  font-weight: 600;
+  opacity: 1;
 }
 
 .app-main {

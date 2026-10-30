@@ -46,7 +46,7 @@ export interface ProductPhoto {
   imageUrl: string
 }
 
-/** Terms S Phone offers; a Product Category's longest Term is one of these. */
+/** Terms eShop offers; a Product Category's longest Term is one of these. */
 export const TERMS = [6, 10, 12, 18, 24] as const
 
 export const backOfficePaths = {

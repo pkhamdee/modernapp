@@ -13,6 +13,28 @@ import {
 
 // Seam 4: the MVP's definition-of-done demo (spec #1), end to end in a browser against a deployed environment.
 
+// The eShop brand (#47): Customer and Staff screens name eShop / อีช้อป and nothing of the old brand.
+test('brand: Customer and Staff screens show eShop', async ({ page }) => {
+  const oldBrand = /S Phone|เอส ลีสซิ่ง|Srisawad/i
+
+  for (const path of ['/', '/auction', '/sign-in', '/staff/sign-in']) {
+    await test.step(`${path} shows the eShop brand`, async () => {
+      await page.goto(path)
+      await expect(page).toHaveTitle('eShop – ผ่อนง่าย ใช้แค่บัตรประชาชน')
+      const logo = page.getByRole('banner').getByRole('link', { name: /eShop/ })
+      await expect(logo).toContainText('eShop')
+      await expect(logo).toContainText('อีช้อป')
+      await expect(page.locator('body')).not.toContainText(oldBrand)
+    })
+  }
+
+  await test.step('the logo leads back to the catalog', async () => {
+    await page.goto('/auction')
+    await page.getByRole('banner').getByRole('link', { name: /eShop/ }).click()
+    await expect(page).toHaveURL(/\/$/)
+  })
+})
+
 test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise System, Handover, Payment', async ({
   page,
   browser,

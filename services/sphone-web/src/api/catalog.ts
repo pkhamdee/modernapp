@@ -39,7 +39,7 @@ export interface TermPlan {
 export interface InstallmentPlans {
   price: number
   downPayment: number
-  /** Only the Terms S Phone offers: capped by the Product Category, none under ฿500. */
+  /** Only the Terms eShop offers: capped by the Product Category, none under ฿500. */
   plans: TermPlan[]
 }
 

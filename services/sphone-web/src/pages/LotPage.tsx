@@ -92,7 +92,7 @@ export function WinnerNotice({ lot }: { lot: Lot }) {
     case 'awaiting-payment':
       return (
         <div className="form-notice" role="status">
-          <strong>คุณชนะการประมูล!</strong> กรุณาชำระเงินสด {formatBaht(lot.highestBid ?? 0)} ที่สาขาของ S Phone ภายใน{' '}
+          <strong>คุณชนะการประมูล!</strong> กรุณาชำระเงินสด {formatBaht(lot.highestBid ?? 0)} ที่สาขาของ eShop ภายใน{' '}
           {lot.paymentDueAt ? formatDateTime(lot.paymentDueAt) : '3 วัน'} พร้อมบัตรประชาชน แล้วรับเครื่องได้ทันที
           (ชำระเงินสดเท่านั้น ไม่สามารถผ่อนชำระได้)
         </div>

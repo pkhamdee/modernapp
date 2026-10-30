@@ -10,7 +10,7 @@ export const formatBaht = (amount: number) => baht.format(amount)
 export const formatFlatRate = (fraction: number) =>
   `${(fraction * 100).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%`
 
-// Every date S Phone shows is in Asia/Bangkok, whatever the device's time zone.
+// Every date eShop shows is in Asia/Bangkok, whatever the device's time zone.
 const date = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long', timeZone: 'Asia/Bangkok' })
 const dateTime = new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' })
 

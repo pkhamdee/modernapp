@@ -1,5 +1,6 @@
 import { Link, Outlet } from 'react-router'
 import { useAuth } from '../auth/context.ts'
+import { BrandLogo } from './BrandLogo.tsx'
 
 export function AppLayout() {
   const { session } = useAuth()
@@ -8,11 +9,7 @@ export function AppLayout() {
     <div className="app">
       <header className="app-header">
         <Link to="/" className="brand">
-          <span className="brand-mark" aria-hidden="true">S</span>
-          <span>
-            <strong>S Phone</strong>
-            <small>เอส ลีสซิ่ง</small>
-          </span>
+          <BrandLogo />
         </Link>
         <nav className="header-nav">
           <Link to="/auction" className="header-link">

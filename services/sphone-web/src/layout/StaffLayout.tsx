@@ -1,5 +1,6 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router'
 import { useAuth } from '../auth/context.ts'
+import { BrandLogo } from './BrandLogo.tsx'
 
 /** Shell of the Staff back office (/staff/*). The section links show only to a signed-in Staff member. */
 export function StaffLayout() {
@@ -11,11 +12,8 @@ export function StaffLayout() {
     <div className="app">
       <header className="app-header staff-header">
         <Link to="/staff" className="brand">
-          <span className="brand-mark" aria-hidden="true">S</span>
-          <span>
-            <strong>S Phone</strong>
-            <small>ระบบหลังร้าน</small>
-          </span>
+          <BrandLogo />
+          <small>ระบบหลังร้าน</small>
         </Link>
         {isStaff && (
           <button
