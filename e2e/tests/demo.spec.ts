@@ -5,6 +5,7 @@ import {
   bangkokLocal,
   customerHeader,
   expectPageFits,
+  gridColumns,
   isPhone,
   navigateTo,
   newIdNumber,
@@ -13,6 +14,7 @@ import {
   OLD_BRAND,
   Phone,
   PHOTO,
+  placement,
   signInCustomer,
   staffPage,
   visit,
@@ -98,6 +100,74 @@ test('brand: Customer and Staff screens show eShop', async ({ page, browser }) =
     await expect(enterprise.locator('body')).not.toContainText(OLD_BRAND)
     await context.close()
   })
+})
+
+// The catalog and the Product page across sizes (#53). The phone project checks the phone layout; the desktop
+// project also resizes its window to tablet (768px) and wide (1024px) widths.
+test('catalog: Products in 1 / 2 / 3–4 columns and the Product page beside or above its calculator', async ({
+  page,
+}) => {
+  // Mobile phones (มือถือ) has three demo Products: enough to tell one, two and three-or-more columns apart.
+  const products = page.getByRole('main').getByRole('list')
+  const sizes = isPhone()
+    ? [{ name: 'phone', width: 390, columns: [1, 1] }]
+    : [
+        { name: 'desktop', width: 1280, columns: [3, 4] },
+        { name: 'tablet', width: 768, columns: [2, 2] },
+      ]
+  for (const size of sizes) {
+    await test.step(`${size.name}: the catalog shows Products in ${size.columns.join('–')} column(s)`, async () => {
+      if (!isPhone()) await page.setViewportSize({ width: size.width, height: 800 })
+      await visit(page, '/categories/mobile-phone')
+      await expect(products.getByRole('listitem')).not.toHaveCount(0)
+      expect(await products.getByRole('listitem').count()).toBeGreaterThanOrEqual(3)
+      const columns = await gridColumns(products)
+      expect(columns).toBeGreaterThanOrEqual(size.columns[0])
+      expect(columns).toBeLessThanOrEqual(size.columns[1])
+    })
+
+    await test.step(`${size.name}: every Product Category can be chosen from the filter`, async () => {
+      const filter = page.getByRole('navigation', { name: 'ประเภทสินค้า' })
+      const categories = filter.getByRole('link')
+      expect(await categories.count()).toBeGreaterThanOrEqual(2)
+      if (!isPhone()) {
+        // From tablet up the whole filter is on screen at once; on a phone it scrolls sideways within itself.
+        for (const category of await categories.all()) await expect(category).toBeInViewport({ ratio: 1 })
+      }
+      for (const category of (await categories.all()).reverse()) {
+        const name = (await category.innerText()).trim()
+        expect((await category.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+        await category.click()
+        await expect(category).toHaveAttribute('aria-current', 'page')
+        await expect(page.getByRole('heading', { level: 2, name })).toBeVisible()
+        await expect(products.getByRole('listitem').first()).toBeVisible()
+        await expectPageFits(page)
+      }
+    })
+  }
+
+  // The photo sits beside the Installment calculator from 1024px (wide) and above it on narrower screens.
+  const layouts = isPhone()
+    ? [{ name: 'phone', width: 390, calculator: 'below' }]
+    : [
+        { name: 'desktop', width: 1280, calculator: 'beside' },
+        { name: 'wide', width: 1024, calculator: 'beside' },
+        { name: 'tablet', width: 768, calculator: 'below' },
+      ]
+  for (const layout of layouts) {
+    await test.step(`${layout.name}: the Installment calculator is ${layout.calculator} the Product photo`, async () => {
+      if (!isPhone()) await page.setViewportSize({ width: layout.width, height: 800 })
+      await visit(page, '/categories/mobile-phone')
+      await products.getByRole('link', { name: /iPhone/ }).first().click()
+      const photo = page.getByRole('main').getByRole('img', { name: /iPhone/ })
+      const calculator = page.getByRole('region', { name: 'คำนวณค่างวด' })
+      await expect(photo).toBeVisible()
+      await expect(calculator).toBeVisible()
+      await expectPageFits(page)
+      expect(await placement(photo, calculator)).toBe(layout.calculator)
+    })
+  }
+  if (!isPhone()) await page.setViewportSize({ width: 1280, height: 800 })
 })
 
 test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise System, Handover, Payment', async ({

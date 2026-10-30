@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type Page } from '@playwright/test'
+import { expect, test, type Browser, type Locator, type Page } from '@playwright/test'
 import { baseURL, mockBaseURL } from '../environment'
 
 // Browser steps shared by the demo test. Everything goes through the UI a person would use: the eShop web app,
@@ -232,4 +232,28 @@ export async function staffPage(browser: Browser, next: string): Promise<Page> {
 /** "2026-10-30T14:05" in Asia/Bangkok, as a datetime-local field takes it. */
 export function bangkokLocal(at: Date): string {
   return new Date(at.getTime() + 7 * 3_600_000).toISOString().slice(0, 16)
+}
+
+/**
+ * How many columns a grid of cards shows, read from where its items sit on screen (#53): the number of distinct
+ * left edges. With fewer items than columns this is the item count, so use a list holding enough items.
+ */
+export async function gridColumns(list: Locator): Promise<number> {
+  const lefts = await list
+    .getByRole('listitem')
+    .evaluateAll((items) => items.map((item) => Math.round(item.getBoundingClientRect().left)))
+  return new Set(lefts).size
+}
+
+/**
+ * Where `second` sits relative to `first` on screen (#53): beside it (to its right, sharing some height) or below
+ * it. Used for the photo and the panel next to it on Product and Lot pages.
+ */
+export async function placement(first: Locator, second: Locator): Promise<'beside' | 'below' | 'overlapping'> {
+  const a = await first.boundingBox()
+  const b = await second.boundingBox()
+  if (!a || !b) throw new Error('placement: both elements must be visible')
+  if (b.x >= a.x + a.width && b.y < a.y + a.height) return 'beside'
+  if (b.y >= a.y + a.height) return 'below'
+  return 'overlapping'
 }

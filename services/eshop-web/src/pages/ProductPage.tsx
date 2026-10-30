@@ -19,25 +19,29 @@ export function ProductPage() {
   const { name, description, price, productCategory, imageUrl } = product.data
 
   return (
-    <article className="product-detail">
+    <article className="product-detail detail-layout">
       <Link to={`/categories/${productCategory.code}`} className="back-link">
         ← {productCategory.name}
       </Link>
-      <ProductPhoto src={imageUrl} alt={name} large />
-      <h1>{name}</h1>
-      <p className="product-detail-price">{formatBaht(price)}</p>
-      <p>{description}</p>
-      <dl className="terms">
-        <div>
-          <dt>อัตราดอกเบี้ยคงที่</dt>
-          <dd>{formatFlatRate(productCategory.flatRate)} ต่อเดือน</dd>
-        </div>
-        <div>
-          <dt>ผ่อนได้สูงสุด</dt>
-          <dd>{productCategory.longestTerm} งวด</dd>
-        </div>
-      </dl>
-      <InstallmentCalculator productId={product.data.id} price={price} />
+      <div className="detail-media">
+        <ProductPhoto src={imageUrl} alt={name} large />
+      </div>
+      <div className="detail-panel">
+        <h1>{name}</h1>
+        <p className="product-detail-price">{formatBaht(price)}</p>
+        <p>{description}</p>
+        <dl className="terms">
+          <div>
+            <dt>อัตราดอกเบี้ยคงที่</dt>
+            <dd>{formatFlatRate(productCategory.flatRate)} ต่อเดือน</dd>
+          </div>
+          <div>
+            <dt>ผ่อนได้สูงสุด</dt>
+            <dd>{productCategory.longestTerm} งวด</dd>
+          </div>
+        </dl>
+        <InstallmentCalculator productId={product.data.id} price={price} />
+      </div>
     </article>
   )
 }

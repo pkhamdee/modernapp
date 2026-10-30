@@ -55,7 +55,7 @@ function CategoryProducts({ category }: { category: ProductCategory }) {
       ) : products.data.length === 0 ? (
         <p className="status">ยังไม่มีสินค้าในประเภทนี้</p>
       ) : (
-        <ul className="product-list">
+        <ul className="card-grid">
           {products.data.map((product) => (
             <li key={product.id}>
               <Link to={`/products/${product.id}`} className="product-card">
