@@ -1181,6 +1181,8 @@ button.header-link {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
 /* Staff Handover: the Customer's ID card photo, fetched with the Staff token (never a public link). */
 .id-card-photo {
   display: grid;
@@ -1198,3 +1200,13 @@ button.header-link {
 .handover-stage {
   color: var(--brand);
 }
+
+/* ---- Customer forms and personal screens (#57) ------------------------------------------------------------
+ * Forms (sign-in, SMS code, Apply, Offer acceptance) are one ~480px column centred in the frame at every size.
+ */
+.form-column {
+  width: 100%;
+  max-width: 480px;
+  margin-inline: auto;
+}
+/* ---- end Customer forms and personal screens (#57) ---- */

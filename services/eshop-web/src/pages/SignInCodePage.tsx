@@ -60,7 +60,7 @@ export function SignInCodePage() {
   }
 
   return (
-    <section className="card">
+    <section className="card form-column">
       <h1>กรอกรหัสยืนยัน</h1>
       <p className="muted">
         ส่งรหัส 6 หลักไปที่ {formatMobileNumber(mobileNumber)} แล้ว รหัสใช้ได้ภายใน 5 นาที

@@ -208,10 +208,12 @@ export class Phone {
 export async function signInCustomer(page: Page, phone: Phone, mobileNumber: string) {
   const before = await phone.received()
   await visit(page, '/sign-in?next=/account')
+  await expectFormColumn(page.getByLabel('เบอร์มือถือ'))
   await page.getByLabel('เบอร์มือถือ').fill(mobileNumber)
   await page.getByRole('button', { name: 'ขอรหัส SMS' }).click()
   await expect(page.getByRole('heading', { name: 'กรอกรหัสยืนยัน' })).toBeVisible()
   await expectPageFits(page)
+  await expectFormColumn(page.getByLabel('รหัส SMS'))
   await page.getByLabel('รหัส SMS').fill(await phone.codeAfter(before))
   await page.getByRole('button', { name: 'ยืนยัน', exact: true }).click()
   await expect(page).toHaveURL(/\/account$/)
@@ -312,4 +314,18 @@ export async function placement(first: Locator, second: Locator): Promise<'besid
   if (b.x >= a.x + a.width && b.y < a.y + a.height) return 'beside'
   if (b.y >= a.y + a.height) return 'below'
   return 'overlapping'
+}
+
+/**
+ * A Customer form (sign-in, SMS code, Apply, Offer acceptance) is one narrow column centred in the window at every
+ * size (#57): `field` is a full-width field of the form, so it is at most 480px wide and its middle is the
+ * window's middle (within a pixel).
+ */
+export async function expectFormColumn(field: Locator) {
+  await expect(field).toBeVisible()
+  const box = await field.boundingBox()
+  if (!box) throw new Error('expectFormColumn: the field must be visible')
+  const windowWidth = await field.page().evaluate(() => document.documentElement.clientWidth)
+  expect(box.width, 'form column width (px)').toBeLessThanOrEqual(480)
+  expect(Math.abs(box.x + box.width / 2 - windowWidth / 2), 'form column off centre by (px)').toBeLessThanOrEqual(1)
 }
