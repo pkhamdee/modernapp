@@ -109,7 +109,7 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
       messageTemplate: |
-        sphone-dev: update images [skip ci]
+        sphone-dev: update images
 
         {{ range .Changed.Changes -}}
         - {{ .OldValue }} -> {{ .NewValue }}
