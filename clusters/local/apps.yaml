@@ -1,4 +1,6 @@
-# sphone-dev follows main (newest main-<sha> images); sphone-prod follows release tags (newest X.Y.Z images).
+# sphone-dev follows main (newest main-<sha> images, manifests from main).
+# sphone-prod follows release tags: manifests AND images come from the newest vX.Y.Z release (see prod-release.yaml
+# and docs/git-workflow.md).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -35,10 +37,22 @@ spec:
   path: ./deploy/apps/prod
   prune: true
   wait: true
+  # deploy/apps/prod as it is in the release tag (GitRepository sphone-release, prod-release.yaml).
   sourceRef:
     kind: GitRepository
-    name: flux-system
+    name: sphone-release
   decryption:
     provider: sops
     secretRef:
       name: sops-age
+  # The release's images, X.Y.Z for vX.Y.Z. Written by Flux image automation (prod-release.yaml) in the same commit
+  # that moves sphone-release to that tag; do not edit by hand. 0.0.0 = no release yet.
+  images:
+    - name: ghcr.io/pkhamdee/sphone-api
+      newTag: 0.0.0 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+    - name: ghcr.io/pkhamdee/sphone-web
+      newTag: 0.0.0 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+    - name: ghcr.io/pkhamdee/sphone-node-api
+      newTag: 0.0.0 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+    - name: ghcr.io/pkhamdee/sphone-sync-master
+      newTag: 0.0.0 # {"$imagepolicy": "flux-system:sphone-release:tag"}

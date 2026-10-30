@@ -99,5 +99,5 @@ public sealed class EligibilityTests(SphoneApiFactory api)
         Assert.Equal("approved", result.Status);
     }
 
-    private DateOnly BangkokToday() => DateOnly.FromDateTime(api.Clock.GetUtcNow().ToOffset(TimeSpan.FromHours(7)).DateTime);
+    private DateOnly BangkokToday() => Bangkok.Today(api.Clock.GetUtcNow());
 }

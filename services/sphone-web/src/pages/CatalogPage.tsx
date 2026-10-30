@@ -3,7 +3,7 @@ import { catalogPaths, type ProductCategory, type ProductSummary } from '../api/
 import { useApi } from '../api/client.ts'
 import { ProductPhoto } from '../components/ProductPhoto.tsx'
 import { Status } from '../components/Status.tsx'
-import { formatBaht, formatMonthlyRate } from '../format.ts'
+import { formatBaht, formatFlatRate } from '../format.ts'
 
 export function CatalogPage() {
   const { code } = useParams()
@@ -46,7 +46,7 @@ function CategoryProducts({ category }: { category: ProductCategory }) {
       <div className="section-heading">
         <h2 id="category-heading">{category.name}</h2>
         <p>
-          ดอกเบี้ย {formatMonthlyRate(category.flatRate)} ต่อเดือน · ผ่อนได้สูงสุด {category.longestTerm} งวด
+          อัตราดอกเบี้ยคงที่ {formatFlatRate(category.flatRate)} ต่อเดือน · ผ่อนได้สูงสุด {category.longestTerm} งวด
         </p>
       </div>
 

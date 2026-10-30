@@ -58,9 +58,8 @@ internal static partial class ApplicationEndpoints
             .Where(a => a.CustomerId == customerId || (idNumber != null && a.IdNumber == idNumber))
             .AsNoTracking()
             .ToListAsync(cancellationToken);
-        var hasActiveContract = await db.Contracts.AnyAsync(
-            c => (c.Status == ContractStatus.Active || c.Status == ContractStatus.Overdue)
-                && (c.CustomerId == customerId || (idNumber != null && c.Application.IdNumber == idNumber)),
+        var hasActiveContract = await db.Contracts.Where(Contract.IsActive).AnyAsync(
+            c => c.CustomerId == customerId || (idNumber != null && c.Application.IdNumber == idNumber),
             cancellationToken);
         return Eligibility.Check(earlier, hasActiveContract, now);
     }
@@ -73,17 +72,17 @@ internal static partial class ApplicationEndpoints
 
         if (form.IdNumber is not { } idNumber || !ThaiIdNumber().IsMatch(idNumber))
         {
-            return Refused("id-number-invalid", "เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก");
+            return Refusal.BadRequest("id-number-invalid", "เลขประจำตัวประชาชนต้องเป็นตัวเลข 13 หลัก");
         }
 
         if (form.IdCardPhoto is not { Length: > 0 } photo)
         {
-            return Refused("photo-required", "กรุณาแนบรูปถ่ายบัตรประชาชน");
+            return Refusal.BadRequest("photo-required", "กรุณาแนบรูปถ่ายบัตรประชาชน");
         }
 
         if (!PhotoTypes.Contains(photo.ContentType) || photo.Length > ImageTypes.MaxBytes)
         {
-            return Refused("photo-invalid", "รูปบัตรประชาชนต้องเป็นไฟล์ JPEG, PNG หรือ WebP ขนาดไม่เกิน 10 MB");
+            return Refusal.BadRequest("photo-invalid", "รูปบัตรประชาชนต้องเป็นไฟล์ JPEG, PNG หรือ WebP ขนาดไม่เกิน 10 MB");
         }
 
         var product = await db.Products.Include(p => p.ProductCategory)
@@ -98,7 +97,7 @@ internal static partial class ApplicationEndpoints
             : null;
         if (plan is null)
         {
-            return Refused("plan-not-offered", "ไม่มีแผนผ่อนชำระตามจำนวนงวดและเงินดาวน์ที่เลือก");
+            return Refusal.BadRequest("plan-not-offered", "ไม่มีแผนผ่อนชำระตามจำนวนงวดและเงินดาวน์ที่เลือก");
         }
 
         HandoverChoice handover;
@@ -107,12 +106,12 @@ internal static partial class ApplicationEndpoints
             case "delivery":
                 if (string.IsNullOrWhiteSpace(form.DeliveryAddress))
                 {
-                    return Refused("delivery-address-required", "กรุณากรอกที่อยู่สำหรับจัดส่ง");
+                    return Refusal.BadRequest("delivery-address-required", "กรุณากรอกที่อยู่สำหรับจัดส่ง");
                 }
 
                 if (!BangkokMetropolitanRegion.Contains(form.DeliveryProvince))
                 {
-                    return Refused("delivery-outside-bmr", "จัดส่งได้เฉพาะกรุงเทพฯ และปริมณฑล กรุณาเลือกรับสินค้าที่สาขา");
+                    return Refusal.BadRequest("delivery-outside-bmr", "จัดส่งได้เฉพาะกรุงเทพฯ และปริมณฑล กรุณาเลือกรับสินค้าที่สาขา");
                 }
 
                 handover = HandoverChoice.Delivery(form.DeliveryAddress.Trim(), form.DeliveryProvince!.Trim());
@@ -121,13 +120,13 @@ internal static partial class ApplicationEndpoints
                 var branch = await db.Branches.SingleOrDefaultAsync(b => b.Code == form.BranchCode, cancellationToken);
                 if (branch is null)
                 {
-                    return Refused("branch-not-found", "กรุณาเลือกสาขาที่จะรับสินค้า");
+                    return Refusal.BadRequest("branch-not-found", "กรุณาเลือกสาขาที่จะรับสินค้า");
                 }
 
                 handover = HandoverChoice.StorePickup(branch);
                 break;
             default:
-                return Refused("handover-invalid", "กรุณาเลือกจัดส่งหรือรับสินค้าที่สาขา");
+                return Refusal.BadRequest("handover-invalid", "กรุณาเลือกจัดส่งหรือรับสินค้าที่สาขา");
         }
 
         // Eligibility before anything is stored: this Customer's Applications and any made with this ID number.
@@ -135,15 +134,8 @@ internal static partial class ApplicationEndpoints
         var eligibility = await CheckEligibilityAsync(db, customerId, idNumber, now, cancellationToken);
         if (!eligibility.IsEligible)
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: IneligibleTitle(eligibility.Reason),
-                extensions: new Dictionary<string, object?>
-                {
-                    ["error"] = ReasonCode(eligibility.Reason),
-                    ["reapplyFrom"] = eligibility.ReapplyFrom,
-                    ["offerId"] = eligibility.OfferId,
-                });
+            return Refusal.Conflict(ReasonCode(eligibility.Reason)!, IneligibleTitle(eligibility.Reason),
+                ("reapplyFrom", eligibility.ReapplyFrom), ("offerId", eligibility.OfferId));
         }
 
         string imageId;
@@ -183,10 +175,7 @@ internal static partial class ApplicationEndpoints
         var refused = await db.EligibilityRefusals
             .AnyAsync(r => r.SubmissionId == id && r.CustomerId == customerId, cancellationToken);
         return refused
-            ? TypedResults.Problem(
-                statusCode: StatusCodes.Status410Gone,
-                title: IneligibleTitle(IneligibleReason.Under20),
-                extensions: new Dictionary<string, object?> { ["error"] = ReasonCode(IneligibleReason.Under20) })
+            ? Refusal.Of(StatusCodes.Status410Gone, ReasonCode(IneligibleReason.Under20)!, IneligibleTitle(IneligibleReason.Under20))
             : TypedResults.NotFound();
     }
 
@@ -245,12 +234,6 @@ internal static partial class ApplicationEndpoints
             IneligibleReason.Under20 => "ผู้สมัครต้องมีอายุ 20 ปีขึ้นไป",
             _ => "คำขอของคุณถูกปฏิเสธเมื่อไม่ถึง 30 วันที่ผ่านมา",
         };
-
-    private static ProblemHttpResult Refused(string error, string title) =>
-        TypedResults.Problem(
-            statusCode: StatusCodes.Status400BadRequest,
-            title: title,
-            extensions: new Dictionary<string, object?> { ["error"] = error });
 
     [GeneratedRegex("^[0-9]{13}$")]
     private static partial Regex ThaiIdNumber();

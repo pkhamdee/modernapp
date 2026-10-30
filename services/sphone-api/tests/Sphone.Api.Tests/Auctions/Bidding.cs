@@ -120,6 +120,25 @@ internal static class Bidding
         return customer;
     }
 
+    /// <summary>
+    /// A signed-in Customer whose ID passed ID Verification but who turns 20 tomorrow: their Application was
+    /// refused as under 20 (no Credit Decision), yet their ID counts as verified.
+    /// </summary>
+    public static async Task<HttpClient> IdVerifiedCustomerUnder20Async(this SphoneApiFactory api)
+    {
+        var customer = await api.CreateCustomerClientAsync();
+        var idNumber = TestData.NewIdNumber();
+        var twentiethBirthdayTomorrow = Bangkok.Today(api.Clock.GetUtcNow()).AddYears(-20).AddDays(1);
+        api.IdVerification.Verifies(idNumber, "เด็กชาย ประมูล", twentiethBirthdayTomorrow);
+
+        var submitted = await customer.SubmitAcceptedAsync(new ApplicationForm(await customer.IPhone17Async(), idNumber));
+        using var checkBack = await customer.WaitWhileReviewingAsync(submitted.Id);
+
+        Assert.Equal(System.Net.HttpStatusCode.Gone, checkBack.StatusCode);
+        Assert.True((await customer.MeAsync()).IdVerified);
+        return customer;
+    }
+
     public static Task<HttpResponseMessage> BidAsync(this HttpClient customer, int lotId, decimal amount) =>
         customer.PostAsJsonAsync($"/api/lots/{lotId}/bids", new { amount }, Ct);
 

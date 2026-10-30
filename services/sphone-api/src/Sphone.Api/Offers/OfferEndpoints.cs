@@ -106,12 +106,10 @@ internal static class OfferEndpoints
             // Keep the wrong-guess count.
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return CodeRefused(check);
+            return Refusal.SmsCode(check);
         }
 
-        if (await db.Contracts.AnyAsync(
-            c => c.CustomerId == customerId && (c.Status == ContractStatus.Active || c.Status == ContractStatus.Overdue),
-            cancellationToken))
+        if (await db.Contracts.Where(Contract.IsActive).AnyAsync(c => c.CustomerId == customerId, cancellationToken))
         {
             return ActiveContract();
         }
@@ -140,10 +138,7 @@ internal static class OfferEndpoints
         {
             // A concurrent accept won: this Offer (or another of the Customer's) already became a Contract.
             return unique.ConstraintName == "ix_contracts_offer_id"
-                ? TypedResults.Problem(
-                    statusCode: StatusCodes.Status409Conflict,
-                    title: "ข้อเสนอนี้ได้รับการยอมรับแล้ว",
-                    extensions: new Dictionary<string, object?> { ["error"] = "offer-accepted" })
+                ? Refusal.Conflict("offer-accepted", "ข้อเสนอนี้ได้รับการยอมรับแล้ว")
                 : ActiveContract();
         }
 
@@ -192,41 +187,16 @@ internal static class OfferEndpoints
             await db.SaveChangesAsync(cancellationToken);
         }
 
-        return TypedResults.Problem(
-            statusCode: StatusCodes.Status409Conflict,
-            title: status switch
-            {
-                OfferStatus.Accepted => "ข้อเสนอนี้ได้รับการยอมรับแล้ว",
-                OfferStatus.Declined => "คุณได้ปฏิเสธข้อเสนอนี้แล้ว",
-                _ => "ข้อเสนอนี้หมดอายุแล้ว",
-            },
-            extensions: new Dictionary<string, object?> { ["error"] = $"offer-{StatusCode(status)}" });
+        return Refusal.Conflict($"offer-{StatusCode(status)}", status switch
+        {
+            OfferStatus.Accepted => "ข้อเสนอนี้ได้รับการยอมรับแล้ว",
+            OfferStatus.Declined => "คุณได้ปฏิเสธข้อเสนอนี้แล้ว",
+            _ => "ข้อเสนอนี้หมดอายุแล้ว",
+        });
     }
 
     private static ProblemHttpResult ActiveContract() =>
-        TypedResults.Problem(
-            statusCode: StatusCodes.Status409Conflict,
-            title: "คุณมีสัญญาเช่าซื้อที่ยังไม่สิ้นสุดอยู่แล้ว",
-            extensions: new Dictionary<string, object?> { ["error"] = "active-contract" });
-
-    private static ProblemHttpResult CodeRefused(SmsCodeCheck check) =>
-        TypedResults.Problem(
-            statusCode: StatusCodes.Status400BadRequest,
-            title: check switch
-            {
-                SmsCodeCheck.Expired => "รหัสหมดอายุแล้ว กรุณาขอรหัสใหม่",
-                SmsCodeCheck.Locked => "ใส่รหัสผิดเกินจำนวนครั้งที่กำหนด กรุณาขอรหัสใหม่",
-                _ => "รหัสไม่ถูกต้อง",
-            },
-            extensions: new Dictionary<string, object?>
-            {
-                ["error"] = check switch
-                {
-                    SmsCodeCheck.Expired => "code-expired",
-                    SmsCodeCheck.Locked => "code-locked",
-                    _ => "code-invalid",
-                },
-            });
+        Refusal.Conflict("active-contract", "คุณมีสัญญาเช่าซื้อที่ยังไม่สิ้นสุดอยู่แล้ว");
 
     private static async Task<OfferResponse> ToResponseAsync(SphoneDbContext db, Offer offer, DateTimeOffset now, CancellationToken cancellationToken)
     {

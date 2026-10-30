@@ -1,0 +1,87 @@
+# sphone-prod = one release tag, manifests and images alike (docs/git-workflow.md "How a tag reaches sphone-prod").
+#
+#   git push origin vX.Y.Z
+#     -> CI builds every service as ghcr.io/pkhamdee/<service>:X.Y.Z
+#     -> ImagePolicy sphone-release sees X.Y.Z, the newest release (plain X.Y.Z only: never main-<sha> or the
+#        CI dry run's 0.0.0-test.N)
+#     -> ImageUpdateAutomation sphone-prod commits ONE change to main (clusters/local): GitRepository
+#        sphone-release -> tag vX.Y.Z and apps-prod's images -> X.Y.Z ("sphone-prod: follow the newest release [skip ci]")
+#     -> apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images.
+#
+# The tag is followed only once its images exist, so prod never runs a release's manifests with another
+# release's images. Nothing is ever written to a release branch or tag.
+#
+# Before the first release (no vX.Y.Z yet) the ImagePolicy has nothing to select and the GitRepository points at
+# v0.0.0, which does not exist: sphone-release, sphone-release's ImagePolicy and apps-prod are not Ready ("no
+# match found for semver: 0.0.0"). That is the expected state until the first tag; sphone-dev is unaffected.
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: sphone-release
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: ssh://git@github.com/pkhamdee/modernapp
+  secretRef:
+    name: flux-system
+  ref:
+    # Exactly the release whose images are out (written by the automation below; do not edit by hand).
+    semver: "0.0.0" # {"$imagepolicy": "flux-system:sphone-release:tag"}
+  ignore: |
+    /*
+    !/deploy/
+---
+# Every release builds every service, so one service's tags stand for the release. sphone-api is one of the
+# slower builds; a service whose X.Y.Z image lands a minute later just retries its image pull.
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageRepository
+metadata:
+  name: sphone-release
+  namespace: flux-system
+spec:
+  image: ghcr.io/pkhamdee/sphone-api
+  interval: 1m
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImagePolicy
+metadata:
+  name: sphone-release
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: sphone-release
+  filterTags:
+    pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
+  policy:
+    semver:
+      range: '>=0.1.0'
+---
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: sphone-prod
+  namespace: flux-system
+spec:
+  interval: 1m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: fluxcdbot
+        email: fluxcdbot@users.noreply.github.com
+      messageTemplate: |
+        sphone-prod: follow the newest release [skip ci]
+
+        {{ range .Changed.Changes -}}
+        - {{ .OldValue }} -> {{ .NewValue }}
+        {{ end -}}
+    push:
+      branch: main
+  update:
+    path: ./clusters/local
+    strategy: Setters

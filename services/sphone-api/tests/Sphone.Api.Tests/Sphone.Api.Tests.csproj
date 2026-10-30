@@ -17,5 +17,6 @@
   </ItemGroup>
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="Sphone.Domain" />
   </ItemGroup>
 </Project>

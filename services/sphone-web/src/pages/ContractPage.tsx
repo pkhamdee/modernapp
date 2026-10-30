@@ -1,6 +1,5 @@
 import { useEffect } from 'react'
 import { Link, useParams } from 'react-router'
-import { formatThaiDate } from '../api/applications.ts'
 import { useApi, useReloadableApi } from '../api/client.ts'
 import {
   CONTRACT_POLL_MS,
@@ -12,7 +11,7 @@ import {
   type ContractSummary,
 } from '../api/contracts.ts'
 import { Status } from '../components/Status.tsx'
-import { formatBaht } from '../format.ts'
+import { formatBaht, formatDate } from '../format.ts'
 
 /**
  * One Contract: number, Product, status and Payments as known by the Enterprise System, and the Installment
@@ -46,7 +45,7 @@ export function ContractPage() {
           <dt>สถานะ</dt>
           <dd>
             {CONTRACT_STATUS_LABELS[c.status]}
-            {c.cancelledAt && ` เมื่อ ${formatThaiDate(c.cancelledAt)}`}
+            {c.cancelledAt && ` เมื่อ ${formatDate(c.cancelledAt)}`}
           </dd>
         </div>
         <div>
@@ -69,7 +68,7 @@ export function ContractPage() {
         </div>
         <div>
           <dt>ทำสัญญาเมื่อ</dt>
-          <dd>{formatThaiDate(c.acceptedAt)}</dd>
+          <dd>{formatDate(c.acceptedAt)}</dd>
         </div>
         <div>
           <dt>การรับสินค้า</dt>
@@ -83,7 +82,7 @@ export function ContractPage() {
           <dt>สถานะการส่งมอบ</dt>
           <dd className="handover-stage">
             {CUSTOMER_HANDOVER_STAGE_LABELS[c.handoverStage]}
-            {c.handedOverAt && ` เมื่อ ${formatThaiDate(c.handedOverAt)}`}
+            {c.handedOverAt && ` เมื่อ ${formatDate(c.handedOverAt)}`}
           </dd>
         </div>
       </dl>
@@ -104,7 +103,7 @@ export function ContractPage() {
           {c.installments.map((i) => (
             <tr key={i.number}>
               <td>{i.number}</td>
-              <td>{i.dueDate ? formatThaiDate(i.dueDate) : 'รอรับสินค้า'}</td>
+              <td>{i.dueDate ? formatDate(i.dueDate) : 'รอรับสินค้า'}</td>
               <td>{formatBaht(i.amount)}</td>
             </tr>
           ))}
@@ -127,7 +126,7 @@ export function ContractPage() {
           <tbody>
             {c.payments.map((p, index) => (
               <tr key={`${p.paidAt}-${index}`}>
-                <td>{formatThaiDate(p.paidAt)}</td>
+                <td>{formatDate(p.paidAt)}</td>
                 <td>{p.installmentNumber ?? '–'}</td>
                 <td>{PAYMENT_CHANNEL_LABELS[p.channel] ?? p.channel}</td>
                 <td>{formatBaht(p.amount)}</td>

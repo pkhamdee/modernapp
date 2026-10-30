@@ -1,8 +1,5 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.Extensions.DependencyInjection;
-using Sphone.Data;
-using Sphone.Domain.Catalog;
 
 namespace Sphone.Api.Tests.Applications;
 
@@ -146,33 +143,33 @@ public sealed class SubmitApplicationTests(SphoneApiFactory api)
         return idNumber;
     }
 
-    // Arrange-only database access: Staff catalog editing (#6) is not part of this ticket, and the demo
-    // catalog's prices must stay as they are for other tests.
+    // Through the Staff back office, on a Product of the test's own (the demo catalog's prices must stay as they
+    // are for other tests).
     private async Task<int> AddProductAsync(decimal price)
     {
-        await using var scope = api.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<SphoneDbContext>();
-        var phones = db.ProductCategories.Single(c => c.Code == "mobile-phone");
-        var product = new Product
-        {
-            ProductCategoryId = phones.Id,
-            Name = $"ทดสอบล็อกราคา {Guid.NewGuid():N}",
-            Description = "สินค้าทดสอบ",
-            Price = price,
-            ImageId = "demo-iphone-17.svg",
-        };
-        db.Products.Add(product);
-        await db.SaveChangesAsync(Applying.Ct);
-        return product.Id;
+        var staff = await api.CreateStaffClientAsync();
+        using var response = await staff.PostAsJsonAsync("/api/back-office/products", ProductRequest(price), Applying.Ct);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        return (await response.Content.ReadFromJsonAsync<CreatedProduct>(Applying.Ct))!.Id;
     }
 
     private async Task ChangePriceAsync(int productId, decimal price)
     {
-        await using var scope = api.Services.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<SphoneDbContext>();
-        (await db.Products.FindAsync([productId], Applying.Ct))!.Price = price;
-        await db.SaveChangesAsync(Applying.Ct);
+        var staff = await api.CreateStaffClientAsync();
+        using var response = await staff.PutAsJsonAsync($"/api/back-office/products/{productId}", ProductRequest(price), Applying.Ct);
+        response.EnsureSuccessStatusCode();
     }
+
+    private static object ProductRequest(decimal price) => new
+    {
+        productCategoryCode = "mobile-phone",
+        name = "ทดสอบล็อกราคา",
+        description = "สินค้าทดสอบ",
+        price,
+        imageId = "demo-iphone-17.svg",
+    };
+
+    private sealed record CreatedProduct(int Id);
 
     private static async Task AssertRefusedAsync(HttpResponseMessage response, string error)
     {

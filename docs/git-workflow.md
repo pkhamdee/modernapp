@@ -129,33 +129,53 @@ Defined in `.github/workflows/ci-release.yml`:
 
 ### How a tag reaches `sphone-prod`
 
+`sphone-prod` runs exactly one release: the manifests in `deploy/apps/prod` (and `deploy/apps/base`) **as they are in tag `vX.Y.Z`**, with the `X.Y.Z` images built from that same tag. Nothing is committed to a release branch or tag, and changes on `main` never reach prod until they are released.
+
 ```
 git push origin vX.Y.Z
   └─ CI: test → validate tag → build + scan + push ghcr.io/pkhamdee/<service>:X.Y.Z (every service) → GitHub Release
-       └─ Flux (sphone-prod, deploy/apps/prod/image-automation.yaml):
-            ImageRepository scans GHCR every minute → ImagePolicy picks the newest semver tag (never main-<sha>)
-            → ImageUpdateAutomation commits the new tags to deploy/apps/prod/kustomization.yaml on main
-              ("sphone-prod: update images [skip ci]")
-            → Kustomization apps-prod applies it to sphone-prod (https://prod.sphone.localhost)
+       └─ Flux (clusters/local/prod-release.yaml):
+            ImageRepository scans GHCR every minute → ImagePolicy sphone-release picks the newest plain X.Y.Z
+            (never main-<sha>, never a 0.0.0-test.N dry run)
+            → ImageUpdateAutomation sphone-prod commits ONE change to clusters/local on main
+              ("sphone-prod: follow the newest release [skip ci]"):
+                GitRepository sphone-release  ref.semver → X.Y.Z   (checks out tag vX.Y.Z)
+                Kustomization apps-prod       images     → X.Y.Z
+            → apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images (https://prod.sphone.localhost)
 ```
 
-Expect a few minutes from tag push to rollout. To check:
+Prod moves to a tag only once its images exist, so it never runs one release's manifests with another release's images. Expect a few minutes from tag push to rollout. To check:
 
 ```bash
 gh run list --workflow ci-release.yml --branch vX.Y.Z      # CI for the tag
-flux get images policy -n sphone-prod                      # latest image = X.Y.Z
-flux get kustomization apps-prod
+flux get images policy sphone-release                      # latest image = X.Y.Z
+flux get kustomization apps-prod                           # Applied revision: vX.Y.Z@sha1:...
 kubectl -n sphone-prod get deploy -o wide                  # images :X.Y.Z
 curl -k https://prod.sphone.localhost/api/product-categories
 ```
 
+### Releasing
+
+The first release (and every later minor release) is the lifecycle above, nothing more:
+
+```bash
+git checkout main && git pull origin main
+git checkout -b release/0.x
+git push origin release/0.x
+git tag -a v0.1.0 -m "Release 0.1.0"
+git push origin v0.1.0
+```
+
+Before the first release there is nothing for prod to run: the GitRepository `sphone-release` points at `v0.0.0` (which never exists), so it, the ImagePolicy `sphone-release` and `apps-prod` show not Ready (`no match found for semver: 0.0.0`). That is expected; they turn Ready a few minutes after `v0.1.0` is pushed.
+
 Things to know:
 
-- **Newest wins.** The ImagePolicy selects the highest semver tag across all series, so a patch on an older series (`v1.0.5` while `v2.0.0` is out) is built and released but does not replace the newer version in `sphone-prod`.
-- **Images come from the tag; manifests come from `main`.** `apps-prod` reads `deploy/apps/prod` (and `deploy/apps/base`) from `main`, with only the image tags pinned to the release. Keep manifest changes on `main` compatible with the version running in prod, and put prod-only changes in `deploy/apps/prod`.
-- **Rollback** = ship the next patch (tags are immutable). In an emergency, suspend the automation (`flux suspend image update sphone-prod -n sphone-prod`) and set the tags in `deploy/apps/prod/kustomization.yaml` by hand in a PR; resume afterwards.
-- **Release dry run** without a tag: Actions → CI / Release → Run workflow with `version` = `0.0.0-test.N` (any branch). It builds, scans and pushes every service as that pre-release tag and publishes no Release. Every real `X.Y.Z` outranks it, so it only reaches `sphone-prod` before the first release.
-- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` (resource, ImageRepository + ImagePolicy, `images:` marker); its HTTPRoutes are moved to `prod.sphone.localhost` automatically.
+- **Newest wins.** The ImagePolicy selects the highest semver release across all series, so a patch on an older series (`v1.0.5` while `v2.0.0` is out) is built and released but does not replace the newer version in `sphone-prod`.
+- **Prod-only changes** (e.g. a prod patch in `deploy/apps/prod`) are released like code: land them on `main` (and the release branch, if it should ship as a patch), then tag.
+- **Services finish building at different times.** The release is detected from `sphone-api`'s `X.Y.Z` tag; a service whose image is pushed a minute later just retries its image pull until it exists.
+- **Rollback** = ship the next patch (tags are immutable). In an emergency, suspend the automation (`flux suspend image update sphone-prod`) and set `ref.semver` of `sphone-release` and the `images` of `apps-prod` in `clusters/local/` to an earlier release in a PR; resume afterwards.
+- **Release dry run** without a tag: Actions → CI / Release → Run workflow with `version` = `0.0.0-test.N` (any branch). It builds, scans and pushes every service as that pre-release tag and publishes no Release. It is never deployed.
+- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry (with the `flux-system:sphone-release` marker) to `apps-prod` in `clusters/local/apps.yaml`; its HTTPRoutes are moved to `prod.sphone.localhost` automatically.
 
 ## Why tags rather than branches
 

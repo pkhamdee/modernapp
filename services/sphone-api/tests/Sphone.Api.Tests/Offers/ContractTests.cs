@@ -21,7 +21,7 @@ public sealed partial class ContractTests(SphoneApiFactory api)
         var acceptedAt = api.Clock.GetUtcNow();
         var contract = await customer.AcceptWithSmsCodeAsync(api, application.Offer!.Id, mobile);
 
-        var bangkokMonth = acceptedAt.ToOffset(TimeSpan.FromHours(7)).ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
+        var bangkokMonth = Bangkok.LocalTime(acceptedAt).ToString("yyyyMM", System.Globalization.CultureInfo.InvariantCulture);
         Assert.Matches($"^SP-{bangkokMonth}-[0-9]{{6}}$", contract.Number);
         Assert.Equal("active", contract.Status);
         Assert.Equal(

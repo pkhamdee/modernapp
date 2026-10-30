@@ -192,7 +192,7 @@ public sealed class HandoverTests(SphoneApiFactory api)
         await staff.MoveThroughAsync(accepted.Number, "ready-for-pickup", "handed-over");
 
         var contract = await accepted.Customer.GetContractAsync(accepted.Number);
-        var handedOverOn = DateOnly.FromDateTime(contract.HandedOverAt!.Value.ToOffset(TimeSpan.FromHours(7)).DateTime);
+        var handedOverOn = Bangkok.Today(contract.HandedOverAt!.Value);
         Assert.Equal(
             [handedOverOn.AddMonths(1), handedOverOn.AddMonths(2), handedOverOn.AddMonths(3), handedOverOn.AddMonths(4), handedOverOn.AddMonths(5), handedOverOn.AddMonths(6)],
             contract.Installments.Select(i => i.DueDate!.Value));

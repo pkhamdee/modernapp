@@ -5,11 +5,11 @@
 #                                        (Flux image automation deploys the newest to sphone-dev)
 #   - push tag vX.Y.Z                 -> lint + test, validate the tag, build EVERY service, scan,
 #                                        push ghcr.io/pkhamdee/<service>:X.Y.Z, then publish the GitHub Release
-#                                        (Flux image automation deploys the newest X.Y.Z to sphone-prod)
+#                                        (Flux then runs tag vX.Y.Z with the X.Y.Z images in sphone-prod)
 #   - workflow_dispatch               -> no input, on main: rebuild and push every service as main-<sha>
 #                                        input version=0.0.0-test.N: dry run of the release build on any
 #                                        branch; pushes every service as that pre-release tag, no GitHub Release
-#                                        (sphone-prod runs it only until the first real X.Y.Z exists)
+#                                        (never deployed: sphone-prod follows plain X.Y.Z releases only)
 #
 # Adding a service: add a lint/test job below and to `plan.needs`, and an entry in
 # .github/services.json (build context, Dockerfile, source paths). Release builds pick it up automatically.
@@ -163,7 +163,7 @@ jobs:
             version="${TAG#v}"
             matrix="$all"
           elif [ "$EVENT" = "workflow_dispatch" ] && [ -n "$DRY_RUN_VERSION" ]; then
-            # Only 0.0.0-test.N: a pre-release that every real X.Y.Z outranks in Flux's sphone-prod ImagePolicy.
+            # Only 0.0.0-test.N: never deployed (sphone-prod follows plain X.Y.Z releases only), so a dry run is harmless.
             if ! [[ "$DRY_RUN_VERSION" =~ ^0\.0\.0-test\.[0-9]+$ ]]; then
               echo "::error::Dry-run version must be 0.0.0-test.N"; exit 1
             fi
@@ -210,7 +210,7 @@ jobs:
       - id: tags
         run: |
           if [ -n "$VERSION" ]; then
-            # Release (X.Y.Z) or dry run (0.0.0-test.N): Flux's sphone-prod ImagePolicy picks the newest.
+            # Release (X.Y.Z; Flux moves sphone-prod to the newest) or dry run (0.0.0-test.N; never deployed).
             echo "list=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
             echo "scan=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
           else
@@ -240,7 +240,6 @@ jobs:
         with:
           image-ref: ${{ steps.tags.outputs.scan }}
           severity: CRITICAL
-          ignore-unfixed: true
           exit-code: "1"
       - uses: docker/login-action@v4
         with:

@@ -1,4 +1,5 @@
 import { apiPost } from './client.ts'
+import { formatDate } from '../format.ts'
 import type { OfferStatus } from './offers.ts'
 
 // Mirrors sphone-api's Eligibility and Application endpoints (GLOSSARY: Eligibility, Application, Credit Decision).
@@ -83,13 +84,6 @@ export function submitApplication(input: ApplicationInput): Promise<Application>
   return apiPost<Application>('/applications', form)
 }
 
-const dateFormat = new Intl.DateTimeFormat('th-TH', { dateStyle: 'long', timeZone: 'Asia/Bangkok' })
-
-/** "28 พฤศจิกายน 2569" */
-export function formatThaiDate(iso: string): string {
-  return dateFormat.format(new Date(iso))
-}
-
 export function ineligibleMessage(reason: IneligibleReason | string | undefined | null, reapplyFrom?: string | null): string {
   switch (reason) {
     case 'active-contract':
@@ -100,7 +94,7 @@ export function ineligibleMessage(reason: IneligibleReason | string | undefined 
       return 'คำขอก่อนหน้าของคุณกำลังอยู่ระหว่างพิจารณา'
     case 'recently-rejected':
       return reapplyFrom
-        ? `คำขอของคุณถูกปฏิเสธเมื่อไม่ถึง 30 วันที่ผ่านมา สมัครใหม่ได้ตั้งแต่ ${formatThaiDate(reapplyFrom)}`
+        ? `คำขอของคุณถูกปฏิเสธเมื่อไม่ถึง 30 วันที่ผ่านมา สมัครใหม่ได้ตั้งแต่ ${formatDate(reapplyFrom)}`
         : 'คำขอของคุณถูกปฏิเสธเมื่อไม่ถึง 30 วันที่ผ่านมา'
     default:
       return 'ขณะนี้คุณยังสมัครไม่ได้'

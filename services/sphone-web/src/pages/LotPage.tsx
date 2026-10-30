@@ -192,6 +192,8 @@ function bidErrorMessage(e: unknown): string {
       return 'มีผู้เสนอราคาเท่ากันหรือสูงกว่าแล้ว ราคาต้องสูงกว่าราคาสูงสุดอย่างน้อย 100 บาท'
     case 'id-verification-required':
       return VERIFY_FIRST
+    case 'under-20':
+      return 'ผู้ร่วมประมูลต้องมีอายุ 20 ปีขึ้นไป'
     case 'auction-not-open':
       return 'การประมูลยังไม่เปิด'
     case 'auction-closed':

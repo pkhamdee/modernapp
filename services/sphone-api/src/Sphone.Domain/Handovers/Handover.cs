@@ -47,8 +47,6 @@ public enum HandoverRefusal
 /// </summary>
 public class Handover
 {
-    private static readonly TimeSpan Bangkok = TimeSpan.FromHours(7);
-
     public int Id { get; set; }
 
     public int ContractId { get; set; }
@@ -75,7 +73,7 @@ public class Handover
         new() { Contract = contract, Stage = HandoverStage.Preparing, StageChangedAt = contract.AcceptedAt };
 
     /// <summary>The Handover date (Asia/Bangkok), from which Installment due dates run.</summary>
-    public DateOnly? HandedOverOn => HandedOverAt is { } at ? DateOnly.FromDateTime(at.ToOffset(Bangkok).DateTime) : null;
+    public DateOnly? HandedOverOn => HandedOverAt is { } at ? Bangkok.Today(at) : null;
 
     /// <summary>A Contract cancelled in the Enterprise System stops a Handover that hasn't happened (needs <see cref="Contract"/>).</summary>
     public bool IsStopped => Contract.Status == ContractStatus.Cancelled && Stage != HandoverStage.HandedOver;

@@ -112,7 +112,7 @@ internal static class HandoverAdministration
             return TypedResults.NotFound();
         }
 
-        var refusal = handover.MoveTo(stage.Value, StaffUsername(user), clock.GetUtcNow());
+        var refusal = handover.MoveTo(stage.Value, user.RequiredStaffUsername(), clock.GetUtcNow());
         if (refusal != HandoverRefusal.None)
         {
             return Refused(refusal);
@@ -132,7 +132,7 @@ internal static class HandoverAdministration
             return TypedResults.NotFound();
         }
 
-        var refusal = handover.RecordDownPayment(request.Amount ?? 0m, StaffUsername(user), clock.GetUtcNow());
+        var refusal = handover.RecordDownPayment(request.Amount ?? 0m, user.RequiredStaffUsername(), clock.GetUtcNow());
         if (refusal == HandoverRefusal.DownPaymentAmountWrong)
         {
             var errors = BackOfficeEndpoints.Errors();
@@ -158,31 +158,15 @@ internal static class HandoverAdministration
         return tracking ? query : query.AsNoTracking();
     }
 
-    private static string StaffUsername(ClaimsPrincipal user) =>
-        user.FindFirst(SphoneClaims.Username)?.Value ?? throw new InvalidOperationException("Not a Staff token.");
-
     private static ProblemHttpResult Refused(HandoverRefusal refusal) =>
-        TypedResults.Problem(
-            statusCode: StatusCodes.Status409Conflict,
-            title: refusal switch
-            {
-                HandoverRefusal.StageNotAllowed => "ข้ามขั้นตอนหรือย้อนขั้นตอนการส่งมอบไม่ได้",
-                HandoverRefusal.DownPaymentNotReceived => "กรุณาบันทึกการรับเงินดาวน์ก่อนส่งมอบสินค้า",
-                HandoverRefusal.Stopped => "สัญญานี้ถูกยกเลิกแล้ว จึงหยุดการส่งมอบสินค้า",
-                HandoverRefusal.NoDownPayment => "สัญญานี้ไม่มีเงินดาวน์",
-                _ => "บันทึกการรับเงินดาวน์ไปแล้ว",
-            },
-            extensions: new Dictionary<string, object?>
-            {
-                ["error"] = refusal switch
-                {
-                    HandoverRefusal.StageNotAllowed => "stage-not-allowed",
-                    HandoverRefusal.DownPaymentNotReceived => "down-payment-not-received",
-                    HandoverRefusal.Stopped => "handover-stopped",
-                    HandoverRefusal.NoDownPayment => "no-down-payment",
-                    _ => "down-payment-already-received",
-                },
-            });
+        refusal switch
+        {
+            HandoverRefusal.StageNotAllowed => Refusal.Conflict("stage-not-allowed", "ข้ามขั้นตอนหรือย้อนขั้นตอนการส่งมอบไม่ได้"),
+            HandoverRefusal.DownPaymentNotReceived => Refusal.Conflict("down-payment-not-received", "กรุณาบันทึกการรับเงินดาวน์ก่อนส่งมอบสินค้า"),
+            HandoverRefusal.Stopped => Refusal.Conflict("handover-stopped", "สัญญานี้ถูกยกเลิกแล้ว จึงหยุดการส่งมอบสินค้า"),
+            HandoverRefusal.NoDownPayment => Refusal.Conflict("no-down-payment", "สัญญานี้ไม่มีเงินดาวน์"),
+            _ => Refusal.Conflict("down-payment-already-received", "บันทึกการรับเงินดาวน์ไปแล้ว"),
+        };
 
     /// <summary>Needs the Contract with Product, Customer and Application (with Branch).</summary>
     private static HandoverResponse ToResponse(Handover h)

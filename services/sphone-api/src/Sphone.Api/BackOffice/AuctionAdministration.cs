@@ -121,10 +121,7 @@ internal static partial class AuctionAdministration
         // Bidders bid on what they saw; once someone has bid, the Lot (and its starting price) is fixed.
         if (lot.BidCount > 0)
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "แก้ไขรายการประมูลที่มีผู้เสนอราคาแล้วไม่ได้",
-                extensions: new Dictionary<string, object?> { ["error"] = "lot-has-bids" });
+            return Refusal.Conflict("lot-has-bids", "แก้ไขรายการประมูลที่มีผู้เสนอราคาแล้วไม่ได้");
         }
 
         var errors = Validate(request);
@@ -142,20 +139,14 @@ internal static partial class AuctionAdministration
             .SetProperty(l => l.ImageIds, lot.ImageIds), cancellationToken);
         if (updated == 0)
         {
-            return TypedResults.Problem(
-                statusCode: StatusCodes.Status409Conflict,
-                title: "แก้ไขรายการประมูลที่มีผู้เสนอราคาแล้วไม่ได้",
-                extensions: new Dictionary<string, object?> { ["error"] = "lot-has-bids" });
+            return Refusal.Conflict("lot-has-bids", "แก้ไขรายการประมูลที่มีผู้เสนอราคาแล้วไม่ได้");
         }
 
         return TypedResults.Ok(LotResponse.Of(lot, lot.Auction, now));
     }
 
     private static ProblemHttpResult AuctionClosed() =>
-        TypedResults.Problem(
-            statusCode: StatusCodes.Status409Conflict,
-            title: "การประมูลนี้ปิดแล้ว",
-            extensions: new Dictionary<string, object?> { ["error"] = "auction-closed" });
+        Refusal.Conflict("auction-closed", "การประมูลนี้ปิดแล้ว");
 
     private static Dictionary<string, string[]> Validate(LotRequest request)
     {

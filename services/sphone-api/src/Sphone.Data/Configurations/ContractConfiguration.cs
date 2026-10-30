@@ -25,7 +25,6 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property(c => c.DownPayment).HasPrecision(12, 2);
         builder.Property(c => c.Installment).HasPrecision(12, 2);
         builder.Property(c => c.TotalPayable).HasPrecision(12, 2);
-        builder.Ignore(c => c.IsActive);
         builder.HasMany(c => c.Payments).WithOne(p => p.Contract).HasForeignKey(p => p.ContractId).OnDelete(DeleteBehavior.Restrict);
 
         builder.HasOne(c => c.Offer).WithOne().HasForeignKey<Contract>(c => c.OfferId).OnDelete(DeleteBehavior.Restrict);

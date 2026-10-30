@@ -1,7 +1,7 @@
 # Arrows into the PostgreSQL instances (CloudNativePG): sphone-api and sphone-sync-master (same
 # namespace) on 5432; the CNPG operator (cnpg-system) on 8000 (instance manager) and 5432;
 # instances of the same cluster to each other (replication, if instances > 1).
-# Out: the Kubernetes API server (the instance manager watches its Cluster), and the same instances.
+# Out: the Kubernetes API server (TCP 443/6443, any address), and the same instances.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -44,17 +44,14 @@ spec:
       ports:
         - port: 8000
         - port: 5432
-    # Kubernetes API server: the `kubernetes` Service (10.43.0.1:443) and its endpoint on the
-    # Rancher Desktop k3s node (external 192.168.64.2, internal 192.168.5.15; port 6443).
+    # Kubernetes API server (the instance manager watches its Cluster). Its address depends on the machine (the
+    # `kubernetes` Service IP, and the node IP it is DNAT-ed to), so allow its ports on any address instead of
+    # pinning IPs: 443 (the Service) and 6443 (k3s' API server on the node). Only these CNPG pods get this rule.
     - to:
         - ipBlock:
-            cidr: 10.43.0.1/32
+            cidr: 0.0.0.0/0
       ports:
         - port: 443
-    - to:
-        - ipBlock:
-            cidr: 192.168.64.2/32
-        - ipBlock:
-            cidr: 192.168.5.15/32
-      ports:
+          protocol: TCP
         - port: 6443
+          protocol: TCP

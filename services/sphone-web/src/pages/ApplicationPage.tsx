@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router'
-import { applicationPaths, formatThaiDate, type Application } from '../api/applications.ts'
+import { applicationPaths, type Application } from '../api/applications.ts'
 import { ApiError, apiGet } from '../api/client.ts'
-import { formatBaht } from '../format.ts'
+import { formatBaht, formatDate } from '../format.ts'
 import { NotFoundPage } from './NotFoundPage.tsx'
 
 const CHECK_BACK_MS = 2000
@@ -154,7 +154,7 @@ function Decision({ application }: { application: Application }) {
                 : application.reason === 'over-credit-limit'
                   ? `ยอดจัดผ่อนเกินวงเงินของคุณ${application.creditLimit !== null ? ` (${formatBaht(application.creditLimit)})` : ''}`
                   : 'ผลการตรวจสอบเครดิตไม่ผ่านเกณฑ์'}
-              {application.reapplyFrom && <> สมัครใหม่ได้ตั้งแต่ {formatThaiDate(application.reapplyFrom)}</>}
+              {application.reapplyFrom && <> สมัครใหม่ได้ตั้งแต่ {formatDate(application.reapplyFrom)}</>}
             </p>
           )}
         </div>
