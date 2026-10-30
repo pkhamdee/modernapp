@@ -4,6 +4,8 @@ import {
   applyForHirePurchase,
   bangkokLocal,
   customerHeader,
+  expectFitsNarrowestPhone,
+  expectFormColumn,
   expectPageFits,
   expectResponsiveList,
   gridColumns,
@@ -258,8 +260,17 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
     await page.getByRole('link', { name: 'ดูข้อเสนอและยืนยัน' }).click()
     await expect(page.getByRole('heading', { name: 'ข้อเสนอเช่าซื้อ' })).toBeVisible()
     await expectPageFits(page)
+    // The Offer's terms: price, Down Payment, Term, Installment and expiry.
+    for (const term of ['ราคา (ล็อกไว้ ณ วันที่สมัคร)', 'เงินดาวน์', 'จำนวนงวด', 'ค่างวด']) {
+      await expect(page.getByRole('term').filter({ hasText: term })).toBeVisible()
+    }
+    await expect(page.getByRole('definition').filter({ hasText: '฿1,000' })).toBeVisible()
+    await expect(page.getByRole('definition').filter({ hasText: '12 งวด' })).toBeVisible()
+    await expect(page.getByText(/ข้อเสนอนี้ใช้ได้ถึง/)).toBeVisible()
+    await expectFitsNarrowestPhone(page)
     const before = await phone.received()
     await page.getByRole('button', { name: 'ยอมรับข้อเสนอ (รับรหัสทาง SMS)' }).click()
+    await expectFormColumn(page.getByLabel('รหัส SMS เพื่อยืนยันการยอมรับข้อเสนอ'))
     await page.getByLabel('รหัส SMS เพื่อยืนยันการยอมรับข้อเสนอ').fill(await phone.codeAfter(before))
     await page.getByRole('button', { name: 'ยืนยันและทำสัญญา' }).click()
     await expect(page).toHaveURL(/\/contracts\/SP-\d{6}-\d{6}$/)

@@ -335,3 +335,15 @@ export async function expectFormColumn(field: Locator) {
   expect(box.width, 'form column width (px)').toBeLessThanOrEqual(480)
   expect(Math.abs(box.x + box.width / 2 - windowWidth / 2), 'form column off centre by (px)').toBeLessThanOrEqual(1)
 }
+
+/**
+ * In the phone project, also checks the page at the narrowest supported phone, 360px wide (#57), then goes back
+ * to the project's size. A no-op on desktop.
+ */
+export async function expectFitsNarrowestPhone(page: Page) {
+  if (!isPhone()) return
+  const size = page.viewportSize()
+  await page.setViewportSize({ width: 360, height: size?.height ?? 800 })
+  await expectPageFits(page)
+  if (size) await page.setViewportSize(size)
+}
