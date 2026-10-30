@@ -7,8 +7,6 @@ namespace Sphone.Api.Tests.Handovers;
 [Collection(nameof(ClockMoving))]
 public sealed class InstallmentDueDateTests(SphoneApiFactory api)
 {
-    private static readonly TimeSpan Bangkok = TimeSpan.FromHours(7);
-
     [Fact]
     public async Task Due_dates_run_monthly_from_the_Bangkok_Handover_date()
     {
@@ -17,13 +15,13 @@ public sealed class InstallmentDueDateTests(SphoneApiFactory api)
 
         // The next 31 January in a year that isn't a leap year, so February has 28 days.
         var now = api.Clock.GetUtcNow();
-        var year = now.ToOffset(Bangkok).Year;
-        while (DateTime.IsLeapYear(year) || new DateTimeOffset(year, 1, 31, 10, 0, 0, Bangkok) <= now)
+        var year = Bangkok.LocalTime(now).Year;
+        while (DateTime.IsLeapYear(year) || new DateTimeOffset(year, 1, 31, 10, 0, 0, Bangkok.Offset) <= now)
         {
             year++;
         }
 
-        api.Clock.Advance(new DateTimeOffset(year, 1, 31, 10, 0, 0, Bangkok) - now);
+        api.Clock.Advance(new DateTimeOffset(year, 1, 31, 10, 0, 0, Bangkok.Offset) - now);
         await HandOverAsync(onJanuary31.Number);
         api.Clock.Advance(TimeSpan.FromHours(14) + TimeSpan.FromMinutes(30)); // 1 February 00:30 in Bangkok, still 31 January UTC
         await HandOverAsync(justAfterMidnight.Number);

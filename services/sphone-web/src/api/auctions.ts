@@ -86,7 +86,7 @@ export const auctionPaths = {
 
 /**
  * Places a Bid. Rejects with ApiError error: bid-too-low (someone bid the same or more; reload for the new
- * minimum) | id-verification-required | auction-not-open | auction-closed | bid-amount-invalid.
+ * minimum) | id-verification-required | under-20 | auction-not-open | auction-closed | bid-amount-invalid.
  */
 export const placeBid = (lotId: number, amount: number) => apiPost<Lot>(`/lots/${lotId}/bids`, { amount })
 

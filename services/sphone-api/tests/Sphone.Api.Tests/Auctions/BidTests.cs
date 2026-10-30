@@ -83,6 +83,18 @@ public sealed class BidTests(SphoneApiFactory api)
     }
 
     [Fact]
+    public async Task A_Customer_under_20_may_not_bid_even_though_their_ID_is_verified()
+    {
+        var lot = await api.OpenLotAsync(startingPrice: 10_000m);
+        var under20 = await api.IdVerifiedCustomerUnder20Async();
+
+        var response = await under20.BidAsync(lot.Id, 10_000m);
+
+        await response.ExpectRefusalAsync(HttpStatusCode.Forbidden, "under-20");
+        Assert.Null((await api.CreateClient().GetLotAsync(lot.Id)).HighestBid);
+    }
+
+    [Fact]
     public async Task Visitors_and_Staff_cannot_bid()
     {
         var lot = await api.OpenLotAsync(startingPrice: 10_000m);

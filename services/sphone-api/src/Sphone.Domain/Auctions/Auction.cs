@@ -33,8 +33,6 @@ public enum AuctionStatus
 /// <summary>The weekly Auction schedule: opens Monday 10:00 and closes Sunday 20:00, Asia/Bangkok (UTC+7, no DST).</summary>
 public static class AuctionSchedule
 {
-    private static readonly TimeSpan Bangkok = TimeSpan.FromHours(7);
-
     private static readonly TimeSpan OpeningTime = TimeSpan.FromHours(10);
 
     /// <summary>From Monday 10:00 to Sunday 20:00.</summary>
@@ -43,9 +41,9 @@ public static class AuctionSchedule
     /// <summary>The next weekly Auction that opens strictly after <paramref name="now"/>.</summary>
     public static (DateTimeOffset OpensAt, DateTimeOffset ClosesAt) Next(DateTimeOffset now)
     {
-        var local = now.ToOffset(Bangkok);
+        var local = Bangkok.LocalTime(now);
         var daysToMonday = ((int)DayOfWeek.Monday - (int)local.DayOfWeek + 7) % 7;
-        var opensAt = new DateTimeOffset(local.Date, Bangkok).AddDays(daysToMonday) + OpeningTime;
+        var opensAt = new DateTimeOffset(local.Date, Bangkok.Offset).AddDays(daysToMonday) + OpeningTime;
         if (opensAt <= now)
         {
             opensAt = opensAt.AddDays(7);

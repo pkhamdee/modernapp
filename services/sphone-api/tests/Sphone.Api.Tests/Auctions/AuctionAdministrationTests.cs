@@ -7,8 +7,6 @@ public sealed class AuctionAdministrationTests(SphoneApiFactory api)
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static readonly TimeSpan Bangkok = TimeSpan.FromHours(7);
-
     [Fact]
     public async Task A_new_Auction_defaults_to_the_next_weekly_schedule_Monday_10_00_to_Sunday_20_00_Bangkok()
     {
@@ -17,8 +15,8 @@ public sealed class AuctionAdministrationTests(SphoneApiFactory api)
 
         var auction = await staff.CreateAuctionAsync(new { });
 
-        var opens = auction.OpensAt.ToOffset(Bangkok);
-        var closes = auction.ClosesAt.ToOffset(Bangkok);
+        var opens = auction.OpensAt.ToOffset(Bangkok.Offset);
+        var closes = auction.ClosesAt.ToOffset(Bangkok.Offset);
         Assert.Equal(DayOfWeek.Monday, opens.DayOfWeek);
         Assert.Equal(new TimeSpan(10, 0, 0), opens.TimeOfDay);
         Assert.Equal(DayOfWeek.Sunday, closes.DayOfWeek);

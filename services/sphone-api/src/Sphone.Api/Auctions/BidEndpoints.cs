@@ -3,12 +3,13 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Sphone.Api.Auth;
 using Sphone.Data;
+using Sphone.Domain.Applications;
 using Sphone.Domain.Auctions;
 
 namespace Sphone.Api.Auctions;
 
 /// <summary>
-/// Customers who have passed ID Verification place Bids while the Auction is open. A Bid must be at least the
+/// Customers who have passed ID Verification and are aged 20 or over place Bids while the Auction is open. A Bid must be at least the
 /// starting price (first Bid) or at least ฿100 above the current highest Bid.
 /// <para>
 /// No ties, even under concurrency: the Lot's highest Bid is raised by ONE conditional UPDATE whose WHERE clause
@@ -42,14 +43,22 @@ internal static class BidEndpoints
             return TypedResults.NotFound();
         }
 
-        if (!await db.Customers.AnyAsync(c => c.Id == customerId && c.IdVerifiedAt != null, cancellationToken))
+        var now = clock.GetUtcNow();
+        var bidder = await db.Customers.AsNoTracking().Where(c => c.Id == customerId)
+            .Select(c => new { c.IdVerifiedAt, c.DateOfBirth }).SingleAsync(cancellationToken);
+        if (bidder.IdVerifiedAt is null || bidder.DateOfBirth is not { } dateOfBirth)
         {
             return Refused(StatusCodes.Status403Forbidden, "id-verification-required",
                 "กรุณายืนยันตัวตนด้วยบัตรประชาชนก่อนร่วมประมูล");
         }
 
+        // Passing ID Verification is not enough: like hire purchase, bidding needs the Customer to be 20 or over.
+        if (!Eligibility.IsOldEnough(dateOfBirth, now))
+        {
+            return Refused(StatusCodes.Status403Forbidden, "under-20", "ผู้ร่วมประมูลต้องมีอายุ 20 ปีขึ้นไป");
+        }
+
         // An Auction's open and close times never change once created, so checking them here is final.
-        var now = clock.GetUtcNow();
         switch (lot.Auction.StatusAt(now))
         {
             case AuctionStatus.Upcoming:

@@ -35,8 +35,6 @@ public sealed record Eligibility(bool IsEligible, IneligibleReason? Reason, Date
 
     public static Eligibility Eligible { get; } = new(true, null, null);
 
-    private static readonly TimeSpan Bangkok = TimeSpan.FromHours(7);
-
     /// <summary>
     /// Checks the rules that are known before ID Verification, from the Customer's earlier Applications (and
     /// any made with the same ID number), with their Offers loaded, and whether they hold an active Contract.
@@ -67,8 +65,7 @@ public sealed record Eligibility(bool IsEligible, IneligibleReason? Reason, Date
     /// <summary>Aged 20 or over today (Asia/Bangkok): a 20th birthday today counts.</summary>
     public static bool IsOldEnough(DateOnly dateOfBirth, DateTimeOffset now)
     {
-        var today = DateOnly.FromDateTime(now.ToOffset(Bangkok).DateTime);
-        return dateOfBirth.AddYears(MinimumAge) <= today;
+        return dateOfBirth.AddYears(MinimumAge) <= Bangkok.Today(now);
     }
 }
 

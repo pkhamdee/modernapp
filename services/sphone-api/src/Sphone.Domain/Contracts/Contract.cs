@@ -124,11 +124,9 @@ public sealed record ScheduledInstallment(int Number, decimal Amount, DateOnly? 
 /// </summary>
 public readonly record struct ContractNumber(string Month, int Sequence)
 {
-    private static readonly TimeSpan Bangkok = TimeSpan.FromHours(7);
-
     /// <summary>The counter key (<c>YYYYMM</c>, Asia/Bangkok) for a Contract accepted at <paramref name="acceptedAt"/>.</summary>
     public static string MonthOf(DateTimeOffset acceptedAt) =>
-        acceptedAt.ToOffset(Bangkok).ToString("yyyyMM", CultureInfo.InvariantCulture);
+        Bangkok.LocalTime(acceptedAt).ToString("yyyyMM", CultureInfo.InvariantCulture);
 
     public override string ToString() => $"SP-{Month}-{Sequence.ToString("D6", CultureInfo.InvariantCulture)}";
 }
