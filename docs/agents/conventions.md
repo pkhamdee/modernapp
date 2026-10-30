@@ -148,6 +148,11 @@ eshop-sync-master:
   with `src/format.ts` (Asia/Bangkok).
 - Thai copy, mobile-first (`src/index.css`, 640 px column, 44 px touch targets).
 - The image drops all capabilities: Caddy's file capability is removed with `setcap -r` and it listens on 8080.
+- Service worker (ADR 0006, #59): hand-written `src/pwa/sw.js`, built to `/sw.js` by the `serviceWorker()` plugin in
+  `vite.config.ts` (it injects the build's file list and a content hash), registered in production builds only.
+  It pre-caches built static files and `public/offline.html` and never intercepts `/api/*`, `/images/*` or
+  `/thirdparty-mock/*`; don't add runtime caching of API responses. Anything in `public/` is pre-cached, so keep
+  it small. `vite dev` has no worker; test it with `vite build && vite preview` or the image.
 
 ## Deploy and Flux
 

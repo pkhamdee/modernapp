@@ -4,6 +4,9 @@ import { RouterProvider } from 'react-router'
 import { AuthProvider } from './auth/AuthProvider.tsx'
 import { router } from './routes.tsx'
 import './index.css'
+import { registerServiceWorker } from './pwa/registerServiceWorker.ts'
+
+registerServiceWorker()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
