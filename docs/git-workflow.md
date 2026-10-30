@@ -124,7 +124,7 @@ Defined in `.github/workflows/ci-release.yml`:
 
 - Pushes and PRs to `main` and `release/*` lint and test every service. Pushes to `release/*` publish nothing.
 - Pushes to `main` also build the changed services' images as `main-<sha>`; Flux deploys them to `eshop-dev` (`https://eshop.localhost`).
-- Pushing a `v*` tag lints and tests, validates the tag (must be `vX.Y.Z`, annotated, and on a `release/N.x` branch), builds **every** service in `.github/services.json` for arm64, scans each with Trivy (fails on critical), pushes `ghcr.io/pkhamdee/<service>:X.Y.Z`, and only then publishes the GitHub Release with generated notes.
+- Pushing a `v*` tag lints and tests, validates the tag (must be `vX.Y.Z`, annotated, and on a `release/N.x` branch), builds **every** service in `.github/services.json` for arm64, scans each with Trivy (fails on critical), pushes `docker.io/pkhamdee/<service>:X.Y.Z`, and only then publishes the GitHub Release with generated notes.
 - If the build system can't trigger on tags, this workflow doesn't fit; switch to the branch-based workflow (Workflow A in the source article).
 
 ### How a tag reaches `eshop-prod`
@@ -133,7 +133,7 @@ Defined in `.github/workflows/ci-release.yml`:
 
 ```
 git push origin vX.Y.Z
-  └─ CI: test → validate tag → build + scan + push ghcr.io/pkhamdee/<service>:X.Y.Z (every service) → GitHub Release
+  └─ CI: test → validate tag → build + scan + push docker.io/pkhamdee/<service>:X.Y.Z (every service) → GitHub Release
        └─ Flux (clusters/local/prod-release.yaml):
             ImageRepository scans GHCR every minute → ImagePolicy eshop-release picks the newest plain X.Y.Z
             (never main-<sha>, never a 0.0.0-test.N dry run)

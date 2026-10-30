@@ -27,7 +27,7 @@ spec:
       containers:
         - name: eshop-node-api
           # Tag set per environment by the overlay (Flux image automation).
-          image: ghcr.io/pkhamdee/eshop-node-api
+          image: docker.io/pkhamdee/eshop-node-api
           env:
             - name: SMB_HOST
               value: samba.thirdparty.svc.cluster.local

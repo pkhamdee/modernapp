@@ -1,10 +1,10 @@
 # CI and tag-based releases. See docs/git-workflow.md.
 #   - push / PR to main or release/*  -> lint + test every service
 #   - push to main                    -> also build changed services for arm64, Trivy scan,
-#                                        push ghcr.io/pkhamdee/<service>:main-<sha>[-<unix-ts>]
+#                                        push docker.io/pkhamdee/<service>:main-<sha>[-<unix-ts>]
 #                                        (Flux image automation deploys the newest to eshop-dev)
 #   - push tag vX.Y.Z                 -> lint + test, validate the tag, build EVERY service, scan,
-#                                        push ghcr.io/pkhamdee/<service>:X.Y.Z, then publish the GitHub Release
+#                                        push docker.io/pkhamdee/<service>:X.Y.Z, then publish the GitHub Release
 #                                        (Flux then runs tag vX.Y.Z with the X.Y.Z images in eshop-prod)
 #   - workflow_dispatch               -> no input, on main: rebuild and push every service as main-<sha>
 #                                        input version=0.0.0-test.N: dry run of the release build on any
@@ -235,13 +235,12 @@ jobs:
     runs-on: ubuntu-24.04-arm # native arm64 build for the Apple Silicon cluster
     permissions:
       contents: read
-      packages: write
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}
+      IMAGE: docker.io/${{ vars.DOCKERHUB_USERNAME }}/${{ matrix.service }}
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v7
@@ -279,11 +278,13 @@ jobs:
           image-ref: ${{ steps.tags.outputs.scan }}
           severity: CRITICAL
           exit-code: "1"
+      # Docker Hub repositories are created public on first push. Needs the repo variable DOCKERHUB_USERNAME and
+      # the secret DOCKERHUB_TOKEN (a Docker Hub access token with Read & Write); see docs/setup.md.
       - uses: docker/login-action@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Push
         env:
           TAGS: ${{ steps.tags.outputs.list }}
@@ -304,8 +305,9 @@ jobs:
           TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.plan.outputs.version }}
           SERVICES: ${{ needs.plan.outputs.matrix }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
         run: |
-          images=$(jq -r --arg owner "${GITHUB_REPOSITORY_OWNER}" --arg v "$VERSION" \
-            '.[] | "- `ghcr.io/\($owner)/\(.service):\($v)`"' <<<"$SERVICES")
+          images=$(jq -r --arg owner "$DOCKERHUB_USERNAME" --arg v "$VERSION" \
+            '.[] | "- `docker.io/\($owner)/\(.service):\($v)`"' <<<"$SERVICES")
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG" \
             --notes "$(printf 'Images (deployed to eshop-prod by Flux):\n%s\n' "$images")"

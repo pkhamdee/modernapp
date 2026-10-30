@@ -60,11 +60,11 @@ spec:
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: ghcr.io/pkhamdee/sphone-sync-master
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
-    - name: ghcr.io/pkhamdee/eshop-api
+    - name: docker.io/pkhamdee/eshop-api
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
-    - name: ghcr.io/pkhamdee/eshop-web
+    - name: docker.io/pkhamdee/eshop-web
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
-    - name: ghcr.io/pkhamdee/eshop-node-api
+    - name: docker.io/pkhamdee/eshop-node-api
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
-    - name: ghcr.io/pkhamdee/eshop-sync-master
+    - name: docker.io/pkhamdee/eshop-sync-master
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}

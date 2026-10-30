@@ -28,7 +28,7 @@ spec:
       containers:
         - name: thirdparty-mock
           # Tag set by Flux image automation (deploy/thirdparty/kustomization.yaml).
-          image: ghcr.io/pkhamdee/thirdparty-mock
+          image: docker.io/pkhamdee/thirdparty-mock
           env:
             # Mock Enterprise System admin tool (/enterprise/): SQL Server login enterprise_admin.
             - name: ENTERPRISE_SQL_SERVER

@@ -115,12 +115,22 @@ The rename to eShop (spec #46) moves the environments from `sphone-dev` / `sphon
 with no redirect from the old names and no data migration. A fresh cluster needs none of this section; a cluster that
 ran the old names needs the steps marked **human** (agents don't change the cluster or GitHub settings).
 
-### 1. When #49 is on `main`: make the new images public
+### 1. Images on Docker Hub
 
-**Human**, once: when CI has first pushed `ghcr.io/pkhamdee/eshop-api`, `eshop-web`, `eshop-node-api` and
-`eshop-sync-master`, make each GHCR package public (github.com/pkhamdee?tab=packages → package → Package settings →
-Change visibility). Until then Flux cannot scan them and the pods cannot pull them: dev shows ImagePullBackOff and
-`apps-dev` stays not Ready.
+CI pushes every image to Docker Hub as `docker.io/pkhamdee/<service>` (#63); new Docker Hub repositories are public,
+so Flux and the pods pull them without credentials. Only the v0.1.1 prod images (`ghcr.io/pkhamdee/sphone-*`) stay on
+GHCR until step 4.
+
+**Human**, once: create a Docker Hub access token with Read & Write (hub.docker.com → Account settings → Personal
+access tokens), then give it to CI. `gh secret set` prompts for the token, so it never lands in shell history:
+
+```sh
+gh variable set DOCKERHUB_USERNAME --body pkhamdee
+gh secret set DOCKERHUB_TOKEN
+```
+
+Without them the `image <service>` jobs fail at login, and dev shows ImagePullBackOff with `apps-dev` not Ready. If
+Docker Hub's default repository privacy was changed to private, make each `pkhamdee/<service>` repository public.
 
 ### 2. When #50 is on `main`: dev moves, prod stays on v0.1.1
 
@@ -347,7 +357,7 @@ Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is yo
 # 1. Tag (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
 scripts/release.sh 0.2.0
 
-# 2. Watch CI: test → validate tag → build/scan/push ghcr.io/pkhamdee/<service>:0.2.0 → GitHub Release
+# 2. Watch CI: test → validate tag → build/scan/push docker.io/pkhamdee/<service>:0.2.0 → GitHub Release
 gh run watch "$(gh run list --workflow ci-release.yml --branch v0.2.0 --limit 1 --json databaseId --jq '.[0].databaseId')"
 
 # 3. Flux follows the release a few minutes later (clusters/local/prod-release.yaml)

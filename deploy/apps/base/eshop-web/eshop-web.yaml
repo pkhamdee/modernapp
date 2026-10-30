@@ -22,7 +22,7 @@ spec:
       containers:
         - name: eshop-web
           # Tag set per environment by the overlay (Flux image automation).
-          image: ghcr.io/pkhamdee/eshop-web
+          image: docker.io/pkhamdee/eshop-web
           ports:
             - name: http
               containerPort: 8080
