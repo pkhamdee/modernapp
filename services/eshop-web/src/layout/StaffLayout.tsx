@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router'
 import { useAuth } from '../auth/context.ts'
 import { BrandLogo } from './BrandLogo.tsx'
+import { useMenu } from './useMenu.ts'
 
 const NAV_ID = 'staff-nav'
 
@@ -14,24 +15,10 @@ export function StaffLayout() {
   const { session, signOut } = useAuth()
   const navigate = useNavigate()
   const isStaff = session?.role === 'Staff'
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuButton = useRef<HTMLButtonElement>(null)
   const nav = useRef<HTMLElement>(null)
-  const closeMenu = () => setMenuOpen(false)
-
-  // While the slide-out menu is open, focus moves into it, and Escape closes it from anywhere on the page and
-  // returns focus to the menu button.
-  useEffect(() => {
-    if (!menuOpen) return
-    nav.current?.querySelector('a')?.focus()
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
-      setMenuOpen(false)
-      menuButton.current?.focus()
-    }
-    document.addEventListener('keydown', closeOnEscape)
-    return () => document.removeEventListener('keydown', closeOnEscape)
-  }, [menuOpen])
+  // The slide-out menu: opening it moves focus into it; Escape closes it from anywhere on the page and returns
+  // focus to the menu button.
+  const { menuOpen, menuButton, toggleMenu, closeMenu } = useMenu(nav)
 
   return (
     <div className="app staff-layout">
@@ -48,7 +35,7 @@ export function StaffLayout() {
               className="header-link staff-menu-button"
               aria-expanded={menuOpen}
               aria-controls={NAV_ID}
-              onClick={() => setMenuOpen((open) => !open)}
+              onClick={toggleMenu}
             >
               เมนู
             </button>

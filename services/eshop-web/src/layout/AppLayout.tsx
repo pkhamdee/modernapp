@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useMatch } from 'react-router'
 import { useAuth } from '../auth/context.ts'
 import { BrandLogo } from './BrandLogo.tsx'
+import { useMenu } from './useMenu.ts'
 
 const NAV_ID = 'site-nav'
 
@@ -11,23 +11,10 @@ const NAV_ID = 'site-nav'
  */
 export function AppLayout() {
   const { session } = useAuth()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuButton = useRef<HTMLButtonElement>(null)
-  const closeMenu = () => setMenuOpen(false)
+  // The phone menu: Escape closes it from anywhere on the page and returns focus to the button.
+  const { menuOpen, menuButton, toggleMenu, closeMenu } = useMenu()
   // Catalog covers the home page and every Product Category's page.
   const onCategory = useMatch('/categories/:code') !== null
-
-  // While the phone menu is open, Escape closes it from anywhere on the page and returns focus to the button.
-  useEffect(() => {
-    if (!menuOpen) return
-    function closeOnEscape(event: KeyboardEvent) {
-      if (event.key !== 'Escape') return
-      setMenuOpen(false)
-      menuButton.current?.focus()
-    }
-    document.addEventListener('keydown', closeOnEscape)
-    return () => document.removeEventListener('keydown', closeOnEscape)
-  }, [menuOpen])
 
   return (
     <div className="app">
@@ -42,7 +29,7 @@ export function AppLayout() {
             className="header-link menu-button"
             aria-expanded={menuOpen}
             aria-controls={NAV_ID}
-            onClick={() => setMenuOpen((open) => !open)}
+            onClick={toggleMenu}
           >
             เมนู
           </button>
