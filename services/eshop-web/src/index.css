@@ -310,6 +310,74 @@ h2 {
 }
 /* ---- end card grid and detail layout (#53) ---- */
 
+/* ---- Auction Lot page and won Lots (#54) ---------------------------------------------------------------------
+ * The Auction's Lots use .card-grid as the catalog does. .lot-detail is a .detail-layout whose .detail-panel (the
+ * bidding panel) comes before .detail-media in the page, so on phones and tablets the current highest Bid, minimum
+ * increment, closing time and Bid form are on screen without scrolling and the photos follow. From the wide
+ * breakpoint the photos go back to the left column, beside the panel. .payment-deadline: a won Lot's pay-by date
+ * on its own line, larger than the text around it, at every size.
+ */
+.lot-detail .lot-status-line {
+  margin: 0 0 0.25rem;
+}
+
+.lot-detail .terms {
+  margin-bottom: 1rem;
+}
+
+.lot-detail .terms .product-detail-price {
+  margin: 0;
+}
+
+.terms .terms-wide {
+  grid-column: 1 / -1;
+}
+
+.lot-detail .lot-photos {
+  margin-top: 1.5rem;
+}
+
+.lot-condition-heading {
+  font-size: 1rem;
+  margin: 1rem 0 0.25rem;
+}
+
+.form-notice.winner-notice {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: var(--background);
+  color: var(--ink);
+}
+
+.winner-notice p {
+  margin: 0;
+}
+
+.winner-notice .payment-deadline {
+  font-size: 1.1rem;
+  color: var(--brand-dark);
+}
+
+@media (min-width: 1024px) {
+  /* wide */
+  .lot-detail .detail-media {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .lot-detail .detail-panel {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .lot-detail .lot-photos {
+    margin-top: 0;
+  }
+}
+/* ---- end Auction Lot page and won Lots (#54) ---- */
+
 .product-card {
   display: flex;
   flex-direction: column;

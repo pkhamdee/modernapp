@@ -257,3 +257,14 @@ export async function placement(first: Locator, second: Locator): Promise<'besid
   if (b.y >= a.y + a.height) return 'below'
   return 'overlapping'
 }
+
+/**
+ * How many cards fit across a grid (#54): the list's width over its first card's width. Unlike gridColumns it
+ * works with fewer cards than columns, e.g. an Auction holding a single Lot.
+ */
+export async function cardsAcross(list: Locator): Promise<number> {
+  const listBox = await list.boundingBox()
+  const cardBox = await list.getByRole('listitem').first().boundingBox()
+  if (!listBox || !cardBox) throw new Error('cardsAcross: the list and its first card must be visible')
+  return Math.floor(listBox.width / cardBox.width)
+}

@@ -157,7 +157,9 @@ eshop-sync-master:
 - Card lists (catalog Products, Auction Lots) use `ul.card-grid` (1 / 2 / 3 / 4 columns at phone / tablet / wide /
   desktop). Product and Lot pages use `.detail-layout` with `.detail-media` (photo) and `.detail-panel`: stacked
   below 1024 px, side by side from it. e2e checks layouts by position, not class: `gridColumns(list)` and
-  `placement(photo, panel)` (`'beside' | 'below'`) in `e2e/tests/steps.ts`.
+  `placement(photo, panel)` (`'beside' | 'below'`) in `e2e/tests/steps.ts`; `cardsAcross(list)` reads columns from
+  the first card's width when a grid holds fewer cards than columns (an Auction with one Lot). The Lot page
+  (`.lot-detail`) puts its bidding panel before the photos in the page, so it is on screen unscrolled on a phone.
 - The image drops all capabilities: Caddy's file capability is removed with `setcap -r` and it listens on 8080.
 - Service worker (ADR 0006, #59): hand-written `src/pwa/sw.js`, built to `/sw.js` by the `serviceWorker()` plugin in
   `vite.config.ts` (it injects the build's file list and a content hash), registered in production builds only.
