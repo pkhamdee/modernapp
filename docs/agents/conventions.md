@@ -151,6 +151,7 @@ sphone-sync-master:
 
 ## Deploy and Flux
 
+- **Check manifests before pushing**: `DOCKER_HOST=unix://$HOME/.rd/docker.sock scripts/validate-manifests.sh` (kustomize build + kubeconform, as CI does). Pushes touching only `deploy/**` or `clusters/**` run no CI, so a broken manifest is otherwise found only when Flux fails to apply it.
 - **Adding a service**: base folder `deploy/apps/base/<svc>/` (Deployment, Service, an HTTPRoute if the Gateway routes it, `network-policy.yaml`),
   an entry in `.github/services.json`, a lint/test job in `ci-release.yml` listed in `plan.needs`. Dev: see the
   header of `deploy/apps/dev/image-automation.yaml`. Prod: see the header of `deploy/apps/prod/kustomization.yaml`

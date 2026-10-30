@@ -124,11 +124,27 @@ jobs:
         run: npm test
 
   # Mechanical rules no service job covers. Not in plan.needs: a release tag never waits on it.
+  # Pushes that only touch deploy/** or clusters/** run no CI (see `on`), so manifests are checked on the PR.
   repo-rules:
-    name: repo rules (skip-ci markers, shellcheck)
+    name: repo rules (manifests, workflows, scripts, e2e)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Manifests (kustomize build + kubeconform)
+        run: scripts/validate-manifests.sh
+      # A broken ci-release.yml runs no job at all (the PR just shows no checks); this still guards e2e.yml
+      # and every edit that leaves the file parseable.
+      - name: Workflows (actionlint)
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      # The smoke test itself needs a deployed environment (e2e.yml); its types are checked on every push.
+      - name: e2e type-check
+        working-directory: e2e
+        run: npm ci && npm run typecheck
       # A Flux commit message with a skip-ci marker makes GitHub skip every push workflow on that commit,
       # including a release tag pushed onto it (that is how v0.1.0 never built). docs/git-workflow.md.
       - name: No skip-ci markers in Flux commit templates

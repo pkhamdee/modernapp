@@ -256,7 +256,7 @@ A fix after the release goes to `release/0.x` **and** `main`, then the next patc
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/sphone-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
-| `scripts/` | Human-run repo tasks: `release.sh X.Y.Z` cuts a release | – |
+| `scripts/` | Repo tasks: `release.sh X.Y.Z` cuts a release (human-run); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
