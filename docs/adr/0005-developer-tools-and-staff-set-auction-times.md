@@ -8,6 +8,6 @@ Two decisions made while building the MVP go beyond the spec's wording, and both
 
 ## Consequences
 
-- `deploy/thirdparty/thirdparty-mock/network-policy.yaml` and `deploy/thirdparty/mssql/network-policy.yaml` carry these arrows; the probe script that checks every arrow treats them as allowed.
+- `deploy/thirdparty/thirdparty-mock/network-policy.yaml` and `deploy/thirdparty/mssql/network-policy.yaml` carry these arrows.
 - A real deployment would drop the thirdparty-mock route and arrows along with the mocks.
 - Bidding rules (opening, closing, no ties) depend only on an Auction's own times, never on the weekly schedule, so custom times change nothing for Customers beyond when they may bid.
