@@ -1,6 +1,6 @@
-# S Phone
+# eShop
 
-S Phone (เอส ลีสซิ่ง) lets a Customer buy phones, iPads, electrical appliances, furniture and electric motorcycles on hire purchase using only their national ID card, and runs a weekly auction of used iPhones.
+eShop (อีช้อป), run by eShop Co., lets a Customer buy phones, iPads, electrical appliances, furniture and electric motorcycles on hire purchase using only their national ID card, and runs a weekly auction of used iPhones.
 
 ## Parties
 
@@ -9,11 +9,11 @@ A person who applies for hire purchase, holds Contracts, or bids in an Auction.
 _Avoid_: User, client, applicant, member
 
 **Staff** (พนักงาน):
-An S Phone employee who hands over goods, records payments taken at a shop, and runs Auctions.
+An eShop Co. employee who hands over goods, records payments taken at a Branch, and runs Auctions.
 _Avoid_: Admin, operator, agent
 
 **Enterprise System** (ระบบหลักขององค์กร):
-Srisawad's core hire-purchase system, which owns Contracts and Payments once they exist.
+eShop Co.'s core hire-purchase system, which owns Contracts and Payments once they exist.
 _Avoid_: HPE, backend, core, legacy
 
 ## Hire purchase
@@ -87,7 +87,7 @@ Handing over a Contract's Product to the Customer at a Branch.
 _Avoid_: Collection, click-and-collect
 
 **Branch** (สาขา):
-An S Phone shop where a Customer can collect goods and pay at handover.
+A physical eShop location where a Customer can collect goods and pay at handover.
 _Avoid_: Store, shop, outlet
 
 **Handover** (การส่งมอบสินค้า):
