@@ -2,7 +2,7 @@
   {
     "service": "sphone-api",
     "context": "services/sphone-api",
-    "dockerfile": "services/sphone-api/src/Sphone.Api/Dockerfile",
+    "dockerfile": "services/sphone-api/src/Eshop.Api/Dockerfile",
     "paths": ["services/sphone-api/"]
   },
   {
@@ -26,7 +26,7 @@
   {
     "service": "sphone-sync-master",
     "context": "services/sphone-api",
-    "dockerfile": "services/sphone-api/src/Sphone.SyncMaster/Dockerfile",
+    "dockerfile": "services/sphone-api/src/Eshop.SyncMaster/Dockerfile",
     "paths": ["services/sphone-api/"]
   }
 ]

@@ -1,7 +1,7 @@
 -- Fake enterprise schema of the mock Enterprise System (ADR-0003): hire-purchase Contracts and their Payments.
 -- Applied to the CURRENT database (enterprise_dev, enterprise_prod, or a test database) and safe to re-run.
 -- Used by the mssql pod's schema container (deploy/thirdparty/mssql) and by the Seam-2 tests of
--- sphone-sync-master (services/sphone-api/tests/Sphone.SyncMaster.Tests), so both see the same schema.
+-- sphone-sync-master (services/sphone-api/tests/Eshop.SyncMaster.Tests), so both see the same schema.
 --
 -- Ownership (ADR-0001): rows in hp_contract are inserted by sphone-sync-master (push, idempotent on
 -- contract_no) and from then on changed only here (the admin tool simulates Payments and cancellations).

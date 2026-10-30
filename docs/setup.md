@@ -120,7 +120,7 @@ it restart sphone-api (`kubectl -n sphone-<env> rollout restart deploy/sphone-ap
 More accounts: add `Staff__Accounts__1__*` env vars from the same kind of Secret.
 
 Running sphone-api locally, give it a Staff account the same way (any password you like, not committed):
-`Staff__Accounts__0__Username=staff Staff__Accounts__0__Password=<choose one> dotnet run --project src/Sphone.Api`.
+`Staff__Accounts__0__Username=staff Staff__Accounts__0__Password=<choose one> dotnet run --project src/Eshop.Api`.
 Product photo upload needs sphone-node-api (`npm run dev`, port 8081; `ImageService__BaseUrl` overrides it).
 
 ## Auction demo
@@ -251,7 +251,7 @@ A fix after the release goes to `release/0.x` **and** `main`, then the next patc
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
 | `deploy/apps/prod/` | `sphone-prod` overlay, applied as it is in the newest release tag, served at `prod.sphone.localhost` | `apps-prod` (after configs; source `sphone-release`) |
 | `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, `samba/`: image share with one share per environment, `mssql/`: mock Enterprise System, ...); thirdparty-mock follows `main` via its own image automation | `thirdparty` (after configs) |
-| `services/sphone-api/` | .NET solution: `src/Sphone.Domain`, `src/Sphone.Data` (EF Core, migrations), `src/Sphone.Api`, `src/Sphone.SyncMaster` (sphone-sync-master), `tests/Sphone.Api.Tests` (Seam 1), `tests/Sphone.SyncMaster.Tests` (Seam 2) | – |
+| `services/sphone-api/` | .NET solution: `src/Eshop.Domain`, `src/Eshop.Data` (EF Core, migrations), `src/Eshop.Api`, `src/Eshop.SyncMaster` (sphone-sync-master), `tests/Eshop.Api.Tests` (Seam 1), `tests/Eshop.SyncMaster.Tests` (Seam 2) | – |
 | `services/sphone-web/` | React + Vite + TypeScript, served by Caddy | – |
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/sphone-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
@@ -271,15 +271,15 @@ export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock   # Rancher De
 cd services/sphone-api
 dotnet test
 dotnet format --verify-no-changes                                   # lint, as CI runs it
-dotnet tool restore && dotnet ef migrations add <Name> --project src/Sphone.Data
+dotnet tool restore && dotnet ef migrations add <Name> --project src/Eshop.Data
 
 # Run locally: a PostgreSQL on localhost:5432 (user/password/db sphone), then
 docker run -d --name sphone-pg -p 5432:5432 -e POSTGRES_USER=sphone -e POSTGRES_PASSWORD=sphone -e POSTGRES_DB=sphone postgres:18-alpine
-dotnet run --project src/Sphone.Api                                 # http://localhost:5080, migrates and seeds
+dotnet run --project src/Eshop.Api                                  # http://localhost:5080, migrates and seeds
 # sphone-sync-master needs a SQL Server on localhost:1433 with enterprise_dev and the schema (appsettings.Development.json):
 docker run -d --name enterprise-sql --platform linux/amd64 -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Local_Dev_Passw0rd mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
 #   then create enterprise_dev and run ../../deploy/thirdparty/mssql/enterprise-schema.sql in it (sqlcmd -d enterprise_dev -i ...)
-dotnet run --project src/Sphone.SyncMaster                          # pushes every 30 s; probes on http://localhost:5090/healthz/ready
+dotnet run --project src/Eshop.SyncMaster                           # pushes every 30 s; probes on http://localhost:5090/healthz/ready
 
 # sphone-web (Node 24)
 cd services/sphone-web

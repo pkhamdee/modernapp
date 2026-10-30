@@ -34,21 +34,21 @@ terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather 
 
 Layout:
 
-- `Sphone.Domain` holds the rules and no infrastructure: one folder per area. Reuse the domain rules
+- `Eshop.Domain` holds the rules and no infrastructure: one folder per area. Reuse the domain rules
   (`Catalog/InstallmentPlan`, `Applications/Eligibility`, `Customers/SmsCode`) instead of re-implementing them.
-- `Sphone.Data`: `SphoneDbContext`, one `Configurations/<X>Configuration.cs` per entity, snake_case names via
+- `Eshop.Data`: `EshopDbContext`, one `Configurations/<X>Configuration.cs` per entity, snake_case names via
   EFCore.NamingConventions, `Seed/DemoData.cs`.
-- `Sphone.Api`: one folder per feature with `<X>Endpoints.cs` exposing `Map<X>Endpoints(this IEndpointRouteBuilder)`,
+- `Eshop.Api`: one folder per feature with `<X>Endpoints.cs` exposing `Map<X>Endpoints(this IEndpointRouteBuilder)`,
   wired on the `/api` group in `Program.cs`. Health probes `/healthz/live|ready` sit outside `/api` so the Gateway
   never exposes them.
-- `Sphone.SyncMaster` (sphone-sync-master) lives in the same solution and references `Sphone.Data`; it never migrates.
+- `Eshop.SyncMaster` (sphone-sync-master) lives in the same solution and references `Eshop.Data`; it never migrates.
 - Package versions only in `Directory.Packages.props` (`<PackageReference>` without `Version`). Warnings are errors,
   including NuGet audit (`NU1903`): a vulnerable transitive package is fixed by pinning a `PackageVersion` plus a
   direct reference (see `System.Security.Cryptography.Pkcs`).
 
 Adding an endpoint:
 
-1. Test first in `tests/Sphone.Api.Tests/<Area>/<X>Tests.cs`: `public sealed class XTests(SphoneApiFactory api)`,
+1. Test first in `tests/Eshop.Api.Tests/<Area>/<X>Tests.cs`: `public sealed class XTests(EshopApiFactory api)`,
    `api.CreateClient()` (or a signed-in client, below), `TestContext.Current.CancellationToken`. Assert on HTTP
    responses only; read JSON into private records.
 2. Add `Map<X>Endpoints` (a `MapGroup`, private static handlers, `internal sealed record <X>Response` DTOs) and wire
@@ -66,7 +66,7 @@ Rules the code follows:
 
 - **Time** comes only from the injected `TimeProvider` (singleton in `Program.cs`). Timeouts too:
   `new CancellationTokenSource(delay, timeProvider)` so the fake clock fires them. Bangkok dates/times via
-  `Sphone.Domain.Bangkok`.
+  `Eshop.Domain.Bangkok`.
 - **First writer wins** (no-tie Bids, Lot edits, payment vs forfeit): one conditional `ExecuteUpdateAsync`
   (`WHERE ... AND <precondition>`) and act on rows affected = 0. A read-then-write loses races; the concurrency
   tests catch it.
@@ -78,7 +78,7 @@ Rules the code follows:
   `SqlQuery<int>(...).ToListAsync()`; composing it with `SingleAsync` makes EF wrap the INSERT in a subquery.
 - Contract, outbox row and Handover are written in one explicit transaction (`OfferEndpoints.Accept`).
 
-Test harness (Seam 1, `SphoneApiFactory`):
+Test harness (Seam 1, `EshopApiFactory`):
 
 - One `[assembly: AssemblyFixture]`: one Postgres container and one host for every test, started in
   `InitializeAsync` to avoid double seeding. All tests share one database: create unique data per test
@@ -98,19 +98,19 @@ Test harness (Seam 1, `SphoneApiFactory`):
   `[Collection(nameof(ProductCategorySettings))]` and restore in `finally`.
 - Filter tests with `dotnet test <proj> --filter "FullyQualifiedName~X"` (vstest runner).
 
-Third-party ports: interface + real adapter in `Sphone.Api/ThirdParty/` (typed `HttpClient`), registered in
+Third-party ports: interface + real adapter in `Eshop.Api/ThirdParty/` (typed `HttpClient`), registered in
 `AddThirdParties` against `ThirdParty:BaseUrl`; an in-memory fake in `tests/.../Fakes/` exposed as a property on
-`SphoneApiFactory`. The image service port is `Images/IImageStore`; store only the image ID in Postgres.
+`EshopApiFactory`. The image service port is `Images/IImageStore`; store only the image ID in Postgres.
 
-Migrations: `dotnet ef migrations add <Name> --project src/Sphone.Data` (`docs/setup.md`). Only sphone-api applies
+Migrations: `dotnet ef migrations add <Name> --project src/Eshop.Data` (`docs/setup.md`). Only sphone-api applies
 them, at startup (`Database:MigrateOnStartup`). Demo data is seeded by `UseSeeding`/`UseAsyncSeeding` into empty
 tables only (no `HasData`, so identity sequences stay right). On a model-snapshot conflict after a rebase, or after
-a bad `migrations remove`: check out `origin/main`'s `SphoneDbContextModelSnapshot.cs`, delete your migration files
+a bad `migrations remove`: check out `origin/main`'s `EshopDbContextModelSnapshot.cs`, delete your migration files
 and run `migrations add` again.
 
 sphone-sync-master:
 
-- Seam-2 tests (`tests/Sphone.SyncMaster.Tests`, `SyncMasterFactory`) run Postgres and an amd64 SQL Server; CI keeps
+- Seam-2 tests (`tests/Eshop.SyncMaster.Tests`, `SyncMasterFactory`) run Postgres and an amd64 SQL Server; CI keeps
   them on x86 (`ubuntu-latest`). Locally SQL Server runs under Rosetta (~20 s start).
 - A new pulled Enterprise table follows `Sync/ContractPull`: `row_ver` watermark per table in `sync_watermarks`,
   bounded by `MIN_ACTIVE_ROWVERSION()`, saved in the same transaction under `pg_advisory_xact_lock`. Without the
