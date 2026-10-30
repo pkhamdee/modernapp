@@ -251,8 +251,14 @@ export async function applyForHirePurchase(
 
   await expect(page.getByLabel('เลขประจำตัวประชาชน')).toBeVisible()
   await expectPageFits(page)
+  await expectFormColumn(page.getByLabel('เลขประจำตัวประชาชน'))
   await page.getByLabel('เลขประจำตัวประชาชน').fill(application.idNumber)
-  await page.getByLabel('รูปถ่ายบัตรประชาชน (1 รูป)').setInputFiles(PHOTO)
+  // The ID card photo asks phones for the rear camera; a desktop browser ignores that and opens its file picker.
+  const idCardPhoto = page.getByLabel('รูปถ่ายบัตรประชาชน (1 รูป)')
+  await expect(idCardPhoto).toHaveAttribute('capture', 'environment')
+  const fileChooser = page.waitForEvent('filechooser')
+  await idCardPhoto.click()
+  await (await fileChooser).setFiles(PHOTO)
   await page.getByRole('radio', { name: 'รับสินค้าที่สาขา' }).check()
   await page.getByRole('combobox', { name: 'สาขา', exact: true }).selectOption(application.branch)
   await page.getByRole('button', { name: 'ส่งคำขอ' }).click()

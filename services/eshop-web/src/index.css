@@ -1209,4 +1209,14 @@ button.header-link {
   max-width: 480px;
   margin-inline: auto;
 }
+
+/* Fields never grow wider than the column (a long Branch name in a select, a file input's own width). */
+.form-column .form,
+.form-column .form-field {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.form-column .form-field select {
+  max-width: 100%;
+}
 /* ---- end Customer forms and personal screens (#57) ---- */
