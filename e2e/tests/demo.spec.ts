@@ -3,20 +3,24 @@ import { environment, mockBaseURL } from '../environment'
 import {
   applyForHirePurchase,
   bangkokLocal,
+  expectPageFits,
   newIdNumber,
+  newLotTitle,
   newMobileNumber,
+  OLD_BRAND,
   Phone,
   PHOTO,
   signInCustomer,
   staffPage,
+  visit,
 } from './steps'
 
 // Seam 4: the MVP's definition-of-done demo (spec #1), end to end in a browser against a deployed environment.
+// It runs in full at phone and desktop sizes (playwright.config.ts projects); after every navigation
+// expectPageFits checks that the page does not scroll sideways and shows no old brand text (#51).
 
 // The eShop brand (#47): Customer and Staff screens name eShop / อีช้อป and nothing of the old brand.
 test('brand: Customer and Staff screens show eShop', async ({ page, browser }) => {
-  const oldBrand = /S Phone|เอส ลีสซิ่ง|Srisawad/i
-
   for (const path of ['/', '/auction', '/sign-in', '/staff/sign-in']) {
     await test.step(`${path} shows the eShop brand`, async () => {
       await page.goto(path)
@@ -24,14 +28,15 @@ test('brand: Customer and Staff screens show eShop', async ({ page, browser }) =
       const logo = page.getByRole('banner').getByRole('link', { name: /eShop/ })
       await expect(logo).toContainText('eShop')
       await expect(logo).toContainText('อีช้อป')
-      await expect(page.locator('body')).not.toContainText(oldBrand)
+      await expectPageFits(page)
     })
   }
 
   await test.step('the logo leads back to the catalog', async () => {
-    await page.goto('/auction')
+    await visit(page, '/auction')
     await page.getByRole('banner').getByRole('link', { name: /eShop/ }).click()
     await expect(page).toHaveURL(/\/$/)
+    await expectPageFits(page)
   })
 
   await test.step('the mock Enterprise System admin tool is eShop Co.’s', async () => {
@@ -39,7 +44,7 @@ test('brand: Customer and Staff screens show eShop', async ({ page, browser }) =
     const enterprise = await context.newPage()
     await enterprise.goto('/thirdparty-mock/enterprise/')
     await expect(enterprise.getByRole('heading', { level: 1 })).toHaveText('eShop Co. Enterprise System (mock)')
-    await expect(enterprise.locator('body')).not.toContainText(oldBrand)
+    await expect(enterprise.locator('body')).not.toContainText(OLD_BRAND)
     await context.close()
   })
 })
@@ -65,12 +70,14 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
       branch: 'bkk-ladprao',
     })
     await expect(page.getByRole('heading', { name: 'อนุมัติแล้ว' })).toBeVisible({ timeout: 60_000 })
+    await expectPageFits(page)
   })
 
   let contractNumber = ''
   await test.step('Customer accepts the Offer with an SMS code', async () => {
     await page.getByRole('link', { name: 'ดูข้อเสนอและยืนยัน' }).click()
     await expect(page.getByRole('heading', { name: 'ข้อเสนอเช่าซื้อ' })).toBeVisible()
+    await expectPageFits(page)
     const before = await phone.received()
     await page.getByRole('button', { name: 'ยอมรับข้อเสนอ (รับรหัสทาง SMS)' }).click()
     await page.getByLabel('รหัส SMS เพื่อยืนยันการยอมรับข้อเสนอ').fill(await phone.codeAfter(before))
@@ -78,6 +85,7 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
     await expect(page).toHaveURL(/\/contracts\/SP-\d{6}-\d{6}$/)
     contractNumber = (await page.locator('.contract-number').innerText()).trim()
     expect(contractNumber).toMatch(/^SP-\d{6}-\d{6}$/)
+    await expectPageFits(page)
   })
 
   const enterpriseContract = () =>
@@ -109,6 +117,7 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
     await page.reload()
     await expect(page.locator('.handover-stage')).toContainText('รับสินค้าแล้ว')
     await expect(page.getByRole('cell', { name: 'รอรับสินค้า' })).toHaveCount(0) // due dates are set now
+    await expectPageFits(page)
   })
 
   await test.step('a Payment simulated in the Enterprise System syncs back to the Customer’s Contract', async () => {
@@ -121,6 +130,7 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
       await expect(page.getByText('ชำระแล้วทั้งหมด')).toBeVisible({ timeout: 1_000 })
     }).toPass({ timeout: 120_000, intervals: [5_000] })
     await expect(page.locator('table.schedule').last().locator('tbody tr')).toHaveCount(1)
+    await expectPageFits(page)
   })
 
   await phone.close()
@@ -141,11 +151,12 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
       branch: 'bkk-ladprao',
     })
     await expect(page.getByRole('heading', { name: 'ไม่ผ่านการพิจารณา' })).toBeVisible({ timeout: 60_000 })
+    await expectPageFits(page)
   })
 
   // The weekly Auction runs Monday 10:00 to Sunday 20:00. To win without waiting a week, Staff create one with
   // their own times (the back office allows any future closing time): open now, closing about two minutes ahead.
-  const title = `E2E iPhone 15 128GB #${Date.now()}`
+  const title = newLotTitle()
   let lotPath = ''
   await test.step('Staff create an Auction closing about two minutes ahead and add a Lot with a photo', async () => {
     const staff = await staffPage(browser, '/staff/auctions')
@@ -156,6 +167,8 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     await staff.getByLabel('ปิดประมูล', { exact: true }).fill(bangkokLocal(closesAt))
     await staff.getByRole('button', { name: 'สร้างการประมูล' }).click()
     await expect(staff).toHaveURL(/\/staff\/auctions\/\d+$/)
+    await expect(staff.getByRole('button', { name: '+ เพิ่มรายการ' })).toBeVisible()
+    await expectPageFits(staff)
 
     await staff.getByRole('button', { name: '+ เพิ่มรายการ' }).click()
     await staff.getByLabel('รุ่น ความจุ และสี').fill(title)
@@ -167,22 +180,27 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     const lot = staff.locator('li', { hasText: title })
     lotPath = (await lot.getByRole('link', { name: 'ดูหน้าประมูล' }).getAttribute('href')) ?? ''
     expect(lotPath).toMatch(/^\/auction\/lots\/\d+$/)
+    await expectPageFits(staff)
     await staff.context().close()
   })
 
   await test.step('Customer bids on the Lot', async () => {
     await page.goto(lotPath)
     await expect(page.getByRole('heading', { name: title })).toBeVisible()
+    await expectPageFits(page)
     await page.getByRole('button', { name: /^เสนอราคา/ }).click()
     await expect(page.getByText(/เสนอราคา .+ สำเร็จ/)).toBeVisible()
     await expect(page.getByText('คุณเป็นผู้เสนอราคาสูงสุดตอนนี้')).toBeVisible()
+    await expectPageFits(page)
   })
 
   await test.step('the Auction closes and the Customer has won the Lot', async () => {
     // The Lot page polls every 3 s; once the Auction is closed it shows the result.
     await expect(page.getByText('คุณชนะการประมูล!')).toBeVisible({ timeout: 4 * 60_000 })
+    await expectPageFits(page)
     await page.goto('/won-lots')
     await expect(page.getByRole('link', { name: title })).toBeVisible()
+    await expectPageFits(page)
   })
 
   await phone.close()

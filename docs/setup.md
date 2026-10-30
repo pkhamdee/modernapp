@@ -294,7 +294,8 @@ kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
 ## End-to-end smoke test (Seam 4)
 
 `e2e/` holds one Playwright browser test of the definition-of-done demo (spec #1), run against a **deployed**
-environment, never on every CI run. In a phone-sized Chromium it:
+environment, never on every CI run. It runs in full twice, as two Playwright projects in Chromium: **phone**
+(Pixel 7 settings at 390×844, touch) and **desktop** (1280×800). Each run:
 
 1. signs a Customer in by SMS (the code is read from the mock inbox `/thirdparty-mock/sms/inbox`), applies for the
    iPhone with an ID card photo (thirdparty-mock ID ending `01`), waits for **Approved** (≤ 60 s) and accepts the Offer
@@ -306,8 +307,14 @@ environment, never on every CI run. In a phone-sized Chromium it:
    with their own times (open now, **closing about two minutes ahead**, so nobody waits for the weekly Sunday close),
    add a Lot with a photo, the Customer bids and, once the Auction closes, has won the Lot.
 
-Each run uses fresh mobile and ID numbers (ID prefix `3`) and leaves its Customers, Contract and Auction behind as
-demo data. It takes about 3–4 minutes (the two parts run in parallel).
+A third test checks the eShop brand (title, logo, the mock admin tool's heading). After every page the demo opens
+in the eShop app, at both sizes, it checks that the page does not scroll sideways and shows no "S Phone",
+"Srisawad" or "เอส ลีสซิ่ง" text (`expectPageFits` in `e2e/tests/steps.ts`).
+
+Each test uses its own mobile and ID numbers (ID prefix `3`, plus the worker's digit so tests running side by side
+never share a Customer) and its own Auction and Lot (the title names the project), and leaves them behind as demo
+data. Two workers run the six tests; it takes about 7–8 minutes. To run one size: `npx playwright test
+--project=phone` (or `desktop`).
 
 ```sh
 cd e2e

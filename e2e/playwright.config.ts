@@ -10,13 +10,14 @@ export default defineConfig({
   // Real waits: Credit Decision (≤ 60 s), sync-master cycles (30 s each way), an Auction closing ~2 min ahead.
   timeout: 6 * 60_000,
   expect: { timeout: 15_000 },
+  // Two projects × three tests on two workers: about twice the wall time of one size (~7–8 min). Each test makes
+  // its own Customers, Contract, Auction and Lot (tests/steps.ts), so tests running side by side never share data.
   fullyParallel: true,
   workers: 2,
   retries: 0,
   forbidOnly: !!process.env.CI,
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    ...devices['Pixel 7'],
     baseURL,
     // The local cluster's certificate comes from a self-signed CA.
     ignoreHTTPSErrors: true,
@@ -28,5 +29,10 @@ export default defineConfig({
     trace: process.env.CI ? 'off' : 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
-  projects: [{ name: 'chromium' }],
+  // The whole demo at both sizes (#51), in Chromium. Contexts a test opens itself (Staff, the SMS inbox, the
+  // Enterprise admin tool) inherit the project's size. Pixel 7, not an iPhone preset: those need WebKit.
+  projects: [
+    { name: 'phone', use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } } },
+    { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } },
+  ],
 })
