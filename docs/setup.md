@@ -206,10 +206,14 @@ npm run report                                       # HTML report of the last r
   report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|prod` overrides the environment name
   derived from the host (it picks the Enterprise database in the admin tool and the Secret).
 - The certificate is self-signed; the test accepts it.
-- **GitHub Actions**: `.github/workflows/e2e.yml` (Actions → *E2E smoke test* → Run workflow, inputs `base_url`
-  and `runner`). It is manual only. The cluster is local, so GitHub-hosted runners can't reach it: it needs a
-  self-hosted runner on this machine (label `self-hosted` by default) and repo secrets `E2E_STAFF_USERNAME` /
-  `E2E_STAFF_PASSWORD`.
+- **GitHub Actions**: `e2e/run-on-actions.sh [base_url]` (default `https://prod.sphone.localhost`) runs
+  `.github/workflows/e2e.yml` on GitHub Actions with the job on this machine, which GitHub-hosted runners can't
+  reach. The repository is public, so no runner stays registered: the script registers an ephemeral runner
+  (label `sphone-e2e` only), dispatches the workflow to it, follows the run (the Playwright report is a run
+  artifact) and unregisters the runner when it ends. It needs `gh` logged in as a repo admin, and `sops` with the
+  age key: the job decrypts the Staff account itself, so no Staff secrets are stored in GitHub. Workflow runs
+  from outside contributors' pull requests always wait for approval (repo setting), so nobody else's workflow
+  can reach a runner here unreviewed.
 
 ## Releasing (v0.1.0 and later)
 
