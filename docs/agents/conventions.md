@@ -150,10 +150,16 @@ eshop-sync-master:
 - Breakpoints are defined once, in the comment at the top of `src/index.css`: phone (base, 360 px and up), tablet
   `min-width: 768px`, wide `min-width: 1024px`, desktop `min-width: 1280px`. Use only these widths in media
   queries and name the breakpoint in a comment. Customer content sits in `.frame` (centred, max 1200 px); the
-  header shows a menu button below 768 px and a top bar from 768 px (`AppLayout.tsx`). Staff screens keep the old
-  640 px column (`.staff-app`) until their sidebar lands.
+  header shows a menu button below 768 px and a top bar from 768 px (`AppLayout.tsx`). Staff screens
+  (`StaffLayout.tsx`) have a sidebar from 1280 px and a slide-out menu behind a button below it.
+- Lists of rows (Staff lists, a Contract's Installments and Payments) use `components/ResponsiveList.tsx`, not
+  per-page markup: give it `label`, `columns` (`{ label, cell, align?, block? }`, the first one names the row),
+  `rows`, `rowKey`, and optionally `rowLink` / `dimmed`. It renders a `<table>` from 1280 px and a list of cards
+  (each value beside its column label) below, never both.
 - e2e: Customer sections are reached with `navigateTo(page, 'สินค้า' | 'ประมูล' | 'บัญชีของฉัน' | 'เข้าสู่ระบบ')`
-  in `e2e/tests/steps.ts` (menu on phone, top bar on desktop); `isPhone()` tells the projects apart.
+  in `e2e/tests/steps.ts` (menu on phone, top bar on desktop), Staff sections with `navigateStaffTo(page, …)`
+  (slide-out menu on phone, sidebar on desktop); `isPhone()` tells the projects apart. `expectResponsiveList`
+  checks a list is a table on desktop and labelled cards on phone.
 - Card lists (catalog Products, Auction Lots) use `ul.card-grid` (1 / 2 / 3 / 4 columns at phone / tablet / wide /
   desktop). Product and Lot pages use `.detail-layout` with `.detail-media` (photo) and `.detail-panel`: stacked
   below 1024 px, side by side from it. e2e checks layouts by position, not class: `gridColumns(list)` and

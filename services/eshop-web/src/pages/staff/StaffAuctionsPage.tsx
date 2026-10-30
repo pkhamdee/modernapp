@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { useNavigate } from 'react-router'
 import { auctionPaths, auctionStatusLabel, createAuction, type Auction } from '../../api/auctions.ts'
 import { problemMessage, useApi } from '../../api/client.ts'
+import { ResponsiveList } from '../../components/ResponsiveList.tsx'
 import { Status } from '../../components/Status.tsx'
 import { formatDateTime } from '../../format.ts'
 
@@ -66,26 +67,22 @@ export function StaffAuctionsPage() {
 
       {auctions.status !== 'success' ? (
         <Status state={auctions} />
+      ) : auctions.data.length === 0 ? (
+        <p className="muted">ยังไม่มีการประมูล</p>
       ) : (
-        <ul className="staff-list">
-          {auctions.data.map((a) => (
-            <li key={a.id} className="staff-item">
-              <div className="staff-item-body">
-                <strong>
-                  การประมูล #{a.id} · {auctionStatusLabel[a.status]}
-                </strong>
-                <span className="muted">
-                  {formatDateTime(a.opensAt)} – {formatDateTime(a.closesAt)} · {a.lots.length} รายการ
-                </span>
-                <div className="staff-actions">
-                  <Link to={`/staff/auctions/${a.id}`} className="button button-small button-outline">
-                    จัดการรายการประมูล
-                  </Link>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <ResponsiveList
+          label="การประมูล"
+          rows={auctions.data}
+          rowKey={(a) => a.id}
+          rowLink={(a) => `/staff/auctions/${a.id}`}
+          columns={[
+            { label: 'การประมูล', cell: (a) => `การประมูล #${a.id}` },
+            { label: 'สถานะ', cell: (a) => auctionStatusLabel[a.status] },
+            { label: 'เปิดประมูล', cell: (a) => formatDateTime(a.opensAt) },
+            { label: 'ปิดประมูล', cell: (a) => formatDateTime(a.closesAt) },
+            { label: 'รายการ', cell: (a) => `${a.lots.length} รายการ`, align: 'end' },
+          ]}
+        />
       )}
     </section>
   )

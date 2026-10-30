@@ -1,7 +1,8 @@
-import { Link, useSearchParams } from 'react-router'
+import { useSearchParams } from 'react-router'
 import { backOfficePaths, type BackOfficeBranch } from '../../api/backOffice.ts'
 import { useApi } from '../../api/client.ts'
 import { HANDOVER_STAGE_LABELS, handoverPaths, type Handover } from '../../api/handovers.ts'
+import { ResponsiveList } from '../../components/ResponsiveList.tsx'
 import { Status } from '../../components/Status.tsx'
 import { formatBaht } from '../../format.ts'
 
@@ -56,29 +57,30 @@ export function StaffHandoversPage() {
       ) : handovers.data.length === 0 ? (
         <p className="muted">ไม่มีสัญญาที่รอส่งมอบสินค้า</p>
       ) : (
-        <ul className="staff-list">
-          {handovers.data.map((h) => (
-            <li key={h.contractNumber} className="staff-item">
-              <div className="staff-item-body">
-                <Link to={`/staff/handovers/${h.contractNumber}`}>
-                  <strong>{h.contractNumber}</strong>
-                </Link>
-                <span>
-                  {h.product.name} · {h.customer.fullName}
-                </span>
-                <span className="muted">
-                  {h.method === 'delivery' ? `จัดส่ง ${h.deliveryProvince ?? ''}` : `รับที่${h.branch?.name ?? 'สาขา'}`} ·{' '}
-                  {HANDOVER_STAGE_LABELS[h.stage]}
-                </span>
-                {h.downPayment > 0 && (
-                  <span className="muted">
-                    เงินดาวน์ {formatBaht(h.downPayment)} · {h.downPaymentReceived === null ? 'ยังไม่ได้รับ' : 'รับแล้ว'}
-                  </span>
-                )}
-              </div>
-            </li>
-          ))}
-        </ul>
+        <ResponsiveList
+          label="รอส่งมอบสินค้า"
+          rows={handovers.data}
+          rowKey={(h) => h.contractNumber}
+          rowLink={(h) => `/staff/handovers/${h.contractNumber}`}
+          columns={[
+            { label: 'สัญญา', cell: (h) => h.contractNumber },
+            { label: 'สินค้า', cell: (h) => h.product.name },
+            { label: 'ลูกค้า', cell: (h) => h.customer.fullName },
+            {
+              label: 'วิธีรับสินค้า',
+              cell: (h) =>
+                h.method === 'delivery' ? `จัดส่ง ${h.deliveryProvince ?? ''}` : `รับที่${h.branch?.name ?? 'สาขา'}`,
+            },
+            { label: 'ขั้นตอน', cell: (h) => HANDOVER_STAGE_LABELS[h.stage] },
+            {
+              label: 'เงินดาวน์',
+              cell: (h) =>
+                h.downPayment > 0
+                  ? `${formatBaht(h.downPayment)} · ${h.downPaymentReceived === null ? 'ยังไม่ได้รับ' : 'รับแล้ว'}`
+                  : 'ไม่มี',
+            },
+          ]}
+        />
       )}
     </section>
   )

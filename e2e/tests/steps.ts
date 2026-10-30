@@ -76,6 +76,62 @@ export async function navigateTo(page: Page, section: Section) {
   }
 }
 
+/** The Staff back office's sections (#55), in its sidebar (desktop) or slide-out menu (phone). */
+export type StaffSection = 'สินค้า' | 'ประเภทสินค้า' | 'สาขา' | 'ประมูล' | 'ส่งมอบสินค้า'
+
+/** The Staff header's menu button (below 1280px) and the back-office menu (a sidebar from 1280px). */
+export function staffMenu(page: Page) {
+  return {
+    menuButton: page.getByRole('banner').getByRole('button', { name: 'เมนู' }),
+    nav: page.getByRole('navigation', { name: 'เมนูหลังร้าน' }),
+  }
+}
+
+/**
+ * Opens a Staff section the way Staff would (#55), mirroring navigateTo: on a phone through the menu button,
+ * which announces open/closed and closes the slide-out menu once a link is followed; on a desktop straight from
+ * the sidebar, which is always there. Callers check the page they land on and then run expectPageFits.
+ */
+export async function navigateStaffTo(page: Page, section: StaffSection) {
+  const { menuButton, nav } = staffMenu(page)
+  if (isPhone()) {
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+    await expect(nav).toBeHidden()
+    await menuButton.click()
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+  } else {
+    await expect(menuButton).toBeHidden()
+  }
+  await nav.getByRole('link', { name: section, exact: true }).click()
+  if (isPhone()) {
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+    await expect(nav).toBeHidden()
+  }
+}
+
+/**
+ * A list shown with the shared table/cards pattern (#55), named `name`: a table with a header per column on
+ * desktop; on a phone a list of cards, each showing every column's label beside its value, and no table.
+ */
+export async function expectResponsiveList(page: Page, name: string, columns: string[]) {
+  const table = page.getByRole('table', { name, exact: true })
+  const cards = page.getByRole('list', { name, exact: true })
+  if (isPhone()) {
+    await expect(cards).toBeVisible()
+    await expect(table).toHaveCount(0)
+    const card = cards.getByRole('listitem').first()
+    // A card may hold a form whose fields repeat a label; the column label comes first.
+    for (const column of columns) await expect(card.getByText(column, { exact: true }).first()).toBeVisible()
+  } else {
+    await expect(table).toBeVisible()
+    await expect(cards).toHaveCount(0)
+    for (const column of columns) {
+      await expect(table.getByRole('columnheader', { name: column, exact: true })).toBeVisible()
+    }
+    await expect(table.getByRole('row').nth(1)).toBeVisible() // a row besides the header
+  }
+}
+
 /**
  * Which of the parallel workers runs this test (0, 1, …). Tests running at the same moment always have
  * different indexes, so putting it in generated numbers keeps the phone and desktop runs' Customers apart.

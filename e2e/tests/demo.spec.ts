@@ -6,8 +6,10 @@ import {
   cardsAcross,
   customerHeader,
   expectPageFits,
+  expectResponsiveList,
   gridColumns,
   isPhone,
+  navigateStaffTo,
   navigateTo,
   newIdNumber,
   newLotTitle,
@@ -17,8 +19,10 @@ import {
   PHOTO,
   placement,
   signInCustomer,
+  staffMenu,
   staffPage,
   visit,
+  type StaffSection,
 } from './steps'
 
 // Seam 4: the MVP's definition-of-done demo (spec #1), end to end in a browser against a deployed environment.
@@ -101,6 +105,61 @@ test('brand: Customer and Staff screens show eShop', async ({ page, browser }) =
     await expect(enterprise.locator('body')).not.toContainText(OLD_BRAND)
     await context.close()
   })
+})
+
+// The Staff back office (#55): a sidebar on desktop, a slide-out menu on phone, and every list in the shared
+// table (desktop) / cards (phone) pattern.
+test('back office: the Staff menu reaches every list, shown as tables on desktop and cards on phone', async ({
+  browser,
+}) => {
+  const staff = await staffPage(browser, '/staff/products')
+
+  await test.step('the menu: always-visible sidebar on desktop, slide-out menu behind a button on phone', async () => {
+    const { menuButton, nav } = staffMenu(staff)
+    if (isPhone()) {
+      // The menu button announces open/closed, names the menu it controls, and Escape closes it again.
+      await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+      await expect(nav).toBeHidden()
+      expect((await menuButton.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+      await menuButton.click()
+      await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+      await expect(nav).toBeVisible()
+      await expect(nav).toHaveAttribute('id', (await menuButton.getAttribute('aria-controls')) ?? 'no aria-controls')
+    } else {
+      await expect(menuButton).toBeHidden()
+      await expect(nav).toBeVisible()
+    }
+    for (const link of await nav.getByRole('link').all()) {
+      expect((await link.boundingBox())?.height).toBeGreaterThanOrEqual(44)
+    }
+    if (isPhone()) {
+      await staff.keyboard.press('Escape')
+      await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+      await expect(nav).toBeHidden()
+      await expect(menuButton).toBeFocused()
+    }
+  })
+
+  const sections: { section: StaffSection; path: string; heading: string; list?: string[] }[] = [
+    { section: 'ประเภทสินค้า', path: '/staff/product-categories', heading: 'ประเภทสินค้า',
+      list: ['ประเภทสินค้า', 'อัตราดอกเบี้ยคงที่', 'งวดสูงสุด'] },
+    { section: 'สาขา', path: '/staff/branches', heading: 'สาขา', list: ['สาขา', 'ที่อยู่', 'รหัส'] },
+    { section: 'ประมูล', path: '/staff/auctions', heading: 'การประมูล' },
+    { section: 'ส่งมอบสินค้า', path: '/staff/handovers', heading: 'รอส่งมอบสินค้า' },
+    { section: 'สินค้า', path: '/staff/products', heading: 'สินค้า', list: ['สินค้า', 'ประเภทสินค้า', 'ราคา'] },
+  ]
+  for (const { section, path, heading, list } of sections) {
+    await test.step(`${section}: reached from the menu${list ? ', listed as a table or cards' : ''}`, async () => {
+      await navigateStaffTo(staff, section)
+      await expect(staff).toHaveURL(new RegExp(`${path}$`))
+      await expect(staff.getByRole('heading', { level: 1, name: heading, exact: true })).toBeVisible()
+      // The demo's own Auctions and Handovers come and go, so only the seeded lists are checked row by row.
+      if (list) await expectResponsiveList(staff, heading, list)
+      await expectPageFits(staff)
+    })
+  }
+
+  await staff.context().close()
 })
 
 // The catalog and the Product page across sizes (#53). The phone project checks the phone layout; the desktop
@@ -222,8 +281,14 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
   })
 
   await test.step('Staff record the Handover (Down Payment, ready at the Branch, handed over)', async () => {
-    const staff = await staffPage(browser, `/staff/handovers/${contractNumber}`)
+    const staff = await staffPage(browser, '/staff/products')
+    await navigateStaffTo(staff, 'ส่งมอบสินค้า')
+    await expect(staff).toHaveURL(/\/staff\/handovers$/)
+    // The new Contract is a row of the Handovers list (a table row on desktop, a card on phone).
+    await staff.getByRole('link', { name: contractNumber, exact: true }).click()
+    await expect(staff).toHaveURL(new RegExp(`/staff/handovers/${contractNumber}$`))
     await expect(staff.locator('.contract-number')).toHaveText(contractNumber)
+    await expectPageFits(staff)
     await staff.getByRole('button', { name: 'ดูรูปบัตรประชาชน' }).click()
     await expect(staff.getByRole('img', { name: /รูปบัตรประชาชนของ/ })).toBeVisible()
 
@@ -282,7 +347,11 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
   let lotPath = ''
   let closesAt = new Date()
   await test.step('Staff create an Auction closing about two minutes ahead and add a Lot with a photo', async () => {
-    const staff = await staffPage(browser, '/staff/auctions')
+    const staff = await staffPage(browser, '/staff/products')
+    await navigateStaffTo(staff, 'ประมูล')
+    await expect(staff).toHaveURL(/\/staff\/auctions$/)
+    await expect(staff.getByRole('heading', { level: 1, name: 'การประมูล' })).toBeVisible()
+    await expectPageFits(staff)
     const now = Date.now()
     closesAt = new Date(Math.floor(now / 60_000) * 60_000 + 2 * 60_000)
     await staff.getByRole('checkbox', { name: 'กำหนดเวลาเอง' }).check()

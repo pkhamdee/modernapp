@@ -9,6 +9,7 @@ import {
 } from '../../api/backOffice.ts'
 import { useApi, useReloadableApi } from '../../api/client.ts'
 import { ProductPhoto } from '../../components/ProductPhoto.tsx'
+import { ResponsiveList } from '../../components/ResponsiveList.tsx'
 import { Status } from '../../components/Status.tsx'
 import { formatBaht } from '../../format.ts'
 
@@ -65,33 +66,46 @@ export function StaffProductsPage() {
           {error}
         </p>
       )}
-      <ul className="staff-list">
-        {shown.map((p) => (
-          <li key={p.id} className={p.isRetired ? 'staff-item retired' : 'staff-item'}>
-            <ProductPhoto src={p.imageUrl} alt="" />
-            <div className="staff-item-body">
-              <strong>{p.name}</strong>
-              <span className="muted">
-                {categoryName(p.productCategoryCode)} · {formatBaht(p.price)}
-                {p.isRetired && ' · เลิกขายแล้ว'}
-              </span>
-              <div className="staff-actions">
-                <Link to={`/staff/products/${p.id}`} className="button button-small button-outline">
-                  แก้ไข
-                </Link>
-                <button
-                  type="button"
-                  className="button button-small button-outline"
-                  disabled={busy === p.id}
-                  onClick={() => toggleRetired(p)}
-                >
-                  {p.isRetired ? 'กลับมาขาย' : 'เลิกขาย'}
-                </button>
-              </div>
-            </div>
-          </li>
-        ))}
-      </ul>
+      {shown.length > 0 && (
+        <ResponsiveList
+          label="สินค้า"
+          rows={shown}
+          rowKey={(p) => p.id}
+          dimmed={(p) => p.isRetired}
+          columns={[
+            {
+              label: 'สินค้า',
+              cell: (p) => (
+                <span className="list-title">
+                  <ProductPhoto src={p.imageUrl} alt="" />
+                  {p.name}
+                </span>
+              ),
+            },
+            { label: 'ประเภทสินค้า', cell: (p) => categoryName(p.productCategoryCode) },
+            { label: 'ราคา', cell: (p) => formatBaht(p.price), align: 'end' },
+            { label: 'สถานะ', cell: (p) => (p.isRetired ? 'เลิกขายแล้ว' : 'ขายอยู่') },
+            {
+              label: 'จัดการ',
+              cell: (p) => (
+                <div className="staff-actions">
+                  <Link to={`/staff/products/${p.id}`} className="button button-small button-outline">
+                    แก้ไข
+                  </Link>
+                  <button
+                    type="button"
+                    className="button button-small button-outline"
+                    disabled={busy === p.id}
+                    onClick={() => toggleRetired(p)}
+                  >
+                    {p.isRetired ? 'กลับมาขาย' : 'เลิกขาย'}
+                  </button>
+                </div>
+              ),
+            },
+          ]}
+        />
+      )}
       {shown.length === 0 && <p className="muted">ยังไม่มีสินค้าในประเภทนี้</p>}
     </section>
   )

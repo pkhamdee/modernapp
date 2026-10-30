@@ -8,6 +8,7 @@ import {
   type BackOfficeBranch,
 } from '../../api/backOffice.ts'
 import { problemMessage, useReloadableApi } from '../../api/client.ts'
+import { ResponsiveList } from '../../components/ResponsiveList.tsx'
 import { Status } from '../../components/Status.tsx'
 
 /** Branches offered for Store Pickup: add, edit, retire (and undo a retire). */
@@ -29,13 +30,21 @@ export function StaffBranchesPage() {
   }
 
   if (branches.status !== 'success') return <Status state={branches} />
+  const editingBranch = branches.data.find((b) => b.code === editing) ?? null
 
   return (
     <section>
       <div className="staff-toolbar">
         <h1>สาขา</h1>
         {!adding && (
-          <button type="button" className="button button-small" onClick={() => setAdding(true)}>
+          <button
+            type="button"
+            className="button button-small"
+            onClick={() => {
+              setEditing(null)
+              setAdding(true)
+            }}
+          >
             + เพิ่มสาขา
           </button>
         )}
@@ -56,44 +65,55 @@ export function StaffBranchesPage() {
           {error}
         </p>
       )}
-      <ul className="staff-list">
-        {branches.data.map((b) => (
-          <li key={b.code} className={b.isRetired ? 'staff-item retired' : 'staff-item'}>
-            {editing === b.code ? (
-              <BranchForm
-                branch={b}
-                onDone={(saved) => {
-                  setEditing(null)
-                  if (saved) reload()
-                }}
-              />
-            ) : (
-              <div className="staff-item-body">
-                <strong>{b.name}</strong>
-                <span className="muted">
-                  {b.address} {b.province}
-                </span>
-                <span className="muted">
-                  รหัส {b.code}
-                  {b.isRetired && ' · ปิดแล้ว'}
-                </span>
-                <div className="staff-actions">
-                  <button type="button" className="button button-small button-outline" onClick={() => setEditing(b.code)}>
-                    แก้ไข
-                  </button>
-                  <button type="button" className="button button-small button-outline" onClick={() => toggleRetired(b)}>
-                    {b.isRetired ? 'เปิดอีกครั้ง' : 'ปิดสาขา'}
-                  </button>
-                </div>
+      {editingBranch && (
+        <div className="card">
+          <BranchForm
+            key={editingBranch.code}
+            branch={editingBranch}
+            onDone={(saved) => {
+              setEditing(null)
+              if (saved) reload()
+            }}
+          />
+        </div>
+      )}
+      <ResponsiveList
+        label="สาขา"
+        rows={branches.data}
+        rowKey={(b) => b.code}
+        dimmed={(b) => b.isRetired}
+        columns={[
+          { label: 'สาขา', cell: (b) => b.name },
+          { label: 'ที่อยู่', cell: (b) => `${b.address} ${b.province}` },
+          { label: 'รหัส', cell: (b) => b.code },
+          { label: 'สถานะ', cell: (b) => (b.isRetired ? 'ปิดแล้ว' : 'เปิดอยู่') },
+          {
+            label: 'จัดการ',
+            cell: (b) => (
+              <div className="staff-actions">
+                <button
+                  type="button"
+                  className="button button-small button-outline"
+                  onClick={() => {
+                    setAdding(false)
+                    setEditing(b.code)
+                  }}
+                >
+                  แก้ไข
+                </button>
+                <button type="button" className="button button-small button-outline" onClick={() => toggleRetired(b)}>
+                  {b.isRetired ? 'เปิดอีกครั้ง' : 'ปิดสาขา'}
+                </button>
               </div>
-            )}
-          </li>
-        ))}
-      </ul>
+            ),
+          },
+        ]}
+      />
     </section>
   )
 }
 
+/** Adding or editing a Branch. It opens above the list, so its first field takes focus (and scrolls into view). */
 function BranchForm({ branch, onDone }: { branch: BackOfficeBranch | null; onDone: (saved: boolean) => void }) {
   const [code, setCode] = useState(branch?.code ?? '')
   const [name, setName] = useState(branch?.name ?? '')
@@ -117,17 +137,17 @@ function BranchForm({ branch, onDone }: { branch: BackOfficeBranch | null; onDon
   }
 
   return (
-    <form onSubmit={onSubmit} className="form staff-item-body" noValidate>
+    <form onSubmit={onSubmit} className="form" noValidate>
       <strong>{branch ? `แก้ไข ${branch.name}` : 'สาขาใหม่'}</strong>
       {!branch && (
         <label className="form-field">
           <span>รหัสสาขา (a-z, 0-9, -)</span>
-          <input value={code} placeholder="bkk-bangna" autoCapitalize="none" maxLength={50} onChange={(e) => setCode(e.target.value)} />
+          <input autoFocus value={code} placeholder="bkk-bangna" autoCapitalize="none" maxLength={50} onChange={(e) => setCode(e.target.value)} />
         </label>
       )}
       <label className="form-field">
         <span>ชื่อสาขา</span>
-        <input value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
+        <input autoFocus={branch !== null} value={name} maxLength={200} onChange={(e) => setName(e.target.value)} />
       </label>
       <label className="form-field">
         <span>ที่อยู่</span>
