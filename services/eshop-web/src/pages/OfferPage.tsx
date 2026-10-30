@@ -29,7 +29,7 @@ export function OfferPage() {
   const o = offer.data
 
   return (
-    <section className="card application form-column">
+    <section className="card application column-narrow">
       <h1>ข้อเสนอเช่าซื้อ</h1>
       <OfferState offer={o} />
       <dl className="terms">

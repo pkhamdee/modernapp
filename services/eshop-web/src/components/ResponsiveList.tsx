@@ -27,6 +27,11 @@ export type ResponsiveListProps<Row> = {
   rowLink?: (row: Row) => string
   /** Rows shown dimmed (e.g. retired); say why in a column too, since dimming alone is not announced. */
   dimmed?: (row: Row) => boolean
+  /**
+   * A closing line under the rows, such as a total: a footer row on desktop with the value under the last column,
+   * and a labelled line after the cards on a phone. It is not one of the rows.
+   */
+  summary?: { label: string; value: ReactNode }
 }
 
 function subscribe(onChange: () => void) {
@@ -45,8 +50,17 @@ function useDesktop(): boolean {
  * headers, the first column as row headers); below 1280px each row is a card (a list item holding a description
  * list), so every value keeps its column label on screen and for screen readers. Only one of the two is rendered.
  */
-export function ResponsiveList<Row>({ label, columns, rows, rowKey, rowLink, dimmed }: ResponsiveListProps<Row>) {
+export function ResponsiveList<Row>({
+  label,
+  columns,
+  rows,
+  rowKey,
+  rowLink,
+  dimmed,
+  summary,
+}: ResponsiveListProps<Row>) {
   const desktop = useDesktop()
+  const last = columns[columns.length - 1]
 
   const content = (column: ListColumn<Row>, index: number, row: Row) => {
     const value = column.cell(row)
@@ -83,11 +97,25 @@ export function ResponsiveList<Row>({ label, columns, rows, rowKey, rowLink, dim
             </tr>
           ))}
         </tbody>
+        {summary && (
+          <tfoot>
+            <tr>
+              {columns.length > 1 && (
+                <th scope="row" colSpan={columns.length - 1}>
+                  {summary.label}
+                </th>
+              )}
+              <td className={last.align === 'end' ? 'align-end' : undefined}>
+                {columns.length > 1 ? summary.value : <>{summary.label} {summary.value}</>}
+              </td>
+            </tr>
+          </tfoot>
+        )}
       </table>
     )
   }
 
-  return (
+  const cards = (
     // role="list": Safari drops list semantics from a list styled without bullets.
     <ul className="list-cards" role="list" aria-label={label}>
       {rows.map((row) => (
@@ -103,5 +131,18 @@ export function ResponsiveList<Row>({ label, columns, rows, rowKey, rowLink, dim
         </li>
       ))}
     </ul>
+  )
+
+  if (!summary) return cards
+  return (
+    <>
+      {cards}
+      <dl className="list-summary">
+        <div className="list-field">
+          <dt>{summary.label}</dt>
+          <dd>{summary.value}</dd>
+        </div>
+      </dl>
+    </>
   )
 }

@@ -11,7 +11,7 @@ export function AccountPage() {
   const me = useApi<Me>(authPaths.me())
 
   return (
-    <section className="card">
+    <section className="card column-narrow">
       <h1>บัญชีของฉัน</h1>
       {me.status === 'success' ? (
         <dl className="terms">

@@ -31,7 +31,7 @@ export function ContractPage() {
   const c = contract.data
 
   return (
-    <section className="card application">
+    <section className="card application column-wide">
       <Link to="/contracts" className="back-link">
         ← สัญญาของฉัน
       </Link>
@@ -107,34 +107,19 @@ export function ContractPage() {
       {c.payments.length === 0 ? (
         <p className="muted">ยังไม่มีการชำระค่างวด</p>
       ) : (
-        <table className="schedule">
-          <thead>
-            <tr>
-              <th scope="col">วันที่ชำระ</th>
-              <th scope="col">งวดที่</th>
-              <th scope="col">ช่องทาง</th>
-              <th scope="col">จำนวนเงิน</th>
-            </tr>
-          </thead>
-          <tbody>
-            {c.payments.map((p, index) => (
-              <tr key={`${p.paidAt}-${index}`}>
-                <td>{formatDate(p.paidAt)}</td>
-                <td>{p.installmentNumber ?? '–'}</td>
-                <td>{PAYMENT_CHANNEL_LABELS[p.channel] ?? p.channel}</td>
-                <td>{formatBaht(p.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr>
-              <th scope="row" colSpan={3}>
-                ชำระแล้วทั้งหมด
-              </th>
-              <td>{formatBaht(c.amountPaid)}</td>
-            </tr>
-          </tfoot>
-        </table>
+        <ResponsiveList
+          label="การชำระเงิน"
+          columns={[
+            { label: 'วันที่ชำระ', cell: (p) => formatDate(p.paidAt) },
+            { label: 'งวดที่', cell: (p) => p.installmentNumber ?? '–' },
+            { label: 'ช่องทาง', cell: (p) => PAYMENT_CHANNEL_LABELS[p.channel] ?? p.channel },
+            { label: 'จำนวนเงิน', cell: (p) => formatBaht(p.amount), align: 'end' },
+          ]}
+          // Payments have no id of their own here: the order the Enterprise System gave them keeps keys unique.
+          rows={c.payments.map((payment, index) => ({ ...payment, index }))}
+          rowKey={(p) => `${p.paidAt}-${p.index}`}
+          summary={{ label: 'ชำระแล้วทั้งหมด', value: formatBaht(c.amountPaid) }}
+        />
       )}
       <p className="muted">สถานะและการชำระเงินมาจากระบบสัญญาของบริษัท อาจล่าช้าได้ไม่เกิน 30 วินาที</p>
     </section>
@@ -148,7 +133,7 @@ export function ContractsPage() {
   if (contracts.status !== 'success') return <Status state={contracts} />
 
   return (
-    <section className="card">
+    <section className="card column-narrow">
       <h1>สัญญาของฉัน</h1>
       {contracts.data.length === 0 ? (
         <p className="muted">ยังไม่มีสัญญาเช่าซื้อ</p>

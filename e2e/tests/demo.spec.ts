@@ -242,6 +242,8 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
 
   await test.step('Customer signs in by SMS (code from the mock inbox)', async () => {
     await signInCustomer(page, phone, mobileNumber)
+    await expect(page.getByRole('heading', { name: 'บัญชีของฉัน' })).toBeVisible()
+    await expectFitsNarrowestPhone(page)
   })
 
   await test.step('Customer applies for an iPhone with an ID card photo and is Approved within 60 s', async () => {
@@ -254,6 +256,7 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
     })
     await expect(page.getByRole('heading', { name: 'อนุมัติแล้ว' })).toBeVisible({ timeout: 60_000 })
     await expectPageFits(page)
+    await expectFitsNarrowestPhone(page)
   })
 
   let contractNumber = ''
@@ -323,7 +326,8 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
 
     await page.reload()
     await expect(page.locator('.handover-stage')).toContainText('รับสินค้าแล้ว')
-    await expect(page.getByRole('cell', { name: 'รอรับสินค้า' })).toHaveCount(0) // due dates are set now
+    await expect(listRows(page, 'ตารางผ่อนชำระ')).toHaveCount(12)
+    await expect(listRows(page, 'ตารางผ่อนชำระ').filter({ hasText: 'รอรับสินค้า' })).toHaveCount(0) // due dates set
     await expectPageFits(page)
   })
 
@@ -336,7 +340,9 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
       await page.reload()
       await expect(page.getByText('ชำระแล้วทั้งหมด')).toBeVisible({ timeout: 1_000 })
     }).toPass({ timeout: 120_000, intervals: [5_000] })
-    await expect(page.locator('table.schedule').last().locator('tbody tr')).toHaveCount(1)
+    await expectResponsiveList(page, 'การชำระเงิน', ['วันที่ชำระ', 'งวดที่', 'ช่องทาง', 'จำนวนเงิน'])
+    await expect(listRows(page, 'การชำระเงิน')).toHaveCount(1)
+    await expectFitsNarrowestPhone(page)
     await expectPageFits(page)
   })
 

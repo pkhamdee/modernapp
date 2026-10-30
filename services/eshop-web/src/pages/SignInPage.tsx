@@ -41,7 +41,7 @@ export function SignInPage() {
   }
 
   return (
-    <section className="card form-column">
+    <section className="card column-narrow">
       <h1>เข้าสู่ระบบ</h1>
       <p className="muted">กรอกเบอร์มือถือ เราจะส่งรหัสยืนยันทาง SMS ไม่ต้องตั้งรหัสผ่าน</p>
       <form onSubmit={onSubmit} className="form" noValidate>
