@@ -362,6 +362,10 @@ h2 {
 
 @media (min-width: 1024px) {
   /* wide */
+  /* The photos move left of the bidding panel although they come after it in the page (so the panel is on screen
+     unscrolled on a phone). Focus order is unaffected: the photo area holds only images and text, nothing
+     focusable, so Tab still goes from the back link into the panel. Add a link or button there and this needs
+     revisiting (WCAG 2.4.3). */
   .lot-detail .detail-media {
     grid-column: 1;
     grid-row: 2;
