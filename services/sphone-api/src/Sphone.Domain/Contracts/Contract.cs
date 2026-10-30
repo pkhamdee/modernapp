@@ -23,59 +23,60 @@ public enum ContractStatus
 /// </summary>
 public class Contract
 {
-    public int Id { get; set; }
+    public int Id { get; private set; }
 
     /// <summary><c>SP-YYYYMM-NNNNNN</c>; unique, and the key the Enterprise System push is idempotent on.</summary>
-    public required string Number { get; set; }
+    public string Number { get; private set; } = null!;
 
-    public int OfferId { get; set; }
+    public int OfferId { get; private set; }
 
-    public Offer Offer { get; set; } = null!;
+    public Offer Offer { get; private set; } = null!;
 
-    public int ApplicationId { get; set; }
+    public int ApplicationId { get; private set; }
 
-    public Application Application { get; set; } = null!;
+    public Application Application { get; private set; } = null!;
 
-    public int CustomerId { get; set; }
+    public int CustomerId { get; private set; }
 
-    public Customer Customer { get; set; } = null!;
+    public Customer Customer { get; private set; } = null!;
 
-    public int ProductId { get; set; }
+    public int ProductId { get; private set; }
 
-    public Product Product { get; set; } = null!;
+    public Product Product { get; private set; } = null!;
 
     /// <summary>Locked price (from the Application).</summary>
-    public decimal Price { get; set; }
+    public decimal Price { get; private set; }
 
-    public decimal FlatRate { get; set; }
+    public decimal FlatRate { get; private set; }
 
-    public decimal DownPayment { get; set; }
+    public decimal DownPayment { get; private set; }
 
-    public int Term { get; set; }
+    public int Term { get; private set; }
 
-    public decimal Installment { get; set; }
+    public decimal Installment { get; private set; }
 
-    public decimal TotalPayable { get; set; }
+    public decimal TotalPayable { get; private set; }
 
-    public DateTimeOffset AcceptedAt { get; set; }
+    public DateTimeOffset AcceptedAt { get; private set; }
 
     /// <summary>
     /// As known by the Enterprise System: S Phone sets Active on acceptance and never computes Overdue or
     /// anything else itself; later values arrive by sync (<see cref="RefreshFromEnterprise"/>).
     /// </summary>
-    public ContractStatus Status { get; set; }
+    public ContractStatus Status { get; private set; }
 
     /// <summary>When the Enterprise System cancelled the Contract (null unless Cancelled).</summary>
-    public DateTimeOffset? CancelledAt { get; set; }
+    public DateTimeOffset? CancelledAt { get; private set; }
 
     /// <summary>Payments the Enterprise System recorded, as last pulled.</summary>
     public List<Payment> Payments { get; } = [];
 
     /// <summary>
-    /// Copies the Enterprise System's view of the Contract (sync-master's pull only; ADR-0001). A Contract
-    /// set to Cancelled here stops its Handover (ADR-0004).
+    /// Copies the Enterprise System's view of the Contract (ADR-0001). Internal: only sphone-sync-master's pull
+    /// may call it (InternalsVisibleTo in Sphone.Domain.csproj), so sphone-api cannot change a pushed Contract.
+    /// A Contract set to Cancelled here stops its Handover (ADR-0004).
     /// </summary>
-    public void RefreshFromEnterprise(ContractStatus status, DateTimeOffset? cancelledAt)
+    internal void RefreshFromEnterprise(ContractStatus status, DateTimeOffset? cancelledAt)
     {
         Status = status;
         CancelledAt = status == ContractStatus.Cancelled ? cancelledAt : null;
