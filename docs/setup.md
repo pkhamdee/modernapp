@@ -28,7 +28,7 @@ Both environments share the one `sphone` Gateway on port 443 and run the same ap
 | dev | `sphone-dev` | `main` (`main-<sha>` images) | `https://sphone.localhost` | `https` |
 | prod | `sphone-prod` | the newest release tag `vX.Y.Z` (its manifests and its `X.Y.Z` images, docs/git-workflow.md) | `https://prod.sphone.localhost` | `https-prod` (accepts routes from `sphone-prod` only) |
 
-Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/sphone-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`sphone-db` in its namespace) with its own SOPS-encrypted credentials.
+Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/sphone-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials.
 
 ### DOCKER_HOST gotcha
 
@@ -84,9 +84,9 @@ Bootstrap installs Flux, commits `clusters/local/flux-system/` to `main` if it c
 ```sh
 flux get kustomizations          # flux-system, infra-controllers, infra-configs, thirdparty, apps-dev: Ready; apps-prod: see below
 kubectl get gateway -n gateway   # sphone, PROGRAMMED True
-curl -k https://sphone.localhost/api/product-categories   # catalog JSON from sphone-api
-curl -k https://sphone.localhost                          # sphone-web
-curl -kI https://sphone.localhost/images/public/demo-iphone-17.svg   # a Product photo from sphone-node-api
+curl -k https://sphone.localhost/api/product-categories   # catalog JSON from eshop-api
+curl -k https://sphone.localhost                          # eshop-web
+curl -kI https://sphone.localhost/images/public/demo-iphone-17.svg   # a Product photo from eshop-node-api
 curl -I http://sphone.localhost  # 301 to https
 curl -k https://prod.sphone.localhost/api/product-categories   # sphone-prod (after the first release; own database)
 open https://sphone.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-in codes for any mobile number
@@ -94,6 +94,8 @@ open https://sphone.localhost/thirdparty-mock/enterprise/ # mock Enterprise Syst
 ```
 
 **`sphone-prod` before the first release.** Prod runs only what a release tag says (docs/git-workflow.md). Until the first `vX.Y.Z` tag has been pushed and its images built, there is nothing to deploy, so the GitRepository `sphone-release`, the ImagePolicy `flux-system/sphone-release` and the Kustomization `apps-prod` are not Ready (`no match found for semver: 0.0.0`) and `https://prod.sphone.localhost` serves nothing. That is expected; they turn Ready a few minutes after the first release (docs/git-workflow.md, "Releasing"). On a cluster bootstrapped before this change, the old `sphone-prod` objects keep running until then and the first release replaces them.
+
+**After the rename to `eshop-*` images (#49).** Human-only, once: when CI has first pushed `ghcr.io/pkhamdee/eshop-api`, `eshop-web`, `eshop-node-api` and `eshop-sync-master`, make each GHCR package public (github.com/pkhamdee?tab=packages → package → Package settings → Change visibility). Until then Flux cannot scan them and the pods cannot pull them, so `sphone-dev` shows ImagePullBackOff and `apps-dev` stays not Ready. The CloudNativePG cluster is now `eshop-db`, so dev starts from an empty database (re-seeded demo data). Contract numbers restart too, and the push never overwrites a Contract number the Enterprise System already has, so also empty `enterprise_dev` (`DELETE FROM hp.payment; DELETE FROM hp.contract;` as `sa`), or a new dev Contract may take over an old one's status and Payments. `sphone-prod` keeps running its `sphone-*` release until `v0.2.0` is tagged.
 
 The certificate comes from a local CA created by cert-manager. To stop browser warnings, trust the CA once:
 
@@ -114,14 +116,14 @@ one demo Staff account; its username and password live **only** in the SOPS-encr
 SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/sphone-api-staff.sops.yaml   # or prod
 ```
 
-sphone-api provisions the account at startup from `Staff__Accounts__0__Username|Password|DisplayName` (stored as a salted
+eshop-api provisions the account at startup from `Staff__Accounts__0__Username|Password|DisplayName` (stored as a salted
 PBKDF2 hash). To change the password: `sops deploy/apps/<env>/sphone-api-staff.sops.yaml`, commit, and once Flux applies
-it restart sphone-api (`kubectl -n sphone-<env> rollout restart deploy/sphone-api`); the Secret is the source of truth.
+it restart eshop-api (`kubectl -n sphone-<env> rollout restart deploy/eshop-api`); the Secret is the source of truth.
 More accounts: add `Staff__Accounts__1__*` env vars from the same kind of Secret.
 
-Running sphone-api locally, give it a Staff account the same way (any password you like, not committed):
+Running eshop-api locally, give it a Staff account the same way (any password you like, not committed):
 `Staff__Accounts__0__Username=staff Staff__Accounts__0__Password=<choose one> dotnet run --project src/Eshop.Api`.
-Product photo upload needs sphone-node-api (`npm run dev`, port 8081; `ImageService__BaseUrl` overrides it).
+Product photo upload needs eshop-node-api (`npm run dev`, port 8081; `ImageService__BaseUrl` overrides it).
 
 ## Auction demo
 
@@ -140,11 +142,11 @@ databases `enterprise_dev` and `enterprise_prod`, fake schema `hp.contract` / `h
 (`deploy/thirdparty/mssql/enterprise-schema.sql`). The pod's `schema` container creates the databases, applies the
 schema and (re)sets the logins on every start. Passwords are in the SOPS Secret
 `deploy/thirdparty/mssql/mssql-credentials.sops.yaml` (`sa`, `enterprise_admin` for the admin tool, `sphone_sync_dev` /
-`sphone_sync_prod` for sphone-sync-master). Each environment's copy of its sync login is in
+`sphone_sync_prod` for eshop-sync-master). Each environment's copy of its sync login is in
 `deploy/apps/<env>/sphone-sync-master-enterprise.sops.yaml` and must match.
 
 **Admin tool** (story 62): `https://sphone.localhost/thirdparty-mock/enterprise/` → `dev/` or `prod/` lists the Contracts
-sphone-sync-master pushed (newest first) with their Payments, and per Contract: **Simulate Payment** (one Installment by
+eshop-sync-master pushed (newest first) with their Payments, and per Contract: **Simulate Payment** (one Installment by
 default; the last one makes it `PAID_OFF`), **Mark overdue / Mark active**, **Cancel Contract**. The same as JSON for
 scripts:
 
@@ -156,7 +158,7 @@ curl -k -H 'content-type: application/json' -d '{"status":"OVERDUE"}' $B/contrac
 curl -k -H 'content-type: application/json' -d '{"reason":"demo"}' $B/contracts/SP-202610-000001/cancel
 ```
 
-**sphone-sync-master** (`deploy/apps/base/sphone-sync-master`) runs a sync cycle every 30 s: it pushes Contracts waiting in
+**eshop-sync-master** (`deploy/apps/base/eshop-sync-master`) runs a sync cycle every 30 s: it pushes Contracts waiting in
 `contract_outbox` to `hp.contract` (MERGE on the Contract number, insert only: pushing twice leaves one copy and never
 overwrites what the Enterprise System changed), then sets `pushed_at`. From then on the Enterprise System owns the
 Contract (ADR-0001). In the same cycle it then pulls what changed there since the last pull: Contract status
@@ -165,7 +167,7 @@ on the Enterprise `payment_id`). It finds changes by the `row_ver` rowversion wa
 `sync_watermarks`, stored in the same transaction as the copied rows; only committed changes are read
 (`row_ver < MIN_ACTIVE_ROWVERSION()`). The Customer's Contract page therefore lags the admin tool by at most one
 cycle (≈30 s). A Contract cancelled there stops its Handover (ADR-0004). eShop never computes overdue itself.
-Logs: `kubectl -n sphone-dev logs deploy/sphone-sync-master`.
+Logs: `kubectl -n sphone-dev logs deploy/eshop-sync-master`.
 
 Read-only look at the database (sa password from the Secret, never printed):
 
@@ -251,10 +253,10 @@ A fix after the release goes to `release/0.x` **and** `main`, then the next patc
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
 | `deploy/apps/prod/` | `sphone-prod` overlay, applied as it is in the newest release tag, served at `prod.sphone.localhost` | `apps-prod` (after configs; source `sphone-release`) |
 | `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, `samba/`: image share with one share per environment, `mssql/`: mock Enterprise System, ...); thirdparty-mock follows `main` via its own image automation | `thirdparty` (after configs) |
-| `services/sphone-api/` | .NET solution: `src/Eshop.Domain`, `src/Eshop.Data` (EF Core, migrations), `src/Eshop.Api`, `src/Eshop.SyncMaster` (sphone-sync-master), `tests/Eshop.Api.Tests` (Seam 1), `tests/Eshop.SyncMaster.Tests` (Seam 2) | – |
-| `services/sphone-web/` | React + Vite + TypeScript, served by Caddy | – |
+| `services/eshop-api/` | .NET solution: `src/Eshop.Domain`, `src/Eshop.Data` (EF Core, migrations), `src/Eshop.Api`, `src/Eshop.SyncMaster` (eshop-sync-master), `tests/Eshop.Api.Tests` (Seam 1), `tests/Eshop.SyncMaster.Tests` (Seam 2) | – |
+| `services/eshop-web/` | React + Vite + TypeScript, served by Caddy | – |
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
-| `services/sphone-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
+| `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
 | `scripts/` | Repo tasks: `release.sh X.Y.Z` cuts a release (human-run); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
@@ -264,11 +266,11 @@ Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` wh
 ## Developing
 
 ```sh
-# sphone-api + sphone-sync-master (.NET 10). Tests start PostgreSQL (and, for sync-master's Seam-2 tests, SQL Server
+# eshop-api + eshop-sync-master (.NET 10). Tests start PostgreSQL (and, for sync-master's Seam-2 tests, SQL Server
 # amd64 under Rosetta: enable Rosetta in Rancher Desktop) with Testcontainers.
 export DOCKER_HOST=unix://$HOME/.rd/docker.sock
 export TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE=/var/run/docker.sock   # Rancher Desktop: socket path inside the VM
-cd services/sphone-api
+cd services/eshop-api
 dotnet test
 dotnet format --verify-no-changes                                   # lint, as CI runs it
 dotnet tool restore && dotnet ef migrations add <Name> --project src/Eshop.Data
@@ -276,23 +278,23 @@ dotnet tool restore && dotnet ef migrations add <Name> --project src/Eshop.Data
 # Run locally: a PostgreSQL on localhost:5432 (user/password/db sphone), then
 docker run -d --name sphone-pg -p 5432:5432 -e POSTGRES_USER=sphone -e POSTGRES_PASSWORD=sphone -e POSTGRES_DB=sphone postgres:18-alpine
 dotnet run --project src/Eshop.Api                                  # http://localhost:5080, migrates and seeds
-# sphone-sync-master needs a SQL Server on localhost:1433 with enterprise_dev and the schema (appsettings.Development.json):
+# eshop-sync-master needs a SQL Server on localhost:1433 with enterprise_dev and the schema (appsettings.Development.json):
 docker run -d --name enterprise-sql --platform linux/amd64 -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Local_Dev_Passw0rd mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
 #   then create enterprise_dev and run ../../deploy/thirdparty/mssql/enterprise-schema.sql in it (sqlcmd -d enterprise_dev -i ...)
 dotnet run --project src/Eshop.SyncMaster                           # pushes every 30 s; probes on http://localhost:5090/healthz/ready
 
-# sphone-web (Node 24)
-cd services/sphone-web
+# eshop-web (Node 24)
+cd services/eshop-web
 npm ci && npm run dev                                               # proxies /api to localhost:5080
 npm run lint && npm run build                                       # as CI runs it
 
-# thirdparty-mock (Node 24). sphone-api's Development settings point ThirdParty:BaseUrl at localhost:4000.
+# thirdparty-mock (Node 24). eshop-api's Development settings point ThirdParty:BaseUrl at localhost:4000.
 cd services/thirdparty-mock
 npm ci && npm run dev                                               # http://localhost:4000/sms/inbox
 # Enterprise admin tool locally: ENTERPRISE_SQL_SERVER=localhost ENTERPRISE_SQL_USER=sa ENTERPRISE_SQL_PASSWORD=... npm run dev
 npm run lint && npm run typecheck
-# sphone-node-api (Node 24). Tests use a temporary folder instead of the SMB share.
-cd services/sphone-node-api
+# eshop-node-api (Node 24). Tests use a temporary folder instead of the SMB share.
+cd services/eshop-node-api
 npm ci && npm run lint && npm test                                  # as CI runs it
 npm run dev                                                         # http://localhost:8081, images in ./.local-share
 ```

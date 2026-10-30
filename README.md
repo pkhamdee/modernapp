@@ -16,7 +16,7 @@ Mocks (SMS inbox, ID Verification / Credit Check, eShop Co. Enterprise System ad
 1. A Customer signs in by SMS (read the code in the mock SMS inbox), opens an iPhone, picks a Down Payment and Term,
    and applies with an ID number and an ID card photo (thirdparty-mock ID numbers ending `01` are approved).
 2. Within 60 seconds the Application is Approved; the Customer accepts the Offer with an SMS code and gets a Contract.
-3. sphone-sync-master pushes the Contract to the mock Enterprise System (admin tool → `dev/` or `prod/`).
+3. eshop-sync-master pushes the Contract to the mock Enterprise System (admin tool → `dev/` or `prod/`).
 4. Staff (`/staff`, demo account in SOPS) record the Down Payment and the Handover.
 5. **Simulate Payment** in the admin tool; the Payment shows on the Customer's Contract within about 30 seconds.
 6. Separately, Staff create an Auction and add Lots; an ID-verified Customer bids and wins when it closes.

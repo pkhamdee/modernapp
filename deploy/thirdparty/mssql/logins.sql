@@ -1,6 +1,6 @@
 -- Logins of the mock Enterprise System (run by init.sh with sqlcmd variables from the mssql-credentials Secret).
 -- Passwords are reset on every run, so the Secret stays the source of truth.
---   sphone_sync_dev / sphone_sync_prod: sphone-sync-master of each environment; read/write its own database only.
+--   sphone_sync_dev / sphone_sync_prod: eshop-sync-master of each environment; read/write its own database only.
 --   enterprise_admin: the admin tool in thirdparty-mock; read/write both databases.
 
 IF SUSER_ID(N'sphone_sync_dev') IS NULL

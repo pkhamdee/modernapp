@@ -30,7 +30,7 @@ terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather 
 - `gh pr create` can fail with "connection reset by peer" after the push succeeded: check
   `gh pr list --head <branch>` before retrying.
 
-## sphone-api (.NET solution `services/sphone-api`)
+## eshop-api (.NET solution `services/eshop-api`)
 
 Layout:
 
@@ -41,7 +41,7 @@ Layout:
 - `Eshop.Api`: one folder per feature with `<X>Endpoints.cs` exposing `Map<X>Endpoints(this IEndpointRouteBuilder)`,
   wired on the `/api` group in `Program.cs`. Health probes `/healthz/live|ready` sit outside `/api` so the Gateway
   never exposes them.
-- `Eshop.SyncMaster` (sphone-sync-master) lives in the same solution and references `Eshop.Data`; it never migrates.
+- `Eshop.SyncMaster` (eshop-sync-master) lives in the same solution and references `Eshop.Data`; it never migrates.
 - Package versions only in `Directory.Packages.props` (`<PackageReference>` without `Version`). Warnings are errors,
   including NuGet audit (`NU1903`): a vulnerable transitive package is fixed by pinning a `PackageVersion` plus a
   direct reference (see `System.Security.Cryptography.Pkcs`).
@@ -102,13 +102,13 @@ Third-party ports: interface + real adapter in `Eshop.Api/ThirdParty/` (typed `H
 `AddThirdParties` against `ThirdParty:BaseUrl`; an in-memory fake in `tests/.../Fakes/` exposed as a property on
 `EshopApiFactory`. The image service port is `Images/IImageStore`; store only the image ID in Postgres.
 
-Migrations: `dotnet ef migrations add <Name> --project src/Eshop.Data` (`docs/setup.md`). Only sphone-api applies
+Migrations: `dotnet ef migrations add <Name> --project src/Eshop.Data` (`docs/setup.md`). Only eshop-api applies
 them, at startup (`Database:MigrateOnStartup`). Demo data is seeded by `UseSeeding`/`UseAsyncSeeding` into empty
 tables only (no `HasData`, so identity sequences stay right). On a model-snapshot conflict after a rebase, or after
 a bad `migrations remove`: check out `origin/main`'s `EshopDbContextModelSnapshot.cs`, delete your migration files
 and run `migrations add` again.
 
-sphone-sync-master:
+eshop-sync-master:
 
 - Seam-2 tests (`tests/Eshop.SyncMaster.Tests`, `SyncMasterFactory`) run Postgres and an amd64 SQL Server; CI keeps
   them on x86 (`ubuntu-latest`). Locally SQL Server runs under Rosetta (~20 s start).
@@ -118,14 +118,14 @@ sphone-sync-master:
 - Enterprise tables have triggers, so `UPDATE ... OUTPUT` without `INTO` fails; use rows affected. Schema changes go
   in `deploy/thirdparty/mssql/enterprise-schema.sql` (idempotent); the tests run the same file.
 - SqlClient needs ICU: SyncMaster sets `InvariantGlobalization=false` and uses the `-chiseled-extra` image.
-  sphone-api stays invariant. Npgsql connection strings include `GSS Encryption Mode=Disable` (libgssapi noise on
+  eshop-api stays invariant. Npgsql connection strings include `GSS Encryption Mode=Disable` (libgssapi noise on
   chiseled images).
 
-## Node services (`sphone-node-api`, `thirdparty-mock`)
+## Node services (`eshop-node-api`, `thirdparty-mock`)
 
 - Node 24 runs `src/*.ts` directly (type stripping): no build step, imports end in `.ts`, `erasableSyntaxOnly`,
   so no enums or parameter properties. `npm run lint` / `typecheck` as in `package.json`.
-- sphone-node-api: ports as interfaces (`ImageStore`) with adapters (`folderImageStore`, `smbImageStore`). Tests
+- eshop-node-api: ports as interfaces (`ImageStore`) with adapters (`folderImageStore`, `smbImageStore`). Tests
   (`node --test`) start the real service on port 0 via `test/harness.ts` and assert on HTTP only;
   `startSmbService()` puts `test/fake-smbclient/` (an ESM script: use `import`) on `PATH`. Extend that fake when the
   adapter sends a new smbclient command.
@@ -138,7 +138,7 @@ sphone-sync-master:
   `/thirdparty-mock/`). State is in memory, one replica. Test ID numbers (outcome by last two digits) are in
   `src/testIdNumbers.ts`; the 30-day re-apply wait follows the ID number, so use a fresh prefix per demo run.
 
-## sphone-web (`services/sphone-web`)
+## eshop-web (`services/eshop-web`)
 
 - Routes in `src/routes.tsx`; signed-in sections are nested layout routes guarded by `<RequireRole role=.../>`, and
   the back office is its own `/staff` branch with `StaffLayout`. Pages in `src/pages/` (`src/pages/staff/`), API
@@ -167,13 +167,13 @@ sphone-sync-master:
   needs both ends, caller egress and callee ingress. Egress names the container port number (e.g. 8080), not the
   Service port. Gateway = `kube-system` namespace + `app.kubernetes.io/name: traefik`; same-namespace callers by
   podSelector only (keeps dev and prod apart); thirdparty callees list callers by namespace `In [sphone-dev,
-  sphone-prod]`. Copy `deploy/apps/base/sphone-api/network-policy.yaml`.
+  sphone-prod]`. Copy `deploy/apps/base/eshop-api/network-policy.yaml`.
 - **Secrets**: one SOPS file per env, `deploy/apps/{dev,prod}/<name>.sops.yaml`, listed in that overlay's
   resources; `.sops.yaml` encrypts only `data`/`stringData`. Pairs that must match: each env's
   `sphone-node-api-smb` with `deploy/thirdparty/samba/samba-accounts.sops.yaml`, and each env's
   `sphone-sync-master-enterprise` with `deploy/thirdparty/mssql/mssql-credentials.sops.yaml`.
 - Images whose binary carries a file capability (Caddy, `sqlservr`) fail with "operation not permitted" under
-  `drop: [ALL]`: remove the capability in the image (as sphone-web does) or add `NET_BIND_SERVICE` back (as mssql
+  `drop: [ALL]`: remove the capability in the image (as eshop-web does) or add `NET_BIND_SERVICE` back (as mssql
   does).
 - Trivy fails CI on any CRITICAL, fixed or not. For an unfixable one add a `.trivyignore` (CVE, reason, date) and
   pass it to the action.

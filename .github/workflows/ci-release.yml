@@ -41,41 +41,41 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  sphone-api:
-    name: sphone-api (lint, test)
+  eshop-api:
+    name: eshop-api (lint, test)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/sphone-api
+        working-directory: services/eshop-api
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          global-json-file: services/sphone-api/global.json
+          global-json-file: services/eshop-api/global.json
       - run: dotnet restore
       - name: Lint
         run: dotnet format --verify-no-changes --no-restore
       - name: Build
         run: dotnet build --no-restore -c Release
-      # Seam-1 tests (sphone-api) start PostgreSQL with Testcontainers (Docker is available on GitHub runners).
-      # Seam-2 tests (sphone-sync-master, same solution) also start SQL Server, which has no Arm image: this job
+      # Seam-1 tests (eshop-api) start PostgreSQL with Testcontainers (Docker is available on GitHub runners).
+      # Seam-2 tests (eshop-sync-master, same solution) also start SQL Server, which has no Arm image: this job
       # must stay on an x86 runner (ubuntu-latest).
       - name: Test
         run: dotnet test --no-build -c Release
 
-  sphone-web:
-    name: sphone-web (lint, build)
+  eshop-web:
+    name: eshop-web (lint, build)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/sphone-web
+        working-directory: services/eshop-web
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: services/sphone-web/package-lock.json
+          cache-dependency-path: services/eshop-web/package-lock.json
       - run: npm ci
       - name: Lint
         run: npm run lint
@@ -103,19 +103,19 @@ jobs:
         run: npm run typecheck
 
 
-  sphone-node-api:
-    name: sphone-node-api (lint, test)
+  eshop-node-api:
+    name: eshop-node-api (lint, test)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/sphone-node-api
+        working-directory: services/eshop-node-api
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: services/sphone-node-api/package-lock.json
+          cache-dependency-path: services/eshop-node-api/package-lock.json
       - run: npm ci
       - name: Lint and type-check
         run: npm run lint
@@ -163,7 +163,7 @@ jobs:
   #     rebuilt when the push has no usable base (first push, force push), when this workflow or services.json
   #     changes, or on workflow_dispatch without `version`.
   plan:
-    needs: [sphone-api, sphone-web, thirdparty-mock, sphone-node-api]
+    needs: [eshop-api, eshop-web, thirdparty-mock, eshop-node-api]
     if: >-
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
       || github.event_name == 'workflow_dispatch'

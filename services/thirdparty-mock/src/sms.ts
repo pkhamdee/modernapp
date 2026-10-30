@@ -3,7 +3,7 @@ import { Router } from 'express'
 import { escapeHtml, page } from './html.ts'
 import { log } from './log.ts'
 
-// Mock SMS gateway. sphone-api sends   POST /sms/messages { "to": "0812345678", "text": "..." }
+// Mock SMS gateway. eshop-api sends   POST /sms/messages { "to": "0812345678", "text": "..." }
 // and nothing is delivered: messages are kept in memory (newest first, capped) and shown on the
 // mock inbox page GET /sms/inbox, grouped per mobile number, so codes can be read without a phone.
 

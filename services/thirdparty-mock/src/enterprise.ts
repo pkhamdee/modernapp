@@ -5,7 +5,7 @@ import { log } from './log.ts'
 
 // Admin tool of the mock Enterprise System (story 62). The Enterprise System itself is the real SQL Server in
 // the thirdparty namespace (deploy/thirdparty/mssql), databases enterprise_dev and enterprise_prod, fake
-// schema hp.contract / hp.payment. sphone-sync-master pushes Contracts there; this page lists them and lets a
+// schema hp.contract / hp.payment. eshop-sync-master pushes Contracts there; this page lists them and lets a
 // developer do what the Enterprise System's own staff would: record a Payment, mark overdue, cancel.
 // The pull (#10) brings those changes back to eShop.
 //
@@ -184,7 +184,7 @@ export function enterpriseRouter(): Router {
 
   router.get('/enterprise/', (_request, response) => {
     response.type('html').send(page('eShop Co. Enterprise System', `<h1>eShop Co. Enterprise System (mock)</h1>
-<p class="muted">eShop Co.'s core hire-purchase system, played by SQL Server in the thirdparty namespace. sphone-sync-master pushes accepted Contracts here every 30 s.</p>
+<p class="muted">eShop Co.'s core hire-purchase system, played by SQL Server in the thirdparty namespace. eshop-sync-master pushes accepted Contracts here every 30 s.</p>
 <ul>
   <li><a href="dev/">enterprise_dev</a> (sphone-dev)</li>
   <li><a href="prod/">enterprise_prod</a> (sphone-prod)</li>
@@ -292,6 +292,6 @@ function contractsPage(environment: Environment, contracts: ContractRow[], payme
   })
   return page(`eShop Co. Enterprise System · ${environment}`, `<p><a href="../">eShop Co. Enterprise System</a> · <a href="../../">thirdparty-mock</a></p>
 <h1>enterprise_${environment}: Contracts</h1>
-<p class="muted">Newest ${LIST_LIMIT}, as pushed by sphone-sync-master. Changes here reach eShop by the pull.</p>
+<p class="muted">Newest ${LIST_LIMIT}, as pushed by eshop-sync-master. Changes here reach eShop by the pull.</p>
 ${rows.length ? rows.join('\n') : '<p>No Contracts yet.</p>'}`)
 }

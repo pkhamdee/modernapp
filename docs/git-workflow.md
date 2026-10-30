@@ -169,7 +169,7 @@ Things to know:
 
 - **Newest wins.** The ImagePolicy selects the highest semver release across all series, so a patch on an older series (`v1.0.5` while `v2.0.0` is out) is built and released but does not replace the newer version in `sphone-prod`.
 - **Prod-only changes** (e.g. a prod patch in `deploy/apps/prod`) are released like code: land them on `main` (and the release branch, if it should ship as a patch), then tag.
-- **Services finish building at different times.** The release is detected from `sphone-api`'s `X.Y.Z` tag; a service whose image is pushed a minute later just retries its image pull until it exists.
+- **Services finish building at different times.** The release is detected from `eshop-api`'s `X.Y.Z` tag; a service whose image is pushed a minute later just retries its image pull until it exists.
 - **Rollback** = ship the next patch (tags are immutable). In an emergency, suspend the automation (`flux suspend image update sphone-prod`) and set `ref.semver` of `sphone-release` and the `images` of `apps-prod` in `clusters/local/` to an earlier release in a PR; resume afterwards.
 - **Release dry run** without a tag: Actions → CI / Release → Run workflow with `version` = `0.0.0-test.N` (any branch). It builds, scans and pushes every service as that pre-release tag and publishes no Release. It is never deployed.
 - **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry (with the `flux-system:sphone-release` marker) to `apps-prod` in `clusters/local/apps.yaml`; its HTTPRoutes are moved to `prod.sphone.localhost` automatically.

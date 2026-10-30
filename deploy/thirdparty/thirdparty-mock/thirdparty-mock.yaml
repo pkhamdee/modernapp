@@ -1,5 +1,5 @@
 # thirdparty-mock: one Node service pretending to be SMS (later also ID Verification and Credit Check).
-# In-cluster:  http://thirdparty-mock.thirdparty.svc.cluster.local/   (sphone-api's ThirdParty__BaseUrl)
+# In-cluster:  http://thirdparty-mock.thirdparty.svc.cluster.local/   (eshop-api's ThirdParty__BaseUrl)
 # Browser:     https://sphone.localhost/thirdparty-mock/  (home + delay), .../thirdparty-mock/sms/inbox (mock SMS inbox),
 #              .../thirdparty-mock/enterprise/ (mock Enterprise System admin tool: Contracts, simulate Payment, cancel)
 # State (messages, delay) is in memory: a restart clears it. Keep one replica.

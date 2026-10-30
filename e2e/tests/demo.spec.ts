@@ -83,7 +83,7 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
   const enterpriseContract = () =>
     enterprise.locator('section', { has: enterprise.getByRole('heading', { name: contractNumber }) })
 
-  await test.step('the Contract appears in the mock Enterprise System (sphone-sync-master push)', async () => {
+  await test.step('the Contract appears in the mock Enterprise System (eshop-sync-master push)', async () => {
     await expect(async () => {
       await enterprise.goto(`/thirdparty-mock/enterprise/${environment}/`)
       await expect(enterpriseContract()).toBeVisible({ timeout: 1_000 })

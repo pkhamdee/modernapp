@@ -2,7 +2,7 @@ import { Router } from 'express'
 import { log } from './log.ts'
 import { ID_NUMBER, outcomeFor } from './testIdNumbers.ts'
 
-// Mock Credit Check. sphone-api sends
+// Mock Credit Check. eshop-api sends
 //   POST /credit-check/checks { "idNumber": "1101700000101", "fullName": "...", "dateOfBirth": "YYYY-MM-DD" }
 // and gets { "passed": true, "creditLimit": 50000 } or { "passed": false }, driven by the ID number's last two digits.
 

@@ -5,18 +5,18 @@
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-api
+  name: eshop-api
 spec:
-  image: ghcr.io/pkhamdee/sphone-api
+  image: ghcr.io/pkhamdee/eshop-api
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-api
+  name: eshop-api
 spec:
   imageRepositoryRef:
-    name: sphone-api
+    name: eshop-api
   filterTags:
     pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
     extract: '$ts'
@@ -27,18 +27,18 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-web
+  name: eshop-web
 spec:
-  image: ghcr.io/pkhamdee/sphone-web
+  image: ghcr.io/pkhamdee/eshop-web
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-web
+  name: eshop-web
 spec:
   imageRepositoryRef:
-    name: sphone-web
+    name: eshop-web
   filterTags:
     pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
     extract: '$ts'
@@ -49,18 +49,18 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-node-api
+  name: eshop-node-api
 spec:
-  image: ghcr.io/pkhamdee/sphone-node-api
+  image: ghcr.io/pkhamdee/eshop-node-api
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-node-api
+  name: eshop-node-api
 spec:
   imageRepositoryRef:
-    name: sphone-node-api
+    name: eshop-node-api
   filterTags:
     pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
     extract: '$ts'
@@ -71,18 +71,18 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-sync-master
+  name: eshop-sync-master
 spec:
-  image: ghcr.io/pkhamdee/sphone-sync-master
+  image: ghcr.io/pkhamdee/eshop-sync-master
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-sync-master
+  name: eshop-sync-master
 spec:
   imageRepositoryRef:
-    name: sphone-sync-master
+    name: eshop-sync-master
   filterTags:
     pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
     extract: '$ts'

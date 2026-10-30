@@ -1,6 +1,6 @@
 # The Enterprise System owns Contracts once pushed
 
-eShop owns a Contract only from the moment the Customer accepts the Offer until sphone-sync-master has pushed it to the Enterprise System (eShop Co.'s core hire-purchase system). From then on the Enterprise System is the sole owner of the Contract and its Payments, and eShop holds a read-only copy refreshed by sync-master. We chose single ownership per record over either system being the master for everything, because eShop must originate Contracts quickly while collections and accounting already live in the Enterprise System.
+eShop owns a Contract only from the moment the Customer accepts the Offer until eshop-sync-master has pushed it to the Enterprise System (eShop Co.'s core hire-purchase system). From then on the Enterprise System is the sole owner of the Contract and its Payments, and eShop holds a read-only copy refreshed by sync-master. We chose single ownership per record over either system being the master for everything, because eShop must originate Contracts quickly while collections and accounting already live in the Enterprise System.
 
 ## Consequences
 

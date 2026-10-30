@@ -47,6 +47,8 @@ spec:
       name: sops-age
   # The release's images, X.Y.Z for vX.Y.Z. Written by Flux image automation (prod-release.yaml) in the same commit
   # that moves sphone-release to that tag; do not edit by hand. 0.0.0 = no release yet.
+  # Releases up to v0.1.x run the old sphone-* image names (#49 renamed them): keep those entries until prod runs
+  # v0.2.0 or later, then delete them. An entry whose name the release's manifests don't use changes nothing.
   images:
     - name: ghcr.io/pkhamdee/sphone-api
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
@@ -55,4 +57,12 @@ spec:
     - name: ghcr.io/pkhamdee/sphone-node-api
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
     - name: ghcr.io/pkhamdee/sphone-sync-master
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+    - name: ghcr.io/pkhamdee/eshop-api
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+    - name: ghcr.io/pkhamdee/eshop-web
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+    - name: ghcr.io/pkhamdee/eshop-node-api
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+    - name: ghcr.io/pkhamdee/eshop-sync-master
       newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}

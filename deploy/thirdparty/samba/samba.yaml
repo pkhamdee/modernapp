@@ -1,5 +1,5 @@
 # Mock Windows file share for images: one Samba server, one share per environment (sphone-dev, sphone-prod),
-# each with a `public` and a `private` area (folders sphone-node-api creates). Each environment has its own
+# each with a `public` and a `private` area (folders eshop-node-api creates). Each environment has its own
 # SMB account that can open only its own share; passwords live in samba-accounts.sops.yaml and must match
 # the sphone-node-api-smb secret of that environment.
 apiVersion: v1
