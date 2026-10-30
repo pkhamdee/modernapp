@@ -1,26 +1,28 @@
 # Seam 4: the definition-of-done demo as one Playwright browser test against a DEPLOYED environment.
 # A post-release smoke test, run by hand (Actions -> E2E smoke test -> Run workflow): never on push or PR.
 #
-# The environments live on a local cluster (https://sphone.localhost, https://prod.sphone.localhost), which
-# GitHub-hosted runners cannot reach. Run it on a self-hosted runner on the machine that hosts the cluster
-# (default runner label `self-hosted`), or simply run `npm run e2e` there (docs/setup.md "End-to-end smoke test").
+# The environments live on a local cluster (https://eshop.localhost, https://prod.eshop.localhost), which
+# GitHub-hosted runners cannot reach. The job runs on an on-demand runner on the machine that hosts the cluster:
+# `e2e/run-on-actions.sh [base_url]` registers an ephemeral runner labelled `eshop-e2e`, dispatches this
+# workflow to it and unregisters it afterwards (the repository is public, so no runner stays registered).
+# Dispatching from the Actions tab only works while such a runner is online. Or simply run `npm run e2e` there
+# (docs/setup.md "End-to-end smoke test").
 #
-# Secrets: E2E_STAFF_USERNAME / E2E_STAFF_PASSWORD = the environment's demo Staff account
-# (from deploy/apps/<env>/sphone-api-staff.sops.yaml). Without them the test decrypts that file with sops,
-# which needs sops and the age key on the runner.
+# Staff account: the test decrypts deploy/apps/<env>/eshop-api-staff.sops.yaml with sops and the age key on
+# the runner. Optional secrets E2E_STAFF_USERNAME / E2E_STAFF_PASSWORD take precedence; none are needed.
 name: E2E smoke test
 
 on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: "Environment to test: https://prod.sphone.localhost (sphone-prod) or https://sphone.localhost (sphone-dev)"
+        description: "Environment to test: https://prod.eshop.localhost (eshop-prod) or https://eshop.localhost (eshop-dev)"
         required: true
-        default: "https://prod.sphone.localhost"
+        default: "https://prod.eshop.localhost"
       runner:
         description: "Runner label that can reach the cluster"
         required: true
-        default: "self-hosted"
+        default: "eshop-e2e"
 
 permissions:
   contents: read
@@ -43,11 +45,11 @@ jobs:
       STAFF_PASSWORD: ${{ secrets.E2E_STAFF_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
+      # No `cache: npm`: on this machine's runner it would upload the user's whole ~/.npm to the repository's
+      # Actions cache (readable by pull-request workflows); npm already reuses ~/.npm locally.
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: npm
-          cache-dependency-path: e2e/package-lock.json
       - run: npm ci
       - name: Type-check
         run: npm run typecheck

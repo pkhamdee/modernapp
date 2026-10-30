@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kubectl get *)",
+      "Bash(kubectl logs *)",
+      "Bash(flux get *)",
+      "Bash(kubectl kustomize *)",
+      "Bash(npm run lint)",
+      "Bash(kubectl rollout status *)",
+      "Bash(npm view *)",
+      "Bash(gh run watch *)",
+      "Bash(docker info)",
+      "Bash(docker info *)",
+      "Bash(kubectl wait *)",
+      "Bash(npm run typecheck)",
+      "Bash(kubectl describe *)",
+      "Bash(kubectl config current-context)",
+      "Bash(kubectl config get-contexts)",
+      "Bash(rdctl list-settings)",
+      "Bash(kubectl api-resources *)",
+      "Bash(kubectl explain *)",
+      "Bash(docker version)",
+      "Bash(dscacheutil -q *)"
+    ]
+  }
+}

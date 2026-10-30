@@ -1,15 +1,15 @@
 [
   {
-    "service": "sphone-api",
-    "context": "services/sphone-api",
-    "dockerfile": "services/sphone-api/src/Sphone.Api/Dockerfile",
-    "paths": ["services/sphone-api/"]
+    "service": "eshop-api",
+    "context": "services/eshop-api",
+    "dockerfile": "services/eshop-api/src/Eshop.Api/Dockerfile",
+    "paths": ["services/eshop-api/"]
   },
   {
-    "service": "sphone-web",
-    "context": "services/sphone-web",
-    "dockerfile": "services/sphone-web/Dockerfile",
-    "paths": ["services/sphone-web/"]
+    "service": "eshop-web",
+    "context": "services/eshop-web",
+    "dockerfile": "services/eshop-web/Dockerfile",
+    "paths": ["services/eshop-web/"]
   },
   {
     "service": "thirdparty-mock",
@@ -18,15 +18,15 @@
     "paths": ["services/thirdparty-mock/"]
   },
   {
-    "service": "sphone-node-api",
-    "context": "services/sphone-node-api",
-    "dockerfile": "services/sphone-node-api/Dockerfile",
-    "paths": ["services/sphone-node-api/"]
+    "service": "eshop-node-api",
+    "context": "services/eshop-node-api",
+    "dockerfile": "services/eshop-node-api/Dockerfile",
+    "paths": ["services/eshop-node-api/"]
   },
   {
-    "service": "sphone-sync-master",
-    "context": "services/sphone-api",
-    "dockerfile": "services/sphone-api/src/Sphone.SyncMaster/Dockerfile",
-    "paths": ["services/sphone-api/"]
+    "service": "eshop-sync-master",
+    "context": "services/eshop-api",
+    "dockerfile": "services/eshop-api/src/Eshop.SyncMaster/Dockerfile",
+    "paths": ["services/eshop-api/"]
   }
 ]

@@ -1,29 +1,29 @@
 # The single entry point (ADR-0002), one hostname per environment on the same Gateway and port 443:
-#   https://sphone.localhost       -> sphone-dev   (listener `https`; any namespace labelled sphone.io/gateway-access: "true")
-#   https://prod.sphone.localhost  -> sphone-prod  (listener `https-prod`; only the sphone-prod namespace)
-# Apps attach HTTPRoutes with parentRefs {name: sphone, namespace: gateway, sectionName: https}; the prod overlay
-# rewrites sectionName to https-prod and the hostname to prod.sphone.localhost.
+#   https://eshop.localhost       -> eshop-dev   (listener `https`; any namespace labelled eshop.io/gateway-access: "true")
+#   https://prod.eshop.localhost  -> eshop-prod  (listener `https-prod`; only the eshop-prod namespace)
+# Apps attach HTTPRoutes with parentRefs {name: eshop, namespace: gateway, sectionName: https}; the prod overlay
+# rewrites sectionName to https-prod and the hostname to prod.eshop.localhost.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: sphone-localhost
+  name: eshop-localhost
   namespace: gateway
 spec:
-  secretName: sphone-localhost-tls
+  secretName: eshop-localhost-tls
   dnsNames:
-    - sphone.localhost
-    - prod.sphone.localhost
+    - eshop.localhost
+    - prod.eshop.localhost
   privateKey:
     algorithm: ECDSA
     size: 256
   issuerRef:
     kind: ClusterIssuer
-    name: sphone-local-ca
+    name: eshop-local-ca
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: sphone
+  name: eshop
   namespace: gateway
 spec:
   gatewayClassName: traefik
@@ -31,42 +31,42 @@ spec:
     - name: https
       protocol: HTTPS
       port: 443
-      hostname: sphone.localhost
+      hostname: eshop.localhost
       tls:
         mode: Terminate
         certificateRefs:
-          - name: sphone-localhost-tls
+          - name: eshop-localhost-tls
       allowedRoutes:
         namespaces:
           from: Selector
           selector:
             matchLabels:
-              sphone.io/gateway-access: "true"
+              eshop.io/gateway-access: "true"
     - name: https-prod
       protocol: HTTPS
       port: 443
-      hostname: prod.sphone.localhost
+      hostname: prod.eshop.localhost
       tls:
         mode: Terminate
         certificateRefs:
-          - name: sphone-localhost-tls
+          - name: eshop-localhost-tls
       allowedRoutes:
         namespaces:
           from: Selector
           selector:
             matchLabels:
-              kubernetes.io/metadata.name: sphone-prod
+              kubernetes.io/metadata.name: eshop-prod
     - name: http
       protocol: HTTP
       port: 80
-      hostname: sphone.localhost
+      hostname: eshop.localhost
       allowedRoutes:
         namespaces:
           from: Same
     - name: http-prod
       protocol: HTTP
       port: 80
-      hostname: prod.sphone.localhost
+      hostname: prod.eshop.localhost
       allowedRoutes:
         namespaces:
           from: Same
@@ -79,13 +79,13 @@ metadata:
   namespace: gateway
 spec:
   parentRefs:
-    - name: sphone
+    - name: eshop
       sectionName: http
-    - name: sphone
+    - name: eshop
       sectionName: http-prod
   hostnames:
-    - sphone.localhost
-    - prod.sphone.localhost
+    - eshop.localhost
+    - prod.eshop.localhost
   rules:
     - filters:
         - type: RequestRedirect

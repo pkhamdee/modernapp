@@ -5,9 +5,9 @@ import { log } from './log.ts'
 
 // Admin tool of the mock Enterprise System (story 62). The Enterprise System itself is the real SQL Server in
 // the thirdparty namespace (deploy/thirdparty/mssql), databases enterprise_dev and enterprise_prod, fake
-// schema hp.contract / hp.payment. sphone-sync-master pushes Contracts there; this page lists them and lets a
+// schema hp.contract / hp.payment. eshop-sync-master pushes Contracts there; this page lists them and lets a
 // developer do what the Enterprise System's own staff would: record a Payment, mark overdue, cancel.
-// The pull (#10) brings those changes back to S Phone.
+// The pull (#10) brings those changes back to eShop.
 //
 //   GET  /enterprise/                                  pick an environment
 //   GET  /enterprise/{dev|prod}/                       Contracts (newest first) with their Payments, and forms
@@ -175,18 +175,19 @@ async function changeStatus(environment: Environment, contractNo: string, status
 }
 
 export function enterpriseRouter(): Router {
-  const router = Router()
+  // strict: "/enterprise" and "/enterprise/" are different routes, so the redirect below does not loop.
+  const router = Router({ strict: true })
 
   router.get('/enterprise', (_request, response) => {
     response.redirect(302, 'enterprise/')
   })
 
   router.get('/enterprise/', (_request, response) => {
-    response.type('html').send(page('Enterprise System', `<h1>Mock Enterprise System</h1>
-<p class="muted">SQL Server in the thirdparty namespace. sphone-sync-master pushes accepted Contracts here every 30 s.</p>
+    response.type('html').send(page('eShop Co. Enterprise System', `<h1>eShop Co. Enterprise System (mock)</h1>
+<p class="muted">eShop Co.'s core hire-purchase system, played by SQL Server in the thirdparty namespace. eshop-sync-master pushes accepted Contracts here every 30 s.</p>
 <ul>
-  <li><a href="dev/">enterprise_dev</a> (sphone-dev)</li>
-  <li><a href="prod/">enterprise_prod</a> (sphone-prod)</li>
+  <li><a href="dev/">enterprise_dev</a> (eshop-dev)</li>
+  <li><a href="prod/">enterprise_prod</a> (eshop-prod)</li>
 </ul>`))
   })
 
@@ -247,7 +248,7 @@ function handle(action: (environment: Environment, request: Request, response: R
       const message = error instanceof Error ? error.message : String(error)
       if (status === 503) log('error', 'enterprise database error', { environment, error: message })
       if (isForm(request) || request.accepts(['json', 'html']) === 'html') {
-        response.status(status).type('html').send(page('Enterprise System', `<h1>Enterprise System</h1>
+        response.status(status).type('html').send(page('eShop Co. Enterprise System', `<h1>eShop Co. Enterprise System</h1>
 <p>${escapeHtml(message)}</p><p class="muted">Use the browser's back button.</p>`))
       } else {
         response.status(status).json({ error: message })
@@ -289,8 +290,8 @@ function contractsPage(environment: Environment, contracts: ContractRow[], payme
   ${actions}
 </section>`
   })
-  return page(`Enterprise ${environment}`, `<p><a href="../">Enterprise System</a> · <a href="../../">thirdparty-mock</a></p>
+  return page(`eShop Co. Enterprise System · ${environment}`, `<p><a href="../">eShop Co. Enterprise System</a> · <a href="../../">thirdparty-mock</a></p>
 <h1>enterprise_${environment}: Contracts</h1>
-<p class="muted">Newest ${LIST_LIMIT}, as pushed by sphone-sync-master. Changes here reach S Phone by the pull.</p>
+<p class="muted">Newest ${LIST_LIMIT}, as pushed by eshop-sync-master. Changes here reach eShop by the pull.</p>
 ${rows.length ? rows.join('\n') : '<p>No Contracts yet.</p>'}`)
 }

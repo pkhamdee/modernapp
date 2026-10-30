@@ -1,10 +1,15 @@
+# SMB account passwords of the mock Samba (deploy/thirdparty/samba/samba.yaml), one account per environment:
+# eshopdev / eshopprod must equal the password in deploy/apps/<env>/eshop-node-api-smb.sops.yaml.
+# Temporary: the third key is the prod account of releases up to v0.1.x (the release's own SOPS file holds the
+# same password); delete it once prod runs v0.2.0 or later (docs/setup.md).
 apiVersion: v1
 kind: Secret
 metadata:
     name: samba-accounts
 type: Opaque
 stringData:
-    sphonedev: ENC[AES256_GCM,data:oPhdJO1CIv0TC/Jwe3NNxSnP2fcn7tCevOur1kE7XR8=,iv:XrkQGQPI2sv9niJw/BPl1bt0jVROTA9n2jKT2CQYqFg=,tag:j1xxhaA4uYPnF+qHOMm8eQ==,type:str]
+    eshopdev: ENC[AES256_GCM,data:/KJWpk8uSLo05y+cAsDwRelfz0IACsDaKcdquUv+lgiacnv/g7EOzeJF/7kTTzl7,iv:fommBZlMVXP70S7Jh2XdOQOMlE+JrfmjIDCdncMr1kw=,tag:vAYpnBNvX5qZzKr7j3qZdA==,type:str]
+    eshopprod: ENC[AES256_GCM,data:czMSr2aeNMSK/3VUogbFGot52fOlWXG7Qhqtn01IYr6Kc8O4fRp+U/wFDav+9szU,iv:mJaloyaxOx6GTTh/qlazBDD1ci1sOdRCyLwuAlge1tE=,tag:u5xhaHkkQ2XTbxZsdwxf5Q==,type:str]
     sphoneprod: ENC[AES256_GCM,data:9IUb2TT1NYgKhr4Wr4JxB8Q4KDIOWLTGzoDeA68wPS0=,iv:DjafjJRXTboToYOcAw0QoY+z58eqSDCr64hn9MKyNX8=,tag:s0vKSgIA/LoOCkVxdDefCw==,type:str]
 sops:
     age:
@@ -18,6 +23,6 @@ sops:
             -----END AGE ENCRYPTED FILE-----
           recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
     encrypted_regex: ^(data|stringData)$
-    lastmodified: "2026-10-29T13:35:32Z"
-    mac: ENC[AES256_GCM,data:YrMLCmSq5uawDw5jTP8lriNMjZKm5RA4MraFwEjjtKnKThWSL8mg1u5xQ7m73aOYGGM6CCGnVEieHPO4kQXBoM8R2TNJ1iHkTaG2M8qFXfF1Wpx7tpQEqF0VWWpYf5gZp8Om4F41CjUpuWwxYI09IUPs6P2sIaiA6IaFMZ60Cjs=,iv:4iVE1wlCuTLZt4xvzYsJeV8dmAnfjo40vIeg9JHBfC0=,tag:h6/kYx5SQ2XI6ZpWsQnVTw==,type:str]
+    lastmodified: "2026-10-30T11:49:50Z"
+    mac: ENC[AES256_GCM,data:dEBBRqu7iTuTKXxMF0yY53vuISSSRcZDZPBIdkzNDG/lA7F5sfQUWGfOgJqagWH2I5nHnYQOOe1f/IXyJk/qbGEc0HAoWOYArKZTd7OqvGdoU6fEBdwAOMzLwkn2B/i8i4zc5WZkhKexjQ3dSW30b4RjXgEc0MSufqKHRZH5q+w=,iv:WGJRMnQ42J1vyCKCUXN5NF8MG2s+whEnL3TdxNFBQ+I=,tag:rGgNnVOD6whSaQkNabzh1A==,type:str]
     version: 3.13.3

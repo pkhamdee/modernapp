@@ -1,0 +1,23 @@
+# Single-instance PostgreSQL (CloudNativePG) owned by eshop-api.
+# The owner's credentials come from the overlay's SOPS-encrypted Secret `eshop-db-credentials`.
+# Read-write service: eshop-db-rw:5432, database `eshop`.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: eshop-db
+spec:
+  instances: 1
+  storage:
+    size: 1Gi
+  bootstrap:
+    initdb:
+      database: eshop
+      owner: eshop
+      secret:
+        name: eshop-db-credentials
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi

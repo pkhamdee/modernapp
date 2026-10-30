@@ -1,0 +1,24 @@
+# eshop-api token signing key for eshop-dev (HS256, per environment). Rotate: replace signing-key
+# with a new random value (openssl rand -base64 48) via `sops deploy/apps/dev/eshop-api-auth.sops.yaml`; existing tokens stop working.
+apiVersion: v1
+kind: Secret
+metadata:
+    name: eshop-api-auth
+type: Opaque
+stringData:
+    signing-key: ENC[AES256_GCM,data:xVKtCZsa1oo8D49HodE7lYD92yHP3ux21sbNoCXz77tFj1BWPp1iEw3hsVMxa81t2CvXi5J2QbDmOJ5e0A8/1w==,iv:wl4Q7t1EBggwJOXF3ShDHdPtqUxEviNsPcTQZZaErXA=,tag:uWTiQBNsKngPNI8ZVyE82w==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBOVGV5VGFCbjhvM2FBWXg5
+            cS9KUzRmc0RIOXl4MFRqcDNLVDUrdzN3R3hrCk1GLzBMWVJRRVd6MHgvZDZLQzJT
+            cjFpczVVaE5tMnY5SDRvcTVsc1VmMlkKLS0tIGNtNDlKOTNmaWt4eW5LdWx4Y2Ju
+            TDROY0VZQ0g3NjJXWVVJbmVGSEJscWMKzv2FneLaM7ICkwpPMUc/oCSaRoDrNHn/
+            YGjozyBR8tNdwPGd5RBkwOUBo4eZfbqGt7SRT3xOYVFEaRE5Nej6Xg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-30T11:49:49Z"
+    mac: ENC[AES256_GCM,data:Tebp7dOUOl4JDHUoLhM7FNB9vswCz5fvfPwoDGkzFKLGV2BSIiE29Oqx+yCd+VHxPLmBidAAPkFU6jdfXBpIFzomtHXcv8RQSfFLmQWbwuARpPR1TGU4ApMgTDqEuHxuKIobH4qnCeUOPKiMBiFZGFSBwepTUp73KHDalW3itn0=,iv:spxXti3dlodamUHY6CBl8C3kUZWiN2dq9H++y+Mv7BQ=,tag:xtm71I4UhHFATG93a4aayg==,type:str]
+    version: 3.13.3

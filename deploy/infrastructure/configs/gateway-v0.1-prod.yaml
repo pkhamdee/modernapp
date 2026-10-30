@@ -1,0 +1,68 @@
+# Temporary (#50): prod keeps running release v0.1.x until v0.2.0 is out. Those releases' HTTPRoutes attach to a
+# Gateway named `sphone`, listener `https-prod`, hostname prod.sphone.localhost, from namespace sphone-prod; this
+# Gateway is only that listener (and its plain-HTTP redirect), with a certificate from the same eShop local CA.
+# Delete this file (and its line in kustomization.yaml) once prod runs v0.2.0 or later (docs/setup.md,
+# "Moving to eShop"). Traefik serves both Gateways on the same ports, told apart by hostname.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: sphone-localhost
+  namespace: gateway
+spec:
+  secretName: sphone-localhost-tls
+  dnsNames:
+    - prod.sphone.localhost
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    kind: ClusterIssuer
+    name: eshop-local-ca
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: sphone
+  namespace: gateway
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: https-prod
+      protocol: HTTPS
+      port: 443
+      hostname: prod.sphone.localhost
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: sphone-localhost-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: sphone-prod
+    - name: http-prod
+      protocol: HTTP
+      port: 80
+      hostname: prod.sphone.localhost
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: https-redirect-sphone-prod
+  namespace: gateway
+spec:
+  parentRefs:
+    - name: sphone
+      sectionName: http-prod
+  hostnames:
+    - prod.sphone.localhost
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301

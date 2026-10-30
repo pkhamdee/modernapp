@@ -6,13 +6,13 @@ import { environment } from './environment'
 /**
  * Staff credentials for the back-office steps. STAFF_USERNAME / STAFF_PASSWORD win (CI passes them from
  * secrets); otherwise they are decrypted from the environment's SOPS Secret
- * deploy/apps/<env>/sphone-api-staff.sops.yaml with the local age key. They only ever live in this process's
+ * deploy/apps/<env>/eshop-api-staff.sops.yaml with the local age key. They only ever live in this process's
  * environment (inherited by the test workers) and are never printed.
  */
 export default function globalSetup() {
   if (process.env.STAFF_USERNAME && process.env.STAFF_PASSWORD) return
 
-  const file = resolve(import.meta.dirname, '..', 'deploy', 'apps', environment, 'sphone-api-staff.sops.yaml')
+  const file = resolve(import.meta.dirname, '..', 'deploy', 'apps', environment, 'eshop-api-staff.sops.yaml')
   const env = {
     ...process.env,
     SOPS_AGE_KEY_FILE: process.env.SOPS_AGE_KEY_FILE ?? join(homedir(), '.config', 'sops', 'age', 'keys.txt'),

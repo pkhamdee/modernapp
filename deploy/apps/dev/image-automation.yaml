@@ -1,22 +1,22 @@
-# sphone-dev follows main: CI pushes ghcr.io/pkhamdee/<service>:main-<sha>-<unix-ts>; each ImagePolicy picks the
+# eshop-dev follows main: CI pushes docker.io/pkhamdee/<service>:main-<sha>-<unix-ts>; each ImagePolicy picks the
 # newest by timestamp, and the ImageUpdateAutomation rewrites the setter markers in kustomization.yaml and
 # commits to main. To add a service: one ImageRepository + ImagePolicy below, and one `images:` entry with a
-# `# {"$imagepolicy": "sphone-dev:<service>:tag"}` marker in kustomization.yaml.
+# `# {"$imagepolicy": "eshop-dev:<service>:tag"}` marker in kustomization.yaml.
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-api
+  name: eshop-api
 spec:
-  image: ghcr.io/pkhamdee/sphone-api
+  image: docker.io/pkhamdee/eshop-api
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-api
+  name: eshop-api
 spec:
   imageRepositoryRef:
-    name: sphone-api
+    name: eshop-api
   filterTags:
     pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
     extract: '$ts'
@@ -27,18 +27,18 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-web
+  name: eshop-web
 spec:
-  image: ghcr.io/pkhamdee/sphone-web
+  image: docker.io/pkhamdee/eshop-web
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-web
+  name: eshop-web
 spec:
   imageRepositoryRef:
-    name: sphone-web
+    name: eshop-web
   filterTags:
     pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
     extract: '$ts'
@@ -49,18 +49,18 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-node-api
+  name: eshop-node-api
 spec:
-  image: ghcr.io/pkhamdee/sphone-node-api
+  image: docker.io/pkhamdee/eshop-node-api
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-node-api
+  name: eshop-node-api
 spec:
   imageRepositoryRef:
-    name: sphone-node-api
+    name: eshop-node-api
   filterTags:
     pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
     extract: '$ts'
@@ -71,18 +71,18 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-sync-master
+  name: eshop-sync-master
 spec:
-  image: ghcr.io/pkhamdee/sphone-sync-master
+  image: docker.io/pkhamdee/eshop-sync-master
   interval: 1m
 ---
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-sync-master
+  name: eshop-sync-master
 spec:
   imageRepositoryRef:
-    name: sphone-sync-master
+    name: eshop-sync-master
   filterTags:
     pattern: '^main-[a-f0-9]+-(?P<ts>[0-9]+)$'
     extract: '$ts'
@@ -93,7 +93,7 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
-  name: sphone-dev
+  name: eshop-dev
 spec:
   interval: 1m
   sourceRef:
@@ -109,7 +109,7 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
       messageTemplate: |
-        sphone-dev: update images
+        eshop-dev: update images
 
         {{ range .Changed.Changes -}}
         - {{ .OldValue }} -> {{ .NewValue }}

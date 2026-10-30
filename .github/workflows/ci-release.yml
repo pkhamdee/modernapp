@@ -1,15 +1,15 @@
 # CI and tag-based releases. See docs/git-workflow.md.
 #   - push / PR to main or release/*  -> lint + test every service
 #   - push to main                    -> also build changed services for arm64, Trivy scan,
-#                                        push ghcr.io/pkhamdee/<service>:main-<sha>[-<unix-ts>]
-#                                        (Flux image automation deploys the newest to sphone-dev)
+#                                        push docker.io/pkhamdee/<service>:main-<sha>[-<unix-ts>]
+#                                        (Flux image automation deploys the newest to eshop-dev)
 #   - push tag vX.Y.Z                 -> lint + test, validate the tag, build EVERY service, scan,
-#                                        push ghcr.io/pkhamdee/<service>:X.Y.Z, then publish the GitHub Release
-#                                        (Flux then runs tag vX.Y.Z with the X.Y.Z images in sphone-prod)
+#                                        push docker.io/pkhamdee/<service>:X.Y.Z, then publish the GitHub Release
+#                                        (Flux then runs tag vX.Y.Z with the X.Y.Z images in eshop-prod)
 #   - workflow_dispatch               -> no input, on main: rebuild and push every service as main-<sha>
 #                                        input version=0.0.0-test.N: dry run of the release build on any
 #                                        branch; pushes every service as that pre-release tag, no GitHub Release
-#                                        (never deployed: sphone-prod follows plain X.Y.Z releases only)
+#                                        (never deployed: eshop-prod follows plain X.Y.Z releases only)
 #
 # Adding a service: add a lint/test job below and to `plan.needs`, and an entry in
 # .github/services.json (build context, Dockerfile, source paths). Release builds pick it up automatically.
@@ -41,41 +41,41 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  sphone-api:
-    name: sphone-api (lint, test)
+  eshop-api:
+    name: eshop-api (lint, test)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/sphone-api
+        working-directory: services/eshop-api
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
         with:
-          global-json-file: services/sphone-api/global.json
+          global-json-file: services/eshop-api/global.json
       - run: dotnet restore
       - name: Lint
         run: dotnet format --verify-no-changes --no-restore
       - name: Build
         run: dotnet build --no-restore -c Release
-      # Seam-1 tests (sphone-api) start PostgreSQL with Testcontainers (Docker is available on GitHub runners).
-      # Seam-2 tests (sphone-sync-master, same solution) also start SQL Server, which has no Arm image: this job
+      # Seam-1 tests (eshop-api) start PostgreSQL with Testcontainers (Docker is available on GitHub runners).
+      # Seam-2 tests (eshop-sync-master, same solution) also start SQL Server, which has no Arm image: this job
       # must stay on an x86 runner (ubuntu-latest).
       - name: Test
         run: dotnet test --no-build -c Release
 
-  sphone-web:
-    name: sphone-web (lint, build)
+  eshop-web:
+    name: eshop-web (lint, build)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/sphone-web
+        working-directory: services/eshop-web
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: services/sphone-web/package-lock.json
+          cache-dependency-path: services/eshop-web/package-lock.json
       - run: npm ci
       - name: Lint
         run: npm run lint
@@ -103,25 +103,58 @@ jobs:
         run: npm run typecheck
 
 
-  sphone-node-api:
-    name: sphone-node-api (lint, test)
+  eshop-node-api:
+    name: eshop-node-api (lint, test)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: services/sphone-node-api
+        working-directory: services/eshop-node-api
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: services/sphone-node-api/package-lock.json
+          cache-dependency-path: services/eshop-node-api/package-lock.json
       - run: npm ci
       - name: Lint and type-check
         run: npm run lint
       # Seam-3 tests: real HTTP against a temporary folder standing in for the SMB share.
       - name: Test
         run: npm test
+
+  # Mechanical rules no service job covers. Not in plan.needs: a release tag never waits on it.
+  # Pushes that only touch deploy/** or clusters/** run no CI (see `on`), so manifests are checked on the PR.
+  repo-rules:
+    name: repo rules (manifests, workflows, scripts, e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Manifests (kustomize build + kubeconform)
+        run: scripts/validate-manifests.sh
+      # A broken ci-release.yml runs no job at all (the PR just shows no checks); this still guards e2e.yml
+      # and every edit that leaves the file parseable.
+      - name: Workflows (actionlint)
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+      # The smoke test itself needs a deployed environment (e2e.yml); its types are checked on every push.
+      - name: e2e type-check
+        working-directory: e2e
+        run: npm ci && npm run typecheck
+      # A Flux commit message with a skip-ci marker makes GitHub skip every push workflow on that commit,
+      # including a release tag pushed onto it (that is how v0.1.0 never built). docs/git-workflow.md.
+      - name: No skip-ci markers in Flux commit templates
+        run: |
+          if grep -rniE '\[(skip ci|ci skip|no ci|skip actions|actions skip)\]' deploy clusters; then
+            echo "::error::Remove the skip-ci marker above; CI already ignores deploy/** and clusters/** pushes"
+            exit 1
+          fi
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh e2e/*.sh
 
   # Decides what to build, after every service's lint/test passed:
   #   - tag vX.Y.Z: validate the tag (semver, annotated, on a release/N.x branch); build every service as X.Y.Z.
@@ -130,7 +163,7 @@ jobs:
   #     rebuilt when the push has no usable base (first push, force push), when this workflow or services.json
   #     changes, or on workflow_dispatch without `version`.
   plan:
-    needs: [sphone-api, sphone-web, thirdparty-mock, sphone-node-api]
+    needs: [eshop-api, eshop-web, thirdparty-mock, eshop-node-api]
     if: >-
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
       || github.event_name == 'workflow_dispatch'
@@ -168,7 +201,7 @@ jobs:
             version="${TAG#v}"
             matrix="$all"
           elif [ "$EVENT" = "workflow_dispatch" ] && [ -n "$DRY_RUN_VERSION" ]; then
-            # Only 0.0.0-test.N: never deployed (sphone-prod follows plain X.Y.Z releases only), so a dry run is harmless.
+            # Only 0.0.0-test.N: never deployed (eshop-prod follows plain X.Y.Z releases only), so a dry run is harmless.
             if ! [[ "$DRY_RUN_VERSION" =~ ^0\.0\.0-test\.[0-9]+$ ]]; then
               echo "::error::Dry-run version must be 0.0.0-test.N"; exit 1
             fi
@@ -202,26 +235,25 @@ jobs:
     runs-on: ubuntu-24.04-arm # native arm64 build for the Apple Silicon cluster
     permissions:
       contents: read
-      packages: write
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     env:
-      IMAGE: ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}
+      IMAGE: docker.io/${{ vars.DOCKERHUB_USERNAME }}/${{ matrix.service }}
       VERSION: ${{ needs.plan.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - id: tags
         run: |
           if [ -n "$VERSION" ]; then
-            # Release (X.Y.Z; Flux moves sphone-prod to the newest) or dry run (0.0.0-test.N; never deployed).
+            # Release (X.Y.Z; Flux moves eshop-prod to the newest) or dry run (0.0.0-test.N; never deployed).
             echo "list=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
             echo "scan=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
           else
             sha=$(git rev-parse --short=7 HEAD)
             ts=$(git show -s --format=%ct HEAD)
-            # main-<sha> for humans; main-<sha>-<commit-ts> is what Flux's sphone-dev ImagePolicy orders by.
+            # main-<sha> for humans; main-<sha>-<commit-ts> is what Flux's eshop-dev ImagePolicy orders by.
             echo "list=${IMAGE}:main-${sha},${IMAGE}:main-${sha}-${ts}" >> "$GITHUB_OUTPUT"
             echo "scan=${IMAGE}:main-${sha}" >> "$GITHUB_OUTPUT"
           fi
@@ -246,11 +278,13 @@ jobs:
           image-ref: ${{ steps.tags.outputs.scan }}
           severity: CRITICAL
           exit-code: "1"
+      # Docker Hub repositories are created public on first push. Needs the repo variable DOCKERHUB_USERNAME and
+      # the secret DOCKERHUB_TOKEN (a Docker Hub access token with Read & Write); see docs/setup.md.
       - uses: docker/login-action@v4
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Push
         env:
           TAGS: ${{ steps.tags.outputs.list }}
@@ -271,8 +305,9 @@ jobs:
           TAG: ${{ github.ref_name }}
           VERSION: ${{ needs.plan.outputs.version }}
           SERVICES: ${{ needs.plan.outputs.matrix }}
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
         run: |
-          images=$(jq -r --arg owner "${GITHUB_REPOSITORY_OWNER}" --arg v "$VERSION" \
-            '.[] | "- `ghcr.io/\($owner)/\(.service):\($v)`"' <<<"$SERVICES")
+          images=$(jq -r --arg owner "$DOCKERHUB_USERNAME" --arg v "$VERSION" \
+            '.[] | "- `docker.io/\($owner)/\(.service):\($v)`"' <<<"$SERVICES")
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG" \
-            --notes "$(printf 'Images (deployed to sphone-prod by Flux):\n%s\n' "$images")"
+            --notes "$(printf 'Images (deployed to eshop-prod by Flux):\n%s\n' "$images")"

@@ -1,0 +1,25 @@
+# eshop-sync-master's SQL Server login eshop_sync_dev for enterprise_dev (same password as sync-dev-password in
+# deploy/thirdparty/mssql/mssql-credentials.sops.yaml).
+apiVersion: v1
+kind: Secret
+metadata:
+    name: eshop-sync-master-enterprise
+type: kubernetes.io/basic-auth
+stringData:
+    username: ENC[AES256_GCM,data:iLdPa3VZ9JKI5MCKKLo=,iv:NhAj4jB1QIQRUhf7lII7PXyvnGVsQPj6hIyEk9+Fkqw=,tag:5il5YS7i2uHKIDLXWt/Muw==,type:str]
+    password: ENC[AES256_GCM,data:oW1sUb5lJrzTl1aM/aK32Z1DpnqOgd70N2mf3uWqXEANDg0J,iv:EuHw3LXkXEPrhn89b8QRx75MpaADy3/KbgBFtgwpHVE=,tag:82T504DTvvlMaker7Mj0Kw==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSA0NFo3L2p5cy8wbTBGVUI4
+            Z3MyVlBBbkJGd3JsWGtuc0M5QnNEdUd5VVhRCjZneFJnOG9WRjRzTmIrOENzRmZo
+            emQ3bGg3K05Fa0laSDJUdE1DYlhNQmMKLS0tIC9zbnBvQlhpK1RsdDByWmlVc2Fr
+            V0RWdEpDQXhKYXdPM2NJN2IyS05sOFUKMT+05bsS7zY4FWa8FKgaQQnpYiwzZTp5
+            FVo27iHDUc1TezbN5tFzeEAojNakSJbt4WU9/8Mgh9SR4ZVNIqQDsg==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-30T11:49:50Z"
+    mac: ENC[AES256_GCM,data:HLoUJGQOAlaSXP4w2NkfD61hfyAn730jSOXt3YwISazUxPc1jmJknvZQrIfx2WY/4+94vpNRhfv5u6dpZehMoPlVNQs6CSF6sVtzk0LciDpAvns4Jl53932iDopT85NxPisg127NGB1aIezUkxJSz8wNc2QgQogttiakyxeQlIc=,iv:dvx+8h58Y3+3lnGNIcJ+7iPRxq1qNHe1yMnLqpOKVbg=,tag:unt8UzTqi7D01teEx9oOxg==,type:str]
+    version: 3.13.3

@@ -1,0 +1,25 @@
+# eshop-node-api's SMB account eshopprod for share eshop-prod on the shared Samba (thirdparty). The password
+# must equal key eshopprod in deploy/thirdparty/samba/samba-accounts.sops.yaml.
+apiVersion: v1
+kind: Secret
+metadata:
+    name: eshop-node-api-smb
+type: kubernetes.io/basic-auth
+stringData:
+    username: ENC[AES256_GCM,data:PA7R/eqqN/L4,iv:jzKiGkxWnG8nJ1ArDCtbcl7lCZf475rdJ18sS/LM0zM=,tag:4FcHmDkH9O5yKn8vjQ4Udg==,type:str]
+    password: ENC[AES256_GCM,data:KLMwK30enQn4XGpFrjFQvz81D11N5Xkrx+LyVTMSapaO1mDnhNFyTfwpbNnxbJbA,iv:J8inm/E7sGWM8gFmG8LRoKXlMb+slHoWCtuHcX48dDs=,tag:+my+n3yc66UmnEMxT5WhRA==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBTODJOUEJOTkM1cFZuZzZy
+            Y1loSlQxaEE5UnVkN3dhTUZ5ZG1yRjVMNUdFCkZhdU81T0I1YTNQcjRtYndpRk4v
+            TUJ4eFlFMjg2Q0lQODRCYVowc3Z3RDQKLS0tIE5tTlVYbjZhc25pR2ZvV2N4cWpS
+            cG9zem1KMmowOGN5MG9aUS9TTmhZd2sKyqoZvjCrcSdJdDehUAZmT5Aq5MHuEn80
+            OaJSvxa6N14XwbZ9k6L84LKSq1ywhqGGgM6pmRgSGfsAFxHjzXXchA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-30T11:49:50Z"
+    mac: ENC[AES256_GCM,data:tMsaPKAcsHARYo9AIu2pU+9y1PRKJWgYN2Dt/DliM1GT3JOtCWAvdkaKz65KQ2ksR7vwBNzEIp2lDopJei9nzbpkYG4tXj5wU1Q9DrGggXkX0jNzfAGGifxtxMrUDkZ3DDrKg3huxKjWRKP9lRAykIcJ5rIDAA1RyA+90WKTyG4=,iv:fomDHLnkp9tKmQ4Z+86LOdQVDgKvFFpaVDDg1ecwyLo=,tag:2auN812ipA08IBLOZnn58Q==,type:str]
+    version: 3.13.3

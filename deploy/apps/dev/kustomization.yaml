@@ -1,26 +1,26 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: sphone-dev
+namespace: eshop-dev
 resources:
   - ../../network-policies/default-deny
-  - sphone-db-credentials.sops.yaml
-  - sphone-api-auth.sops.yaml
-  - sphone-api-staff.sops.yaml
-  - sphone-node-api-smb.sops.yaml
-  - sphone-sync-master-enterprise.sops.yaml
-  - ../base/sphone-db
-  - ../base/sphone-api
-  - ../base/sphone-web
-  - ../base/sphone-node-api
-  - ../base/sphone-sync-master
+  - eshop-db-credentials.sops.yaml
+  - eshop-api-auth.sops.yaml
+  - eshop-api-staff.sops.yaml
+  - eshop-node-api-smb.sops.yaml
+  - eshop-sync-master-enterprise.sops.yaml
+  - ../base/eshop-db
+  - ../base/eshop-api
+  - ../base/eshop-web
+  - ../base/eshop-node-api
+  - ../base/eshop-sync-master
   - image-automation.yaml
 # Tags are written by Flux image automation (image-automation.yaml); do not edit by hand.
 images:
-  - name: ghcr.io/pkhamdee/sphone-api
-    newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-api:tag"}
-  - name: ghcr.io/pkhamdee/sphone-web
-    newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-web:tag"}
-  - name: ghcr.io/pkhamdee/sphone-node-api
-    newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-node-api:tag"}
-  - name: ghcr.io/pkhamdee/sphone-sync-master
-    newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-sync-master:tag"}
+  - name: docker.io/pkhamdee/eshop-api
+    newTag: main-93392bd-1793370318 # {"$imagepolicy": "eshop-dev:eshop-api:tag"}
+  - name: docker.io/pkhamdee/eshop-web
+    newTag: main-93392bd-1793370318 # {"$imagepolicy": "eshop-dev:eshop-web:tag"}
+  - name: docker.io/pkhamdee/eshop-node-api
+    newTag: main-93392bd-1793370318 # {"$imagepolicy": "eshop-dev:eshop-node-api:tag"}
+  - name: docker.io/pkhamdee/eshop-sync-master
+    newTag: main-93392bd-1793370318 # {"$imagepolicy": "eshop-dev:eshop-sync-master:tag"}

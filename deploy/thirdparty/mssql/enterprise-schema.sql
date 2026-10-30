@@ -1,9 +1,9 @@
 -- Fake enterprise schema of the mock Enterprise System (ADR-0003): hire-purchase Contracts and their Payments.
 -- Applied to the CURRENT database (enterprise_dev, enterprise_prod, or a test database) and safe to re-run.
 -- Used by the mssql pod's schema container (deploy/thirdparty/mssql) and by the Seam-2 tests of
--- sphone-sync-master (services/sphone-api/tests/Sphone.SyncMaster.Tests), so both see the same schema.
+-- eshop-sync-master (services/eshop-api/tests/Eshop.SyncMaster.Tests), so both see the same schema.
 --
--- Ownership (ADR-0001): rows in hp_contract are inserted by sphone-sync-master (push, idempotent on
+-- Ownership (ADR-0001): rows in hp_contract are inserted by eshop-sync-master (push, idempotent on
 -- contract_no) and from then on changed only here (the admin tool simulates Payments and cancellations).
 -- Watermarks for the pull (#10): every row has `row_ver` (rowversion: increases on every insert/update,
 -- database-wide) and `last_updated_at` (UTC, maintained by triggers). Pull "changed since" with
@@ -16,7 +16,7 @@ IF OBJECT_ID(N'hp.contract', N'U') IS NULL
 CREATE TABLE hp.contract
 (
     contract_no        varchar(16)    NOT NULL CONSTRAINT pk_hp_contract PRIMARY KEY,
-    source_system      varchar(10)    NOT NULL CONSTRAINT df_hp_contract_source DEFAULT ('SPHONE'),
+    source_system      varchar(10)    NOT NULL CONSTRAINT df_hp_contract_source DEFAULT ('ESHOP'),
     customer_id_no     char(13)       NOT NULL,
     customer_name      nvarchar(200)  NOT NULL,
     customer_mobile_no varchar(10)    NOT NULL,
@@ -37,6 +37,16 @@ CREATE TABLE hp.contract
     last_updated_at    datetime2(3)   NOT NULL CONSTRAINT df_hp_contract_updated DEFAULT (SYSUTCDATETIME()),
     row_ver            rowversion     NOT NULL
 );
+GO
+
+-- Databases created before the rename to eShop (#50) have another source_system default: bring it up to date.
+IF EXISTS (SELECT 1 FROM sys.default_constraints
+           WHERE name = N'df_hp_contract_source' AND parent_object_id = OBJECT_ID(N'hp.contract')
+             AND definition <> N'(''ESHOP'')')
+BEGIN
+    ALTER TABLE hp.contract DROP CONSTRAINT df_hp_contract_source;
+    ALTER TABLE hp.contract ADD CONSTRAINT df_hp_contract_source DEFAULT ('ESHOP') FOR source_system;
+END;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'ix_hp_contract_row_ver')
