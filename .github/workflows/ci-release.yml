@@ -19,6 +19,11 @@ on:
   push:
     branches: [main, "release/*"]
     tags: ["v*"]
+    # Flux's image-automation commits touch only these (deploy/apps/dev, deploy/thirdparty, clusters/local);
+    # nothing here is linted, tested or built, so such pushes run no CI. GitHub ignores path filters on tag
+    # pushes, so a release tag always builds even when it points at a Flux commit. (Flux commits must not say
+    # "[skip ci]": that also skips a tag pushed onto them.)
+    paths-ignore: ["deploy/**", "clusters/**"]
   pull_request:
     branches: [main, "release/*"]
   workflow_dispatch:

@@ -5,7 +5,7 @@
 #     -> ImagePolicy sphone-release sees X.Y.Z, the newest release (plain X.Y.Z only: never main-<sha> or the
 #        CI dry run's 0.0.0-test.N)
 #     -> ImageUpdateAutomation sphone-prod commits ONE change to main (clusters/local): GitRepository
-#        sphone-release -> tag vX.Y.Z and apps-prod's images -> X.Y.Z ("sphone-prod: follow the newest release [skip ci]")
+#        sphone-release -> tag vX.Y.Z and apps-prod's images -> X.Y.Z ("sphone-prod: follow the newest release")
 #     -> apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images.
 #
 # The tag is followed only once its images exist, so prod never runs a release's manifests with another
@@ -75,7 +75,7 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
       messageTemplate: |
-        sphone-prod: follow the newest release [skip ci]
+        sphone-prod: follow the newest release
 
         {{ range .Changed.Changes -}}
         - {{ .OldValue }} -> {{ .NewValue }}

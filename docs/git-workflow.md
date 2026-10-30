@@ -138,7 +138,7 @@ git push origin vX.Y.Z
             ImageRepository scans GHCR every minute → ImagePolicy sphone-release picks the newest plain X.Y.Z
             (never main-<sha>, never a 0.0.0-test.N dry run)
             → ImageUpdateAutomation sphone-prod commits ONE change to clusters/local on main
-              ("sphone-prod: follow the newest release [skip ci]"):
+              ("sphone-prod: follow the newest release"):
                 GitRepository sphone-release  ref.semver → X.Y.Z   (checks out tag vX.Y.Z)
                 Kustomization apps-prod       images     → X.Y.Z
             → apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images (https://prod.sphone.localhost)
