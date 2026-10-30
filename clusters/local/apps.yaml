@@ -53,18 +53,18 @@ spec:
   # v0.2.0 or later, then delete them (docs/setup.md, "Moving to eShop"). An entry whose name the release's manifests don't use changes nothing.
   images:
     - name: ghcr.io/pkhamdee/sphone-api
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: ghcr.io/pkhamdee/sphone-web
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: ghcr.io/pkhamdee/sphone-node-api
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: ghcr.io/pkhamdee/sphone-sync-master
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: docker.io/pkhamdee/eshop-api
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: docker.io/pkhamdee/eshop-web
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: docker.io/pkhamdee/eshop-node-api
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: docker.io/pkhamdee/eshop-sync-master
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
