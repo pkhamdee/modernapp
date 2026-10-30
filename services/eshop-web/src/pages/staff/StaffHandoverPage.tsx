@@ -54,89 +54,93 @@ export function StaffHandoverPage() {
           สัญญานี้ถูกยกเลิกในระบบหลักขององค์กร จึงหยุดการส่งมอบสินค้า
         </p>
       )}
-      <dl className="terms">
-        <div>
-          <dt>ขั้นตอน</dt>
-          <dd>{h.stopped ? HANDOVER_STAGE_LABELS.stopped : HANDOVER_STAGE_LABELS[h.stage]}</dd>
-        </div>
-        <div>
-          <dt>สถานะสัญญา</dt>
-          <dd>{CONTRACT_STATUS_LABELS[h.contractStatus]}</dd>
-        </div>
-        <div>
-          <dt>สินค้า</dt>
-          <dd>{h.product.name}</dd>
-        </div>
-        <div>
-          <dt>ลูกค้า</dt>
-          <dd>
-            {h.customer.fullName} · {h.customer.mobileNumber}
-          </dd>
-        </div>
-        <div>
-          <dt>เลขประจำตัวประชาชน</dt>
-          <dd>{h.customer.idNumber}</dd>
-        </div>
-        <div>
-          <dt>การรับสินค้า</dt>
-          <dd>
-            {h.method === 'delivery'
-              ? `จัดส่งที่ ${h.deliveryAddress ?? ''} ${h.deliveryProvince ?? ''}`
-              : `รับที่${h.branch?.name ?? 'สาขา'}`}
-          </dd>
-        </div>
-        <div>
-          <dt>เงินดาวน์</dt>
-          <dd>
-            {h.downPayment > 0
-              ? `${formatBaht(h.downPayment)} · ${h.downPaymentReceived === null ? 'ยังไม่ได้รับ' : 'รับแล้ว'}`
-              : 'ไม่มีเงินดาวน์'}
-          </dd>
-        </div>
-        {h.handedOverAt && (
-          <div>
-            <dt>ส่งมอบเมื่อ</dt>
-            <dd>{formatDate(h.handedOverAt)}</dd>
+      <div className="handover-layout">
+        <section className="handover-details" aria-label="ข้อมูลการส่งมอบ">
+          <dl className="terms">
+            <div>
+              <dt>ขั้นตอน</dt>
+              <dd>{h.stopped ? HANDOVER_STAGE_LABELS.stopped : HANDOVER_STAGE_LABELS[h.stage]}</dd>
+            </div>
+            <div>
+              <dt>สถานะสัญญา</dt>
+              <dd>{CONTRACT_STATUS_LABELS[h.contractStatus]}</dd>
+            </div>
+            <div>
+              <dt>สินค้า</dt>
+              <dd>{h.product.name}</dd>
+            </div>
+            <div>
+              <dt>ลูกค้า</dt>
+              <dd>
+                {h.customer.fullName} · {h.customer.mobileNumber}
+              </dd>
+            </div>
+            <div>
+              <dt>เลขประจำตัวประชาชน</dt>
+              <dd>{h.customer.idNumber}</dd>
+            </div>
+            <div>
+              <dt>การรับสินค้า</dt>
+              <dd>
+                {h.method === 'delivery'
+                  ? `จัดส่งที่ ${h.deliveryAddress ?? ''} ${h.deliveryProvince ?? ''}`
+                  : `รับที่${h.branch?.name ?? 'สาขา'}`}
+              </dd>
+            </div>
+            <div>
+              <dt>เงินดาวน์</dt>
+              <dd>
+                {h.downPayment > 0
+                  ? `${formatBaht(h.downPayment)} · ${h.downPaymentReceived === null ? 'ยังไม่ได้รับ' : 'รับแล้ว'}`
+                  : 'ไม่มีเงินดาวน์'}
+              </dd>
+            </div>
+            {h.handedOverAt && (
+              <div>
+                <dt>ส่งมอบเมื่อ</dt>
+                <dd>{formatDate(h.handedOverAt)}</dd>
+              </div>
+            )}
+          </dl>
+        </section>
+        <section className="handover-recording" aria-label="บันทึกการส่งมอบ">
+          <IdCardPhoto handover={h} />
+          {error && (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="staff-actions">
+            {!h.stopped && downPaymentOutstanding && (
+              <button
+                type="button"
+                className="button button-small button-outline"
+                disabled={busy}
+                onClick={() => {
+                  if (window.confirm(`ยืนยันว่าได้รับเงินดาวน์ ${formatBaht(h.downPayment)} แล้ว?`))
+                    void act(() => recordDownPayment(h.contractNumber, h.downPayment))
+                }}
+              >
+                บันทึกรับเงินดาวน์ {formatBaht(h.downPayment)}
+              </button>
+            )}
+            {h.nextStages.map((stage) => (
+              <button
+                key={stage}
+                type="button"
+                className="button button-small"
+                disabled={busy || (stage === 'handed-over' && downPaymentOutstanding)}
+                onClick={() => void act(() => moveHandover(h.contractNumber, stage))}
+              >
+                {MOVE_TO_LABELS[stage]}
+              </button>
+            ))}
           </div>
-        )}
-      </dl>
-
-      <IdCardPhoto handover={h} />
-
-      {error && (
-        <p className="form-error" role="alert">
-          {error}
-        </p>
-      )}
-      <div className="staff-actions">
-        {!h.stopped && downPaymentOutstanding && (
-          <button
-            type="button"
-            className="button button-small button-outline"
-            disabled={busy}
-            onClick={() => {
-              if (window.confirm(`ยืนยันว่าได้รับเงินดาวน์ ${formatBaht(h.downPayment)} แล้ว?`))
-                void act(() => recordDownPayment(h.contractNumber, h.downPayment))
-            }}
-          >
-            บันทึกรับเงินดาวน์ {formatBaht(h.downPayment)}
-          </button>
-        )}
-        {h.nextStages.map((stage) => (
-          <button
-            key={stage}
-            type="button"
-            className="button button-small"
-            disabled={busy || (stage === 'handed-over' && downPaymentOutstanding)}
-            onClick={() => void act(() => moveHandover(h.contractNumber, stage))}
-          >
-            {MOVE_TO_LABELS[stage]}
-          </button>
-        ))}
+          {h.nextStages.includes('handed-over') && downPaymentOutstanding && (
+            <p className="muted">บันทึกรับเงินดาวน์ก่อนส่งมอบสินค้า</p>
+          )}
+        </section>
       </div>
-      {h.nextStages.includes('handed-over') && downPaymentOutstanding && (
-        <p className="muted">บันทึกรับเงินดาวน์ก่อนส่งมอบสินค้า</p>
-      )}
     </section>
   )
 }

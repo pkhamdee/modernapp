@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test'
 import { environment, mockBaseURL } from '../environment'
 import {
   applyForHirePurchase,
+  atNarrowestPhone,
   bangkokLocal,
   customerHeader,
   expectPageFits,
@@ -15,6 +16,7 @@ import {
   newMobileNumber,
   OLD_BRAND,
   Phone,
+  PHONE_MIN_WIDTH,
   PHOTO,
   placement,
   signInCustomer,
@@ -161,6 +163,58 @@ test('back office: the Staff menu reaches every list, shown as tables on desktop
   await staff.context().close()
 })
 
+// Staff forms across sizes (#56): sign-in is one narrow centred column everywhere; the other forms stack their
+// fields on a phone (checked at the narrowest supported width, 360px) and pair them up on a desktop.
+test('staff forms: a narrow centred sign-in, and the Product form with its photo upload', async ({
+  page,
+  browser,
+}) => {
+  const widths = isPhone() ? [PHONE_MIN_WIDTH] : [1280, 768]
+  for (const width of widths) {
+    await test.step(`${width}px: Staff sign-in is one centred column about 480px wide`, async () => {
+      await page.setViewportSize({ width, height: 800 })
+      await visit(page, '/staff/sign-in')
+      const column = page.getByRole('region', { name: 'เข้าสู่ระบบพนักงาน' })
+      await expect(column.getByLabel('ชื่อผู้ใช้')).toBeVisible()
+      const box = await column.boundingBox()
+      if (!box) throw new Error('sign-in column not on screen')
+      expect(box.width).toBeLessThanOrEqual(480)
+      if (isPhone()) {
+        expect(box.width).toBeGreaterThanOrEqual(width - 2 * 24) // nearly the whole phone
+      } else {
+        expect(box.width).toBeGreaterThanOrEqual(440)
+        expect(Math.abs(box.x + box.width / 2 - width / 2)).toBeLessThanOrEqual(1) // centred
+      }
+    })
+  }
+
+  const staff = await staffPage(browser, '/staff/products')
+  await atNarrowestPhone(staff)
+
+  await test.step('the Product form: fields stacked on a phone, paired on a desktop', async () => {
+    await navigateStaffTo(staff, 'สินค้า')
+    await staff.getByRole('link', { name: '+ เพิ่มสินค้า' }).click()
+    await expect(staff.getByRole('heading', { level: 1, name: 'เพิ่มสินค้า' })).toBeVisible()
+    await expectPageFits(staff)
+    const category = staff.getByLabel('ประเภทสินค้า')
+    const price = staff.getByLabel('ราคา (บาท)')
+    expect(await placement(category, price)).toBe(isPhone() ? 'below' : 'beside')
+    // On a desktop the form stays a readable width instead of stretching across the page.
+    const name = await staff.getByLabel('ชื่อสินค้า').boundingBox()
+    if (!isPhone()) expect(name?.width).toBeLessThanOrEqual(800)
+  })
+
+  await test.step('the Product photo uploads and shows a preview (the form is left unsaved)', async () => {
+    await staff.getByLabel('อัปโหลดรูป').setInputFiles(PHOTO)
+    await expect(staff.getByRole('img', { name: 'รูปสินค้า' })).toBeVisible()
+    await expect(staff.getByText('เปลี่ยนรูป')).toBeVisible()
+    await expect(staff.getByRole('button', { name: 'ลบรูป' })).toBeVisible()
+    await expectPageFits(staff)
+  })
+
+  await staff.context().close()
+})
+
 // The catalog and the Product page across sizes (#53). The phone project checks the phone layout; the desktop
 // project also resizes its window to tablet (768px) and wide (1024px) widths.
 test('catalog: Products in 1 / 2 / 3–4 columns and the Product page beside or above its calculator', async ({
@@ -281,6 +335,7 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
 
   await test.step('Staff record the Handover (Down Payment, ready at the Branch, handed over)', async () => {
     const staff = await staffPage(browser, '/staff/products')
+    await atNarrowestPhone(staff) // #56: the Handover screen fits a 360px phone
     await navigateStaffTo(staff, 'ส่งมอบสินค้า')
     await expect(staff).toHaveURL(/\/staff\/handovers$/)
     // The new Contract is a row of the Handovers list (a table row on desktop, a card on phone).
@@ -288,8 +343,15 @@ test('hire purchase: SMS sign-in, Application, Offer, Contract in the Enterprise
     await expect(staff).toHaveURL(new RegExp(`/staff/handovers/${contractNumber}$`))
     await expect(staff.locator('.contract-number')).toHaveText(contractNumber)
     await expectPageFits(staff)
+    // The Handover's details and the recording panel (ID card, Down Payment, stages): one above the other on a
+    // phone, side by side on a desktop so Staff check the details while they record (#56).
+    const details = staff.getByRole('region', { name: 'ข้อมูลการส่งมอบ' })
+    const recording = staff.getByRole('region', { name: 'บันทึกการส่งมอบ' })
+    await expect(recording.getByRole('button', { name: /บันทึกรับเงินดาวน์/ })).toBeVisible()
+    expect(await placement(details, recording)).toBe(isPhone() ? 'below' : 'beside')
     await staff.getByRole('button', { name: 'ดูรูปบัตรประชาชน' }).click()
     await expect(staff.getByRole('img', { name: /รูปบัตรประชาชนของ/ })).toBeVisible()
+    await expectPageFits(staff)
 
     staff.once('dialog', (dialog) => void dialog.accept()) // "received the Down Payment?" confirmation
     await staff.getByRole('button', { name: /บันทึกรับเงินดาวน์/ }).click()
@@ -346,6 +408,7 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
   let lotPath = ''
   await test.step('Staff create an Auction closing about two minutes ahead and add a Lot with a photo', async () => {
     const staff = await staffPage(browser, '/staff/products')
+    await atNarrowestPhone(staff) // #56: the Auction and Lot forms fit a 360px phone
     await navigateStaffTo(staff, 'ประมูล')
     await expect(staff).toHaveURL(/\/staff\/auctions$/)
     await expect(staff.getByRole('heading', { level: 1, name: 'การประมูล' })).toBeVisible()
@@ -353,19 +416,33 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     const now = Date.now()
     const closesAt = new Date(Math.floor(now / 60_000) * 60_000 + 2 * 60_000)
     await staff.getByRole('checkbox', { name: 'กำหนดเวลาเอง' }).check()
-    await staff.getByLabel('เปิดประมูล', { exact: true }).fill(bangkokLocal(new Date(now - 60_000)))
-    await staff.getByLabel('ปิดประมูล', { exact: true }).fill(bangkokLocal(closesAt))
+    const opensField = staff.getByLabel('เปิดประมูล', { exact: true })
+    const closesField = staff.getByLabel('ปิดประมูล', { exact: true })
+    await expect(closesField).toBeVisible()
+    // Opening and closing times: stacked on a phone, side by side on a desktop (#56).
+    expect(await placement(opensField, closesField)).toBe(isPhone() ? 'below' : 'beside')
+    await expectPageFits(staff)
+    await opensField.fill(bangkokLocal(new Date(now - 60_000)))
+    await closesField.fill(bangkokLocal(closesAt))
     await staff.getByRole('button', { name: 'สร้างการประมูล' }).click()
     await expect(staff).toHaveURL(/\/staff\/auctions\/\d+$/)
     await expect(staff.getByRole('button', { name: '+ เพิ่มรายการ' })).toBeVisible()
     await expectPageFits(staff)
 
     await staff.getByRole('button', { name: '+ เพิ่มรายการ' }).click()
-    await staff.getByLabel('รุ่น ความจุ และสี').fill(title)
+    const titleField = staff.getByLabel('รุ่น ความจุ และสี')
+    const priceField = staff.getByLabel('ราคาเริ่มต้น (บาท)')
+    await expect(titleField).toBeVisible()
+    // The Lot form: model and starting price stacked on a phone, side by side on a desktop (#56).
+    expect(await placement(titleField, priceField)).toBe(isPhone() ? 'below' : 'beside')
+    await expectPageFits(staff)
+    await titleField.fill(title)
     await staff.getByLabel('สภาพเครื่อง').fill('สภาพดี แบตเตอรี่ 90% พร้อมกล่อง')
-    await staff.getByLabel('ราคาเริ่มต้น (บาท)').fill('5000')
+    await priceField.fill('5000')
     await staff.getByLabel('เพิ่มรูป').setInputFiles(PHOTO)
     await expect(staff.getByText(/รูปถ่าย \(1\//)).toBeVisible()
+    await expect(staff.getByRole('img', { name: 'รูปที่ 1' })).toBeVisible()
+    await expectPageFits(staff)
     await staff.getByRole('button', { name: 'บันทึก', exact: true }).click()
     const lot = staff.locator('li', { hasText: title })
     lotPath = (await lot.getByRole('link', { name: 'ดูหน้าประมูล' }).getAttribute('href')) ?? ''

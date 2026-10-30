@@ -88,7 +88,7 @@ function ProductForm({ categories, product }: { categories: BackOfficeProductCat
   }
 
   return (
-    <section className="card">
+    <section className="card staff-form">
       <Link to="/staff/products" className="back-link">
         ‹ สินค้าทั้งหมด
       </Link>
@@ -98,34 +98,36 @@ function ProductForm({ categories, product }: { categories: BackOfficeProductCat
       )}
       <form onSubmit={onSubmit} className="form" noValidate>
         <label className="form-field">
-          <span>ประเภทสินค้า</span>
-          <select value={category} onChange={(e) => setCategory(e.target.value)}>
-            {categories.map((c) => (
-              <option key={c.code} value={c.code}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="form-field">
           <span>ชื่อสินค้า</span>
           <input value={name} maxLength={200} onChange={(e) => setName(e.target.value)} required />
         </label>
+        <div className="staff-field-pair">
+          <label className="form-field">
+            <span>ประเภทสินค้า</span>
+            <select value={category} onChange={(e) => setCategory(e.target.value)}>
+              {categories.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span>ราคา (บาท)</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min={1}
+              step="0.01"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              required
+            />
+          </label>
+        </div>
         <label className="form-field">
           <span>รายละเอียด</span>
           <textarea value={description} maxLength={2000} rows={3} onChange={(e) => setDescription(e.target.value)} />
-        </label>
-        <label className="form-field">
-          <span>ราคา (บาท)</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            min={1}
-            step="0.01"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            required
-          />
         </label>
         <div className="form-field">
           <span>รูปสินค้า</span>

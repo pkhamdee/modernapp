@@ -1181,6 +1181,8 @@ button.header-link {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+}
+
 /* Staff Handover: the Customer's ID card photo, fetched with the Staff token (never a public link). */
 .id-card-photo {
   display: grid;
@@ -1198,3 +1200,77 @@ button.header-link {
 .handover-stage {
   color: var(--brand);
 }
+
+/* ==========================================================================================================
+ * Staff forms (#56)
+ * Every Staff form fits a 360px phone with its fields stacked. Staff sign-in is one ~480px centred column at
+ * every size; the other forms stop at a readable width on a desktop and put related fields side by side.
+ * ========================================================================================================== */
+
+/* With no sidebar (sign-in) the page column is centred in the window; beside the sidebar it fills the rest. */
+.staff-main {
+  margin-inline: auto;
+}
+
+.staff-sign-in {
+  width: 100%;
+  max-width: 480px;
+  margin-inline: auto;
+}
+
+/* A Staff form card (Product, Lot, new Auction): full width on a phone, a readable width on a desktop. */
+.staff-form {
+  max-width: 760px;
+}
+
+/* Two related fields (category and price, opening and closing times): stacked on a phone, side by side from
+   tablet. minmax(0, …) lets a wide control (a datetime field) shrink instead of pushing the page sideways. */
+.staff-field-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.staff-field-pair .form-field > :is(input, select, textarea) {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  /* tablet */
+  .staff-field-pair {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* The Handover screen: its details above the recording panel (ID card photo, Down Payment, stages) on phones and
+   tablets; side by side from wide, so Staff read the details while they record. */
+.handover-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  column-gap: 2rem;
+}
+
+.handover-details .terms dd {
+  overflow-wrap: anywhere;
+}
+
+.handover-recording {
+  min-width: 0;
+}
+
+/* A closed Auction's Lot: the Branch / next-Auction choice and the new starting price take a line of their own
+   on a phone (so the options read in full) and sit beside the buttons when there is room. */
+.lot-after-close .staff-actions > :is(select, input) {
+  flex: 1 1 14rem;
+}
+
+@media (min-width: 1024px) {
+  /* wide */
+  .handover-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+/* ---- end Staff forms (#56) ---- */

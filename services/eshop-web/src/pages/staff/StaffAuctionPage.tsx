@@ -285,28 +285,30 @@ function LotForm({ auctionId, lot, onDone }: { auctionId: number; lot: Lot | nul
   }
 
   return (
-    <form onSubmit={onSubmit} className="card form" noValidate>
+    <form onSubmit={onSubmit} className="card form staff-form" noValidate>
       <h2>{lot ? 'แก้ไขรายการประมูล' : 'เพิ่มรายการประมูล'}</h2>
       <p className="muted">iPhone มือสอง 1 เครื่อง พร้อมกล่อง</p>
-      <label className="form-field">
-        <span>รุ่น ความจุ และสี</span>
-        <input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} required />
-      </label>
+      <div className="staff-field-pair">
+        <label className="form-field">
+          <span>รุ่น ความจุ และสี</span>
+          <input value={title} maxLength={200} onChange={(e) => setTitle(e.target.value)} required />
+        </label>
+        <label className="form-field">
+          <span>ราคาเริ่มต้น (บาท)</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            step={1}
+            value={startingPrice}
+            onChange={(e) => setStartingPrice(e.target.value)}
+            required
+          />
+        </label>
+      </div>
       <label className="form-field">
         <span>สภาพเครื่อง</span>
         <textarea value={conditionNotes} maxLength={2000} rows={3} onChange={(e) => setConditionNotes(e.target.value)} />
-      </label>
-      <label className="form-field">
-        <span>ราคาเริ่มต้น (บาท)</span>
-        <input
-          type="number"
-          inputMode="numeric"
-          min={1}
-          step={1}
-          value={startingPrice}
-          onChange={(e) => setStartingPrice(e.target.value)}
-          required
-        />
       </label>
       <div className="form-field">
         <span>รูปถ่าย ({photos.length}/{MAX_PHOTOS})</span>

@@ -41,8 +41,8 @@ export function StaffSignInPage() {
   }
 
   return (
-    <section className="card">
-      <h1>เข้าสู่ระบบพนักงาน</h1>
+    <section className="card staff-sign-in" aria-labelledby="staff-sign-in-heading">
+      <h1 id="staff-sign-in-heading">เข้าสู่ระบบพนักงาน</h1>
       <p className="muted">สำหรับพนักงาน eShop Co. เท่านั้น</p>
       {session?.role === 'Customer' && (
         <p className="form-notice">คุณเข้าสู่ระบบในฐานะลูกค้าอยู่ การเข้าสู่ระบบพนักงานจะออกจากบัญชีลูกค้า</p>

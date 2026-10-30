@@ -313,3 +313,11 @@ export async function placement(first: Locator, second: Locator): Promise<'besid
   if (b.y >= a.y + a.height) return 'below'
   return 'overlapping'
 }
+
+/** The narrowest phone every screen must fit without scrolling sideways (#46). */
+export const PHONE_MIN_WIDTH = 360
+
+/** In the phone project, narrows `page` to the narrowest supported phone (#56); the desktop project is unchanged. */
+export async function atNarrowestPhone(page: Page) {
+  if (isPhone()) await page.setViewportSize({ width: PHONE_MIN_WIDTH, height: 800 })
+}

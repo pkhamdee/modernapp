@@ -37,14 +37,14 @@ export function StaffAuctionsPage() {
       <div className="staff-toolbar">
         <h1>การประมูล</h1>
       </div>
-      <form onSubmit={onCreate} className="card form" noValidate>
+      <form onSubmit={onCreate} className="card form staff-form" noValidate>
         <h2>สร้างการประมูลใหม่</h2>
         <p className="muted">ตามรอบปกติ: เปิดวันจันทร์ 10:00 น. ปิดวันอาทิตย์ 20:00 น. (เวลาประเทศไทย) ของสัปดาห์ถัดไป</p>
         <label className="form-choice">
           <input type="checkbox" checked={custom} onChange={(e) => setCustom(e.target.checked)} /> กำหนดเวลาเอง
         </label>
         {custom && (
-          <div className="staff-inline-fields">
+          <div className="staff-field-pair">
             <label className="form-field">
               <span>เปิดประมูล</span>
               <input type="datetime-local" value={opensAt} onChange={(e) => setOpensAt(e.target.value)} />
