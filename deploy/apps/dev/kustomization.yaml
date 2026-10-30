@@ -23,4 +23,4 @@ images:
   - name: ghcr.io/pkhamdee/sphone-node-api
     newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-node-api:tag"}
   - name: ghcr.io/pkhamdee/sphone-sync-master
-    newTag: main-fff621d-1793318220 # {"$imagepolicy": "sphone-dev:sphone-sync-master:tag"}
+    newTag: main-5544a0e-1793320224 # {"$imagepolicy": "sphone-dev:sphone-sync-master:tag"}
