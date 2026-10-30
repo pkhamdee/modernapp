@@ -3,6 +3,7 @@ import { environment, mockBaseURL } from '../environment'
 import {
   applyForHirePurchase,
   bangkokLocal,
+  cardsAcross,
   customerHeader,
   expectFitsNarrowestPhone,
   expectFormColumn,
@@ -371,6 +372,7 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
   // their own times (the back office allows any future closing time): open now, closing about two minutes ahead.
   const title = newLotTitle()
   let lotPath = ''
+  let closesAt = new Date()
   await test.step('Staff create an Auction closing about two minutes ahead and add a Lot with a photo', async () => {
     const staff = await staffPage(browser, '/staff/products')
     await navigateStaffTo(staff, 'ประมูล')
@@ -378,7 +380,7 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     await expect(staff.getByRole('heading', { level: 1, name: 'การประมูล' })).toBeVisible()
     await expectPageFits(staff)
     const now = Date.now()
-    const closesAt = new Date(Math.floor(now / 60_000) * 60_000 + 2 * 60_000)
+    closesAt = new Date(Math.floor(now / 60_000) * 60_000 + 2 * 60_000)
     await staff.getByRole('checkbox', { name: 'กำหนดเวลาเอง' }).check()
     await staff.getByLabel('เปิดประมูล', { exact: true }).fill(bangkokLocal(new Date(now - 60_000)))
     await staff.getByLabel('ปิดประมูล', { exact: true }).fill(bangkokLocal(closesAt))
@@ -401,6 +403,31 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     await staff.context().close()
   })
 
+  // The Auction page reuses the catalog grid (#54). The current Auction may be the other project's, created at the
+  // same moment and holding a single Lot, so columns are read from the first card's width (cardsAcross).
+  const lots = page.getByRole('main').getByRole('list')
+  const grids = isPhone()
+    ? [{ name: 'phone', width: 390, columns: [1, 1] }]
+    : [
+        { name: 'desktop', width: 1280, columns: [3, 4] },
+        { name: 'tablet', width: 768, columns: [2, 2] },
+      ]
+  for (const grid of grids) {
+    await test.step(`${grid.name}: the Auction shows its Lots in ${grid.columns.join('–')} column(s)`, async () => {
+      if (!isPhone()) await page.setViewportSize({ width: grid.width, height: 800 })
+      // Another test's Auction may have just opened without its Lot yet: reload until Lots show.
+      await expect(async () => {
+        await page.goto('/auction')
+        await expect(lots.getByRole('listitem').first()).toBeVisible({ timeout: 2_000 })
+      }).toPass({ timeout: 30_000 })
+      await expectPageFits(page)
+      const columns = await cardsAcross(lots)
+      expect(columns).toBeGreaterThanOrEqual(grid.columns[0])
+      expect(columns).toBeLessThanOrEqual(grid.columns[1])
+    })
+  }
+  if (!isPhone()) await page.setViewportSize({ width: 1280, height: 800 })
+
   await test.step('Customer bids on the Lot', async () => {
     await page.goto(lotPath)
     await expect(page.getByRole('heading', { name: title })).toBeVisible()
@@ -410,6 +437,44 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     await expect(page.getByText('คุณเป็นผู้เสนอราคาสูงสุดตอนนี้')).toBeVisible()
     await expectPageFits(page)
   })
+
+  // The bidding panel (#54): on opening the Lot page, the Bid form, the current highest Bid, the minimum increment
+  // and the closing time are on screen without scrolling (on a 390×844 phone above all). From 1024px the photo sits
+  // beside the panel; on narrower screens the panel comes first and the photos follow below it.
+  const closingTime = bangkokLocal(closesAt).slice(11) // "14:07"
+  const lotLayouts = isPhone()
+    ? [{ name: 'phone', width: 390, height: 844, photo: 'below' }]
+    : [
+        { name: 'desktop', width: 1280, height: 800, photo: 'beside' },
+        { name: 'wide', width: 1024, height: 800, photo: 'beside' },
+        { name: 'tablet', width: 768, height: 800, photo: 'below' },
+      ]
+  for (const layout of lotLayouts) {
+    await test.step(`${layout.name}: bidding panel on screen unscrolled, photo ${layout.photo} it`, async () => {
+      if (!isPhone()) await page.setViewportSize({ width: layout.width, height: layout.height })
+      await page.goto(lotPath)
+      const panel = page.getByRole('region', { name: 'การเสนอราคา' })
+      await expect(panel.getByRole('heading', { name: title })).toBeVisible()
+      await expectPageFits(page)
+      const onScreen = [
+        panel.getByText('ราคาสูงสุดตอนนี้', { exact: true }),
+        panel.getByText('฿5,000', { exact: true }),
+        panel.getByText('เพิ่มขั้นต่ำครั้งละ', { exact: true }),
+        panel.getByText('฿100', { exact: true }),
+        panel.getByText('ปิดประมูล', { exact: true }),
+        panel.getByText(new RegExp(`${closingTime}$`)),
+        panel.getByRole('spinbutton', { name: /ราคาที่เสนอ/ }),
+        panel.getByRole('button', { name: /^เสนอราคา/ }),
+      ]
+      for (const item of onScreen) await expect(item).toBeInViewport({ ratio: 1 })
+      expect(await page.evaluate(() => window.scrollY)).toBe(0)
+
+      const photo = page.getByRole('main').getByRole('img', { name: `${title} รูปที่ 1` })
+      if (layout.photo === 'beside') expect(await placement(photo, panel)).toBe('beside')
+      else expect(await placement(panel, photo)).toBe('below')
+    })
+  }
+  if (!isPhone()) await page.setViewportSize({ width: 1280, height: 800 })
 
   await test.step('the Auction closes and the Customer has won the Lot', async () => {
     // The Lot page polls every 3 s; once the Auction is closed it shows the result.
@@ -423,6 +488,24 @@ test('auction: an ID-verified Customer bids on a Lot and wins it when the Auctio
     await expect(page.getByRole('link', { name: title })).toBeVisible()
     await expectPageFits(page)
   })
+
+  // A won Lot must be paid within 3 days or it is Forfeited (#54): its deadline reads clearly at every size.
+  const due = bangkokLocal(new Date(closesAt.getTime() + 3 * 24 * 3_600_000)) // "2026-11-02T14:07"
+  const deadlineText = new RegExp(`^ชำระเงินภายใน\\s*${Number(due.slice(8, 10))} .+ ${due.slice(11)}$`)
+  const wonSizes = isPhone()
+    ? [{ name: 'phone', width: 390 }]
+    : [1280, 1024, 768].map((width) => ({ name: `${width}px`, width }))
+  for (const size of wonSizes) {
+    await test.step(`${size.name}: the won Lot shows its payment deadline`, async () => {
+      if (!isPhone()) await page.setViewportSize({ width: size.width, height: 800 })
+      await visit(page, '/won-lots')
+      const wonLot = page.getByRole('article').filter({ has: page.getByRole('link', { name: title }) })
+      const deadline = wonLot.getByText(deadlineText)
+      await deadline.scrollIntoViewIfNeeded()
+      await expect(deadline).toBeInViewport({ ratio: 1 })
+    })
+  }
+  if (!isPhone()) await page.setViewportSize({ width: 1280, height: 800 })
 
   await phone.close()
 })
