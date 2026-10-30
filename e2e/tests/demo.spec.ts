@@ -14,7 +14,7 @@ import {
 // Seam 4: the MVP's definition-of-done demo (spec #1), end to end in a browser against a deployed environment.
 
 // The eShop brand (#47): Customer and Staff screens name eShop / อีช้อป and nothing of the old brand.
-test('brand: Customer and Staff screens show eShop', async ({ page }) => {
+test('brand: Customer and Staff screens show eShop', async ({ page, browser }) => {
   const oldBrand = /S Phone|เอส ลีสซิ่ง|Srisawad/i
 
   for (const path of ['/', '/auction', '/sign-in', '/staff/sign-in']) {
@@ -32,6 +32,15 @@ test('brand: Customer and Staff screens show eShop', async ({ page }) => {
     await page.goto('/auction')
     await page.getByRole('banner').getByRole('link', { name: /eShop/ }).click()
     await expect(page).toHaveURL(/\/$/)
+  })
+
+  await test.step('the mock Enterprise System admin tool is eShop Co.’s', async () => {
+    const context = await browser.newContext({ baseURL: mockBaseURL, ignoreHTTPSErrors: true })
+    const enterprise = await context.newPage()
+    await enterprise.goto('/thirdparty-mock/enterprise/')
+    await expect(enterprise.getByRole('heading', { level: 1 })).toHaveText('eShop Co. Enterprise System (mock)')
+    await expect(enterprise.locator('body')).not.toContainText(oldBrand)
+    await context.close()
   })
 })
 

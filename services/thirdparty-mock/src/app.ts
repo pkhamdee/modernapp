@@ -58,7 +58,7 @@ function homePage(): string {
     `<h1>thirdparty-mock</h1>
 <ul>
   <li><a href="sms/inbox">กล่องข้อความ SMS (mock inbox)</a></li>
-  <li><a href="enterprise/">Enterprise System (Contracts, simulate Payment, cancel)</a></li>
+  <li><a href="enterprise/">eShop Co. Enterprise System (Contracts, simulate Payment, cancel)</a></li>
 </ul>
 <section>
   <h2>Response delay</h2>
