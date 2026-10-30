@@ -20,14 +20,25 @@
 		respond "ok" 200
 	}
 
+	# PWA icons (ADR 0006) keep fixed names, so they are cached for a day only. No index.html fallback here:
+	# a missing icon is a 404, not the app's HTML cached as an image.
+	@icons path /icons/* /apple-touch-icon.png
+	handle @icons {
+		root * /srv
+		@found file
+		header @found Cache-Control "public, max-age=86400"
+		file_server
+	}
+
 	handle {
 		root * /srv
 		encode zstd gzip
 
-		# Hashed build assets never change; index.html must always be revalidated.
+		# Hashed build assets never change; index.html and the web app manifest must always be revalidated.
 		@assets path /assets/*
 		header @assets Cache-Control "public, max-age=31536000, immutable"
 		header /index.html Cache-Control "no-cache"
+		header /manifest.webmanifest Cache-Control "no-cache"
 
 		# Client-side routes (/categories/..., /products/...) fall back to index.html.
 		try_files {path} /index.html
