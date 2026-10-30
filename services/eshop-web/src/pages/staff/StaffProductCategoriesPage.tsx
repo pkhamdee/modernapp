@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { backOfficePaths, TERMS, updateProductCategory, type BackOfficeProductCategory } from '../../api/backOffice.ts'
 import { problemMessage, useReloadableApi } from '../../api/client.ts'
+import { ResponsiveList } from '../../components/ResponsiveList.tsx'
 import { Status } from '../../components/Status.tsx'
 import { formatFlatRate } from '../../format.ts'
 
@@ -17,13 +18,23 @@ export function StaffProductCategoriesPage() {
         อัตราดอกเบี้ยคงที่ต่อเดือนและจำนวนงวดสูงสุด มีผลกับเครื่องคำนวณค่างวดทันที
         แต่ไม่เปลี่ยนคำขอเช่าซื้อหรือข้อเสนอที่ส่งไปแล้ว
       </p>
-      <ul className="staff-list">
-        {categories.data.map((c) => (
-          <li key={c.code} className="staff-item">
-            <CategorySettings key={`${c.code}-${c.flatRate}-${c.longestTerm}`} category={c} onSaved={reload} />
-          </li>
-        ))}
-      </ul>
+      <ResponsiveList
+        label="ประเภทสินค้า"
+        rows={categories.data}
+        rowKey={(c) => c.code}
+        columns={[
+          { label: 'ประเภทสินค้า', cell: (c) => c.name },
+          { label: 'อัตราดอกเบี้ยคงที่', cell: (c) => `${formatFlatRate(c.flatRate)} ต่อเดือน` },
+          { label: 'งวดสูงสุด', cell: (c) => `${c.longestTerm} งวด`, align: 'end' },
+          { label: 'สินค้าที่ขายอยู่', cell: (c) => `${c.activeProducts} รายการ`, align: 'end' },
+          {
+            label: 'เปลี่ยนการตั้งค่า',
+            block: true,
+            // Keyed by the saved settings, so the fields start again from them after a save.
+            cell: (c) => <CategorySettings key={`${c.code}-${c.flatRate}-${c.longestTerm}`} category={c} onSaved={reload} />,
+          },
+        ]}
+      />
     </section>
   )
 }
@@ -56,12 +67,7 @@ function CategorySettings({ category, onSaved }: { category: BackOfficeProductCa
   }
 
   return (
-    <form onSubmit={onSubmit} className="staff-item-body" noValidate>
-      <strong>{category.name}</strong>
-      <span className="muted">
-        ตอนนี้ {formatFlatRate(category.flatRate)} ต่อเดือน · สูงสุด {category.longestTerm} งวด · สินค้าที่ขายอยู่{' '}
-        {category.activeProducts} รายการ
-      </span>
+    <form onSubmit={onSubmit} className="category-settings" aria-label={`ตั้งค่า${category.name}`} noValidate>
       <div className="staff-inline-fields">
         <label className="form-field">
           <span>อัตราดอกเบี้ยคงที่ (% ต่อเดือน)</span>
