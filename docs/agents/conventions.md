@@ -151,12 +151,15 @@ eshop-sync-master:
   `min-width: 768px`, wide `min-width: 1024px`, desktop `min-width: 1280px`. Use only these widths in media
   queries and name the breakpoint in a comment. Customer content sits in `.frame` (centred, max 1200 px); the
   header shows a menu button below 768 px and a top bar from 768 px (`AppLayout.tsx`). Staff screens
-  (`StaffLayout.tsx`) have a sidebar from 1280 px and a slide-out menu behind a button below it.
-- Lists of rows (Staff lists, a Contract's Installments and Payments) use `components/ResponsiveList.tsx`, not
+  (`StaffLayout.tsx`) have a sidebar from 1280 px and a slide-out menu behind a button below it. Both menus use
+  `layout/useMenu.ts` for open/closed state, Escape-to-close from anywhere and focus back on the button (pass it
+  the nav's ref to also move focus to its first link on opening, as Staff does); reuse it for any new menu.
+- Lists of rows (Staff lists, including an Auction's Lots, and a Contract's Installments and Payments) use `components/ResponsiveList.tsx`, not
   per-page markup: give it `label`, `columns` (`{ label, cell, align?, block? }`, the first one names the row),
   `rows`, `rowKey`, and optionally `rowLink` / `dimmed` / `summary` (a total line: a table footer row, or a line
   after the cards). It renders a `<table>` from 1280 px and a list of cards
-  (each value beside its column label) below, never both.
+  (each value beside its column label) below, never both. Forms and action buttons inside a row go in a
+  `block: true` column (as the Staff Lot actions and closed-Lot settlement do).
 - Customer forms (sign-in, SMS code, Apply, Offer) and short personal screens (Application, Account, Contracts)
   sit in `.column-narrow` (~480 px, centred, at every size); a Contract in `.column-wide` (960 px). e2e checks a
   form with `expectFormColumn(field)` and the 360 px phone with `expectFitsNarrowestPhone(page)`.
@@ -171,9 +174,11 @@ eshop-sync-master:
 - Card lists (catalog Products, Auction Lots) use `ul.card-grid` (1 / 2 / 3 / 4 columns at phone / tablet / wide /
   desktop). Product and Lot pages use `.detail-layout` with `.detail-media` (photo) and `.detail-panel`: stacked
   below 1024 px, side by side from it. e2e checks layouts by position, not class: `gridColumns(list)` and
-  `placement(photo, panel)` (`'beside' | 'below'`) in `e2e/tests/steps.ts`; `cardsAcross(list)` reads columns from
+  `placement(photo, panel)` (`'beside' | 'below' | 'overlapping'`) in `e2e/tests/steps.ts`; `cardsAcross(list)` reads columns from
   the first card's width when a grid holds fewer cards than columns (an Auction with one Lot). The Lot page
-  (`.lot-detail`) puts its bidding panel before the photos in the page, so it is on screen unscrolled on a phone.
+  (`.lot-detail`) puts its bidding panel before the photos in the page, so it is on screen unscrolled on a phone;
+  from 1024 px the photos sit left of it. That is fine for focus order only while the photo area holds nothing
+  focusable.
 - The image drops all capabilities: Caddy's file capability is removed with `setcap -r` and it listens on 8080.
 - Service worker (ADR 0006, #59): hand-written `src/pwa/sw.js`, built to `/sw.js` by the `serviceWorker()` plugin in
   `vite.config.ts` (it injects the build's file list and a content hash), registered in production builds only.
