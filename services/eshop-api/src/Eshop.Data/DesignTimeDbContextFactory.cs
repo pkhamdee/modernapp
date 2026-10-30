@@ -9,7 +9,7 @@ internal sealed class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<E
     public EshopDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<EshopDbContext>();
-        DataServiceCollectionExtensions.Configure(options, "Host=localhost;Database=sphone;Username=sphone");
+        DataServiceCollectionExtensions.Configure(options, "Host=localhost;Database=eshop;Username=eshop");
         return new EshopDbContext(options.Options);
     }
 }

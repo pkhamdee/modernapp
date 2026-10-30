@@ -16,8 +16,8 @@ export interface Session {
   displayName?: string | null
 }
 
-const STORAGE_KEY = 'sphone.session'
-export const SESSION_CHANGED_EVENT = 'sphone:session-changed'
+const STORAGE_KEY = 'eshop.session'
+export const SESSION_CHANGED_EVENT = 'eshop:session-changed'
 
 function isSession(value: unknown): value is Session {
   if (typeof value !== 'object' || value === null) return false

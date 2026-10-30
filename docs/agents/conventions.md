@@ -1,7 +1,7 @@
 # Conventions and gotchas for agents
 
 What the code does not tell you at a glance. Commands, layout and setup live in `docs/setup.md`
-("Developing", "Repo layout"); releases and how a tag reaches `sphone-prod` in `docs/git-workflow.md`; domain
+("Developing", "Repo layout"); releases and how a tag reaches `eshop-prod` in `docs/git-workflow.md`; domain
 terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather than repeating them.
 
 ## Local environment
@@ -24,7 +24,7 @@ terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather 
 - **Scripted API checks**: macOS `/bin/bash` 3.2 mangles Thai/multibyte JSON inside `"$(curl -d ...)"`; use Python
   `urllib` for anything with Thai text.
 - **Shared cluster**: the cluster also runs unrelated workloads: only touch namespaces this repo manages
-  (sphone-dev, sphone-prod, thirdparty, gateway, cert-manager, cnpg-system, flux-system).
+  (eshop-dev, eshop-prod, thirdparty, gateway, cert-manager, cnpg-system, flux-system).
 - **Secrets in output**: decrypt Staff/DB/SMB passwords only inside a script that uses them and never prints them.
   Printing them is blocked for agents and leaks into logs.
 - `gh pr create` can fail with "connection reset by peer" after the push succeeded: check
@@ -161,17 +161,19 @@ eshop-sync-master:
   (`# {"$imagepolicy": "<ns>:<policy>:tag"}`) that Flux rewrites. Leave the tag values to Flux.
 - Flux image-automation commits touch only `deploy/**` and `clusters/**`, which CI ignores (`paths-ignore`); a commit
   mixing code with those paths still runs CI.
-- Base HTTPRoutes are dev-shaped (`sphone.localhost`, `sectionName: https`, one parentRef); the prod overlay patches
+- Base HTTPRoutes are dev-shaped (`eshop.localhost`, `sectionName: https`, one parentRef); the prod overlay patches
   every HTTPRoute. Keep prod hostnames out of base.
-- **NetworkPolicies** (default deny in sphone-dev, sphone-prod, thirdparty; enforced by k3s' kube-router): each call
+- **NetworkPolicies** (default deny in eshop-dev, eshop-prod, thirdparty; enforced by k3s' kube-router): each call
   needs both ends, caller egress and callee ingress. Egress names the container port number (e.g. 8080), not the
   Service port. Gateway = `kube-system` namespace + `app.kubernetes.io/name: traefik`; same-namespace callers by
-  podSelector only (keeps dev and prod apart); thirdparty callees list callers by namespace `In [sphone-dev,
-  sphone-prod]`. Copy `deploy/apps/base/eshop-api/network-policy.yaml`.
+  podSelector only (keeps dev and prod apart); thirdparty callees list callers by namespace `In [eshop-dev,
+  eshop-prod]`. Copy `deploy/apps/base/eshop-api/network-policy.yaml`.
+- Until prod runs `v0.2.0`, `main` also carries commented, temporary `sphone-*` entries that keep the v0.1.x release
+  running (docs/setup.md, "Moving to eShop"); `git grep -n -i sphone` lists them. Don't copy them into new work.
 - **Secrets**: one SOPS file per env, `deploy/apps/{dev,prod}/<name>.sops.yaml`, listed in that overlay's
   resources; `.sops.yaml` encrypts only `data`/`stringData`. Pairs that must match: each env's
-  `sphone-node-api-smb` with `deploy/thirdparty/samba/samba-accounts.sops.yaml`, and each env's
-  `sphone-sync-master-enterprise` with `deploy/thirdparty/mssql/mssql-credentials.sops.yaml`.
+  `eshop-node-api-smb` with `deploy/thirdparty/samba/samba-accounts.sops.yaml`, and each env's
+  `eshop-sync-master-enterprise` with `deploy/thirdparty/mssql/mssql-credentials.sops.yaml`.
 - Images whose binary carries a file capability (Caddy, `sqlservr`) fail with "operation not permitted" under
   `drop: [ALL]`: remove the capability in the image (as eshop-web does) or add `NET_BIND_SERVICE` back (as mssql
   does).
@@ -185,7 +187,7 @@ eshop-sync-master:
 - `deploy/thirdparty` (Flux Kustomization `thirdparty`, namespace `thirdparty`) holds mocks shared by both envs:
   thirdparty-mock, Samba (one share per env), SQL Server (one database per env). It follows `main` with its own image
   automation, independent of releases.
-- thirdparty-mock is routed only on `https://sphone.localhost/thirdparty-mock/`, never on `prod.sphone.localhost`;
+- thirdparty-mock is routed only on `https://eshop.localhost/thirdparty-mock/`, never on `prod.eshop.localhost`;
   prod's SMS inbox and Enterprise admin (`.../enterprise/prod/`) are reached there too (`e2e/environment.ts`).
 - SQL Server is amd64-only and runs under Rosetta with no nodeSelector. Its `schema` sidecar re-applies the schema
   on every start; changing a file in its ConfigMap generator restarts the pod.

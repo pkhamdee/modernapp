@@ -186,8 +186,8 @@ export function enterpriseRouter(): Router {
     response.type('html').send(page('eShop Co. Enterprise System', `<h1>eShop Co. Enterprise System (mock)</h1>
 <p class="muted">eShop Co.'s core hire-purchase system, played by SQL Server in the thirdparty namespace. eshop-sync-master pushes accepted Contracts here every 30 s.</p>
 <ul>
-  <li><a href="dev/">enterprise_dev</a> (sphone-dev)</li>
-  <li><a href="prod/">enterprise_prod</a> (sphone-prod)</li>
+  <li><a href="dev/">enterprise_dev</a> (eshop-dev)</li>
+  <li><a href="prod/">enterprise_prod</a> (eshop-prod)</li>
 </ul>`))
   })
 

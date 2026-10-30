@@ -1,10 +1,10 @@
-# Demo Staff account for sphone-dev (back office at /staff). sphone-api creates or updates it at startup;
-# the password here is the source of truth. Read it: SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/sphone-api-staff.sops.yaml
-# Change it: sops deploy/apps/dev/sphone-api-staff.sops.yaml (then restart sphone-api). Add accounts as Staff__Accounts__1__* env vars the same way.
+# Demo Staff account for eshop-dev (back office at /staff). eshop-api creates or updates it at startup;
+# the password here is the source of truth. Read it: SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/eshop-api-staff.sops.yaml
+# Change it: sops deploy/apps/dev/eshop-api-staff.sops.yaml (then restart eshop-api). Add accounts as Staff__Accounts__1__* env vars the same way.
 apiVersion: v1
 kind: Secret
 metadata:
-    name: sphone-api-staff
+    name: eshop-api-staff
 type: Opaque
 stringData:
     username: ENC[AES256_GCM,data:zRihZH4=,iv:gPy3jTEsC0RaRPmoxB4IYFMn/itRobdkaS/umo8zlM0=,tag:aEu+TTZJMQpsltlX+y607A==,type:str]
@@ -21,6 +21,6 @@ sops:
             -----END AGE ENCRYPTED FILE-----
           recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
     encrypted_regex: ^(data|stringData)$
-    lastmodified: "2026-10-29T14:03:54Z"
-    mac: ENC[AES256_GCM,data:IdSSmv1fECGAHvRwg4voKlCpydbai8Z52m6ciq4eykhgfWFQKRf0p+t4qwjgLmnnVF98ZzXo6Tl/yl3fsBvg+j2I+6hM33JHAXaGOIPifyQ6gX3X7rW/b1LY3I8PLgH4NvfBV1/BMwiHxwsy533qv4xEynvtLyNImYHS+rcFjnA=,iv:754EabwC8Q6oFWsg3LwFXA46r1C/nt9s6ez4Jc2f8uY=,tag:jYa7AjTMaEMsm2H6kYcz6g==,type:str]
+    lastmodified: "2026-10-30T11:49:50Z"
+    mac: ENC[AES256_GCM,data:aLxz4sRV9b3W0BXeCp2mMhH9flRC+WylAqdUOly6GuKWUHEghPAmbuo8UtDdhz/GJpZR+APXgmOC2ESRyJy5woQ2ODUaW58UHRSuoXWSj+Xn38/W7G71Dewc8C8nyuGa0MIOwpuWO7VcSmOpP7THdaYzGflrBRRkGKrKyZKL7bs=,iv:m93DiHM7LhnwTgy8MEHgza/TF+JK+p7h977WX92jKD4=,tag:LEhXMbTCedVFydectG62QQ==,type:str]
     version: 3.13.3

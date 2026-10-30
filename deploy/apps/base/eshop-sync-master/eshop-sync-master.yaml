@@ -29,23 +29,23 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sphone-db-credentials
+                  name: eshop-db-credentials
                   key: password
             - name: ConnectionStrings__Eshop
-              value: Host=eshop-db-rw;Database=sphone;Username=sphone;Password=$(DB_PASSWORD);GSS Encryption Mode=Disable
+              value: Host=eshop-db-rw;Database=eshop;Username=eshop;Password=$(DB_PASSWORD);GSS Encryption Mode=Disable
             # Per environment: the prod overlay patches it to enterprise_prod.
             - name: ENTERPRISE_DATABASE
               value: enterprise_dev
-            # Per-environment SQL Server login (deploy/apps/<env>/sphone-sync-master-enterprise.sops.yaml).
+            # Per-environment SQL Server login (deploy/apps/<env>/eshop-sync-master-enterprise.sops.yaml).
             - name: ENTERPRISE_USER
               valueFrom:
                 secretKeyRef:
-                  name: sphone-sync-master-enterprise
+                  name: eshop-sync-master-enterprise
                   key: username
             - name: ENTERPRISE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sphone-sync-master-enterprise
+                  name: eshop-sync-master-enterprise
                   key: password
             - name: ConnectionStrings__Enterprise
               value: Server=mssql.thirdparty.svc.cluster.local,1433;Database=$(ENTERPRISE_DATABASE);User Id=$(ENTERPRISE_USER);Password=$(ENTERPRISE_PASSWORD);Encrypt=True;TrustServerCertificate=True

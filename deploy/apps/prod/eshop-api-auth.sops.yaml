@@ -1,9 +1,9 @@
-# sphone-api token signing key for sphone-prod (HS256, per environment). Rotate: replace signing-key
-# with a new random value (openssl rand -base64 48) via `sops deploy/apps/prod/sphone-api-auth.sops.yaml`; existing tokens stop working.
+# eshop-api token signing key for eshop-prod (HS256, per environment). Rotate: replace signing-key
+# with a new random value (openssl rand -base64 48) via `sops deploy/apps/prod/eshop-api-auth.sops.yaml`; existing tokens stop working.
 apiVersion: v1
 kind: Secret
 metadata:
-    name: sphone-api-auth
+    name: eshop-api-auth
 type: Opaque
 stringData:
     signing-key: ENC[AES256_GCM,data:I40myQwxh82o8Xp1N+mkoHiUZdisN3++tnghtcxSb2K+r6+36UZVUsp5rRPgcgQoOBlEM+PShsAXjDNgOD/WgA==,iv:pGaNHbqT5MR9gQr7fV/C87ahmY4dKoQGcaceqEjv/hM=,tag:CIKl2gamwxXZHB9pGTrVjA==,type:str]
@@ -19,6 +19,6 @@ sops:
             -----END AGE ENCRYPTED FILE-----
           recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
     encrypted_regex: ^(data|stringData)$
-    lastmodified: "2026-10-29T13:35:26Z"
-    mac: ENC[AES256_GCM,data:m6WB6bra/vc0jojOPGv1aMKAMmLt+cSzYtxZ8pGWTnVyYKqnAfg16rOuAl2hYZvqY97n0YsMipWyu4b0Hd3nXJG6x9JhXjF1NTiGzap7sMBLj9mdkguC/s8lYtGHJcUcHOjAyjbVDPVWTKBiMB/YALXrWlfDcXozdXVNMxzbT5I=,iv:j1JQNQayR3S+hiWbJboT6k2UEtiXLYw/1zkBIawPRCo=,tag:JwTJBwDe188fe7RCEGe9cw==,type:str]
+    lastmodified: "2026-10-30T11:49:50Z"
+    mac: ENC[AES256_GCM,data:zmX7zLuG0zcPlpD2XVXur9svcLyWif/0BkaR4E6Cey4hQB8GBxoixJdpIGU92DYCS9cQl7i2fTvMhP18mpiuA/tMtC9fBQkN7zo8xsQvvp9DZ9S0BmbfcWt2xF8DZQUNnO9T4M96r5l889T7ZvvTwndsHcysZ2mr2b+KX7MXqTI=,iv:hxtpwBazgOEcIUyq3z2dWHzPD9Ys/u6Du+C/ZZiBI8w=,tag:aa/HRu0wi4IXorsHcEMdFw==,type:str]
     version: 3.13.3

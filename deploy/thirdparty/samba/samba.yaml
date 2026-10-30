@@ -1,7 +1,9 @@
-# Mock Windows file share for images: one Samba server, one share per environment (sphone-dev, sphone-prod),
+# Mock Windows file share for images: one Samba server, one share per environment (eshop-dev, eshop-prod),
 # each with a `public` and a `private` area (folders eshop-node-api creates). Each environment has its own
 # SMB account that can open only its own share; passwords live in samba-accounts.sops.yaml and must match
-# the sphone-node-api-smb secret of that environment.
+# the eshop-node-api-smb secret of that environment.
+# Temporary (#50): account sphoneprod and share sphone-prod are prod's in releases up to v0.1.x, which prod runs
+# until v0.2.0. Delete every *sphoneprod / sphone-prod entry below once prod runs v0.2.0 or later (docs/setup.md).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -42,8 +44,9 @@ spec:
             - -c
             - |
               set -e
-              mkdir -p /shares/sphone-dev /shares/sphone-prod
-              chown 1001:1001 /shares/sphone-dev && chmod 0700 /shares/sphone-dev
+              mkdir -p /shares/eshop-dev /shares/eshop-prod /shares/sphone-prod
+              chown 1003:1003 /shares/eshop-dev && chmod 0700 /shares/eshop-dev
+              chown 1004:1004 /shares/eshop-prod && chmod 0700 /shares/eshop-prod
               chown 1002:1002 /shares/sphone-prod && chmod 0700 /shares/sphone-prod
           volumeMounts:
             - name: shares
@@ -62,13 +65,20 @@ spec:
               value: "1"
             - name: SAMBA_GLOBAL_CONFIG_server_SPACE_min_SPACE_protocol
               value: SMB2_10
-            - name: ACCOUNT_sphonedev
+            - name: ACCOUNT_eshopdev
               valueFrom:
                 secretKeyRef:
                   name: samba-accounts
-                  key: sphonedev
-            - name: UID_sphonedev
-              value: "1001"
+                  key: eshopdev
+            - name: UID_eshopdev
+              value: "1003"
+            - name: ACCOUNT_eshopprod
+              valueFrom:
+                secretKeyRef:
+                  name: samba-accounts
+                  key: eshopprod
+            - name: UID_eshopprod
+              value: "1004"
             - name: ACCOUNT_sphoneprod
               valueFrom:
                 secretKeyRef:
@@ -76,8 +86,10 @@ spec:
                   key: sphoneprod
             - name: UID_sphoneprod
               value: "1002"
-            - name: SAMBA_VOLUME_CONFIG_sphonedev
-              value: "[sphone-dev]; path = /shares/sphone-dev; valid users = sphonedev; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
+            - name: SAMBA_VOLUME_CONFIG_eshopdev
+              value: "[eshop-dev]; path = /shares/eshop-dev; valid users = eshopdev; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
+            - name: SAMBA_VOLUME_CONFIG_eshopprod
+              value: "[eshop-prod]; path = /shares/eshop-prod; valid users = eshopprod; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
             - name: SAMBA_VOLUME_CONFIG_sphoneprod
               value: "[sphone-prod]; path = /shares/sphone-prod; valid users = sphoneprod; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
           ports:

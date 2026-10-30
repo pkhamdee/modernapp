@@ -26,18 +26,18 @@ spec:
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sphone-db-credentials
+                  name: eshop-db-credentials
                   key: password
             - name: ConnectionStrings__Eshop
-              value: Host=eshop-db-rw;Database=sphone;Username=sphone;Password=$(DB_PASSWORD);GSS Encryption Mode=Disable
+              value: Host=eshop-db-rw;Database=eshop;Username=eshop;Password=$(DB_PASSWORD);GSS Encryption Mode=Disable
             # Migrations and demo seed data are applied at startup (EF Core takes a lock, so this is safe).
             - name: Database__MigrateOnStartup
               value: "true"
-            # Token signing key, per environment (deploy/apps/<env>/sphone-api-auth.sops.yaml).
+            # Token signing key, per environment (deploy/apps/<env>/eshop-api-auth.sops.yaml).
             - name: Auth__SigningKey
               valueFrom:
                 secretKeyRef:
-                  name: sphone-api-auth
+                  name: eshop-api-auth
                   key: signing-key
             # SMS, ID Verification and Credit Check go to the shared thirdparty-mock.
             - name: ThirdParty__BaseUrl
@@ -45,16 +45,16 @@ spec:
             # Product photos (and later ID card photos) go to the image service's internal API.
             - name: ImageService__BaseUrl
               value: http://eshop-node-api/
-            # Demo Staff account, per environment (deploy/apps/<env>/sphone-api-staff.sops.yaml); provisioned at startup.
+            # Demo Staff account, per environment (deploy/apps/<env>/eshop-api-staff.sops.yaml); provisioned at startup.
             - name: Staff__Accounts__0__Username
               valueFrom:
                 secretKeyRef:
-                  name: sphone-api-staff
+                  name: eshop-api-staff
                   key: username
             - name: Staff__Accounts__0__Password
               valueFrom:
                 secretKeyRef:
-                  name: sphone-api-staff
+                  name: eshop-api-staff
                   key: password
             - name: Staff__Accounts__0__DisplayName
               value: พนักงานสาธิต
@@ -111,11 +111,11 @@ metadata:
   name: eshop-api
 spec:
   parentRefs:
-    - name: sphone
+    - name: eshop
       namespace: gateway
       sectionName: https
   hostnames:
-    - sphone.localhost
+    - eshop.localhost
   rules:
     - matches:
         - path:

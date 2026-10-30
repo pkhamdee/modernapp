@@ -71,11 +71,11 @@ metadata:
   name: eshop-web
 spec:
   parentRefs:
-    - name: sphone
+    - name: eshop
       namespace: gateway
       sectionName: https
   hostnames:
-    - sphone.localhost
+    - eshop.localhost
   rules:
     - matches:
         - path:

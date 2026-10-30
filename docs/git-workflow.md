@@ -123,35 +123,35 @@ git log main..release/1.x --oneline        # commits on release/1.x not yet on m
 Defined in `.github/workflows/ci-release.yml`:
 
 - Pushes and PRs to `main` and `release/*` lint and test every service. Pushes to `release/*` publish nothing.
-- Pushes to `main` also build the changed services' images as `main-<sha>`; Flux deploys them to `sphone-dev` (`https://sphone.localhost`).
+- Pushes to `main` also build the changed services' images as `main-<sha>`; Flux deploys them to `eshop-dev` (`https://eshop.localhost`).
 - Pushing a `v*` tag lints and tests, validates the tag (must be `vX.Y.Z`, annotated, and on a `release/N.x` branch), builds **every** service in `.github/services.json` for arm64, scans each with Trivy (fails on critical), pushes `ghcr.io/pkhamdee/<service>:X.Y.Z`, and only then publishes the GitHub Release with generated notes.
 - If the build system can't trigger on tags, this workflow doesn't fit; switch to the branch-based workflow (Workflow A in the source article).
 
-### How a tag reaches `sphone-prod`
+### How a tag reaches `eshop-prod`
 
-`sphone-prod` runs exactly one release: the manifests in `deploy/apps/prod` (and `deploy/apps/base`) **as they are in tag `vX.Y.Z`**, with the `X.Y.Z` images built from that same tag. Nothing is committed to a release branch or tag, and changes on `main` never reach prod until they are released.
+`eshop-prod` runs exactly one release: the manifests in `deploy/apps/prod` (and `deploy/apps/base`) **as they are in tag `vX.Y.Z`**, with the `X.Y.Z` images built from that same tag. Nothing is committed to a release branch or tag, and changes on `main` never reach prod until they are released.
 
 ```
 git push origin vX.Y.Z
   └─ CI: test → validate tag → build + scan + push ghcr.io/pkhamdee/<service>:X.Y.Z (every service) → GitHub Release
        └─ Flux (clusters/local/prod-release.yaml):
-            ImageRepository scans GHCR every minute → ImagePolicy sphone-release picks the newest plain X.Y.Z
+            ImageRepository scans GHCR every minute → ImagePolicy eshop-release picks the newest plain X.Y.Z
             (never main-<sha>, never a 0.0.0-test.N dry run)
-            → ImageUpdateAutomation sphone-prod commits ONE change to clusters/local on main
-              ("sphone-prod: follow the newest release"):
-                GitRepository sphone-release  ref.semver → X.Y.Z   (checks out tag vX.Y.Z)
+            → ImageUpdateAutomation eshop-prod commits ONE change to clusters/local on main
+              ("eshop-prod: follow the newest release"):
+                GitRepository eshop-release  ref.semver → X.Y.Z   (checks out tag vX.Y.Z)
                 Kustomization apps-prod       images     → X.Y.Z
-            → apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images (https://prod.sphone.localhost)
+            → apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images (https://prod.eshop.localhost)
 ```
 
 Prod moves to a tag only once its images exist, so it never runs one release's manifests with another release's images. Expect a few minutes from tag push to rollout. To check:
 
 ```bash
 gh run list --workflow ci-release.yml --branch vX.Y.Z      # CI for the tag
-flux get images policy sphone-release                      # latest image = X.Y.Z
+flux get images policy eshop-release                      # latest image = X.Y.Z
 flux get kustomization apps-prod                           # Applied revision: vX.Y.Z@sha1:...
-kubectl -n sphone-prod get deploy -o wide                  # images :X.Y.Z
-curl -k https://prod.sphone.localhost/api/product-categories
+kubectl -n eshop-prod get deploy -o wide                  # images :X.Y.Z
+curl -k https://prod.eshop.localhost/api/product-categories
 ```
 
 ### Releasing
@@ -163,16 +163,16 @@ Releasing is a **human step**: agents are not allowed to push release tags, so a
 
 It refuses when the commit to tag carries a GitHub skip-ci marker (`[skip ci]`, `[ci skip]`, …). GitHub skips every push workflow on such a commit, and a tag push counts. The tag would then never build and, being immutable, could only be replaced by the next version. That is what happened to `v0.1.0`, so the first release is `v0.1.1`. For the same reason, Flux's commit templates carry no skip-ci marker: CI ignores pushes that only touch `deploy/**` or `clusters/**` instead, and CI's `repo rules` job fails if a marker comes back. Keep markers out of your own commit messages too, even quoted, unless you mean them.
 
-Before the first release there is nothing for prod to run: the GitRepository `sphone-release` points at `v0.0.0` (which never exists), so it, the ImagePolicy `sphone-release` and `apps-prod` show not Ready (`no match found for semver: 0.0.0`). That is expected; they turn Ready a few minutes after the first release tag is pushed.
+Before the first release there is nothing for prod to run: the GitRepository `eshop-release` points at `v0.0.0` (which never exists), so it, the ImagePolicy `eshop-release` and `apps-prod` show not Ready (`no match found for semver: 0.0.0`). That is expected; they turn Ready a few minutes after the first release tag is pushed.
 
 Things to know:
 
-- **Newest wins.** The ImagePolicy selects the highest semver release across all series, so a patch on an older series (`v1.0.5` while `v2.0.0` is out) is built and released but does not replace the newer version in `sphone-prod`.
+- **Newest wins.** The ImagePolicy selects the highest semver release across all series, so a patch on an older series (`v1.0.5` while `v2.0.0` is out) is built and released but does not replace the newer version in `eshop-prod`.
 - **Prod-only changes** (e.g. a prod patch in `deploy/apps/prod`) are released like code: land them on `main` (and the release branch, if it should ship as a patch), then tag.
 - **Services finish building at different times.** The release is detected from `eshop-api`'s `X.Y.Z` tag; a service whose image is pushed a minute later just retries its image pull until it exists.
-- **Rollback** = ship the next patch (tags are immutable). In an emergency, suspend the automation (`flux suspend image update sphone-prod`) and set `ref.semver` of `sphone-release` and the `images` of `apps-prod` in `clusters/local/` to an earlier release in a PR; resume afterwards.
+- **Rollback** = ship the next patch (tags are immutable). In an emergency, suspend the automation (`flux suspend image update eshop-prod`) and set `ref.semver` of `eshop-release` and the `images` of `apps-prod` in `clusters/local/` to an earlier release in a PR; resume afterwards. Releases before `v0.2.0` run under the old names (`sphone-prod`, `prod.sphone.localhost`): rolling back to one works only while `main` still has the temporary entries for them (docs/setup.md, "Moving to eShop").
 - **Release dry run** without a tag: Actions → CI / Release → Run workflow with `version` = `0.0.0-test.N` (any branch). It builds, scans and pushes every service as that pre-release tag and publishes no Release. It is never deployed.
-- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry (with the `flux-system:sphone-release` marker) to `apps-prod` in `clusters/local/apps.yaml`; its HTTPRoutes are moved to `prod.sphone.localhost` automatically.
+- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry (with the `flux-system:eshop-release` marker) to `apps-prod` in `clusters/local/apps.yaml`; its HTTPRoutes are moved to `prod.eshop.localhost` automatically.
 
 ## Why tags rather than branches
 

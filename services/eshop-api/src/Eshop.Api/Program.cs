@@ -56,7 +56,7 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     await scope.ServiceProvider.GetRequiredService<EshopDbContext>().Database.MigrateAsync();
 }
 
-// Staff accounts come from per-environment configuration (SOPS Secret sphone-api-staff in the cluster).
+// Staff accounts come from per-environment configuration (SOPS Secret eshop-api-staff in the cluster).
 await StaffAccounts.ProvisionAsync(app.Services, app.Configuration, CancellationToken.None);
 
 app.UseExceptionHandler();

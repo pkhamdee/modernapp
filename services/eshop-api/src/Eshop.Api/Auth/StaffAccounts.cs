@@ -6,7 +6,7 @@ namespace Eshop.Api.Auth;
 
 /// <summary>
 /// Provisions Staff accounts from configuration (<c>Staff:Accounts:N:Username|Password|DisplayName</c>). In the
-/// cluster these come from the per-environment SOPS Secret <c>sphone-api-staff</c>, so no password is ever in
+/// cluster these come from the per-environment SOPS Secret <c>eshop-api-staff</c>, so no password is ever in
 /// git in plain text. Runs at startup: missing accounts are created, and an account whose configured password
 /// changed gets the new one (the Secret is the source of truth).
 /// </summary>

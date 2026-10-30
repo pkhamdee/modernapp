@@ -1,5 +1,5 @@
 // Tiny server-rendered pages. Links are RELATIVE because the Gateway serves this app under a
-// path prefix (https://sphone.localhost/thirdparty-mock/...), so an absolute "/x" would escape it.
+// path prefix (https://eshop.localhost/thirdparty-mock/...), so an absolute "/x" would escape it.
 
 export function escapeHtml(value: string): string {
   return value

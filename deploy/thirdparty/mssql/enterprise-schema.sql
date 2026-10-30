@@ -16,7 +16,7 @@ IF OBJECT_ID(N'hp.contract', N'U') IS NULL
 CREATE TABLE hp.contract
 (
     contract_no        varchar(16)    NOT NULL CONSTRAINT pk_hp_contract PRIMARY KEY,
-    source_system      varchar(10)    NOT NULL CONSTRAINT df_hp_contract_source DEFAULT ('SPHONE'),
+    source_system      varchar(10)    NOT NULL CONSTRAINT df_hp_contract_source DEFAULT ('ESHOP'),
     customer_id_no     char(13)       NOT NULL,
     customer_name      nvarchar(200)  NOT NULL,
     customer_mobile_no varchar(10)    NOT NULL,
@@ -37,6 +37,16 @@ CREATE TABLE hp.contract
     last_updated_at    datetime2(3)   NOT NULL CONSTRAINT df_hp_contract_updated DEFAULT (SYSUTCDATETIME()),
     row_ver            rowversion     NOT NULL
 );
+GO
+
+-- Databases created before the rename to eShop (#50) have another source_system default: bring it up to date.
+IF EXISTS (SELECT 1 FROM sys.default_constraints
+           WHERE name = N'df_hp_contract_source' AND parent_object_id = OBJECT_ID(N'hp.contract')
+             AND definition <> N'(''ESHOP'')')
+BEGIN
+    ALTER TABLE hp.contract DROP CONSTRAINT df_hp_contract_source;
+    ALTER TABLE hp.contract ADD CONSTRAINT df_hp_contract_source DEFAULT ('ESHOP') FOR source_system;
+END;
 GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'ix_hp_contract_row_ver')

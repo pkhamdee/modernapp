@@ -6,10 +6,10 @@ Spec: issue #1; vocabulary: [GLOSSARY.md](GLOSSARY.md); decisions: [docs/adr/](d
 
 | Environment | URL | Deployed from |
 | --- | --- | --- |
-| sphone-dev | https://sphone.localhost | every push to `main` |
-| sphone-prod | https://prod.sphone.localhost | release tags `vX.Y.Z` |
+| eshop-dev | https://eshop.localhost | every push to `main` |
+| eshop-prod | https://prod.eshop.localhost | release tags `vX.Y.Z` |
 
-Mocks (SMS inbox, ID Verification / Credit Check, eShop Co. Enterprise System admin tool): https://sphone.localhost/thirdparty-mock/
+Mocks (SMS inbox, ID Verification / Credit Check, eShop Co. Enterprise System admin tool): https://eshop.localhost/thirdparty-mock/
 
 ## The demo
 
@@ -21,7 +21,7 @@ Mocks (SMS inbox, ID Verification / Credit Check, eShop Co. Enterprise System ad
 5. **Simulate Payment** in the admin tool; the Payment shows on the Customer's Contract within about 30 seconds.
 6. Separately, Staff create an Auction and add Lots; an ID-verified Customer bids and wins when it closes.
 
-`cd e2e && npm run e2e` runs all of it in a browser (add `E2E_BASE_URL=https://prod.sphone.localhost` for prod).
+`cd e2e && npm run e2e` runs all of it in a browser (add `E2E_BASE_URL=https://prod.eshop.localhost` for prod).
 
 ## Docs
 

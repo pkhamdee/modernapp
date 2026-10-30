@@ -1,7 +1,7 @@
-# sphone-dev follows main: CI pushes ghcr.io/pkhamdee/<service>:main-<sha>-<unix-ts>; each ImagePolicy picks the
+# eshop-dev follows main: CI pushes ghcr.io/pkhamdee/<service>:main-<sha>-<unix-ts>; each ImagePolicy picks the
 # newest by timestamp, and the ImageUpdateAutomation rewrites the setter markers in kustomization.yaml and
 # commits to main. To add a service: one ImageRepository + ImagePolicy below, and one `images:` entry with a
-# `# {"$imagepolicy": "sphone-dev:<service>:tag"}` marker in kustomization.yaml.
+# `# {"$imagepolicy": "eshop-dev:<service>:tag"}` marker in kustomization.yaml.
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
@@ -93,7 +93,7 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
-  name: sphone-dev
+  name: eshop-dev
 spec:
   interval: 1m
   sourceRef:
@@ -109,7 +109,7 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
       messageTemplate: |
-        sphone-dev: update images
+        eshop-dev: update images
 
         {{ range .Changed.Changes -}}
         - {{ .OldValue }} -> {{ .NewValue }}

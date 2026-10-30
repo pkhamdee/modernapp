@@ -1,23 +1,23 @@
-# sphone-prod = one release tag, manifests and images alike (docs/git-workflow.md "How a tag reaches sphone-prod").
+# eshop-prod = one release tag, manifests and images alike (docs/git-workflow.md "How a tag reaches eshop-prod").
 #
 #   git push origin vX.Y.Z
 #     -> CI builds every service as ghcr.io/pkhamdee/<service>:X.Y.Z
-#     -> ImagePolicy sphone-release sees X.Y.Z, the newest release (plain X.Y.Z only: never main-<sha> or the
+#     -> ImagePolicy eshop-release sees X.Y.Z, the newest release (plain X.Y.Z only: never main-<sha> or the
 #        CI dry run's 0.0.0-test.N)
-#     -> ImageUpdateAutomation sphone-prod commits ONE change to main (clusters/local): GitRepository
-#        sphone-release -> tag vX.Y.Z and apps-prod's images -> X.Y.Z ("sphone-prod: follow the newest release")
+#     -> ImageUpdateAutomation eshop-prod commits ONE change to main (clusters/local): GitRepository
+#        eshop-release -> tag vX.Y.Z and apps-prod's images -> X.Y.Z ("eshop-prod: follow the newest release")
 #     -> apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images.
 #
 # The tag is followed only once its images exist, so prod never runs a release's manifests with another
 # release's images. Nothing is ever written to a release branch or tag.
 #
 # Before the first release (no vX.Y.Z yet) the ImagePolicy has nothing to select and the GitRepository points at
-# v0.0.0, which does not exist: sphone-release, sphone-release's ImagePolicy and apps-prod are not Ready ("no
-# match found for semver: 0.0.0"). That is the expected state until the first tag; sphone-dev is unaffected.
+# v0.0.0, which does not exist: eshop-release, eshop-release's ImagePolicy and apps-prod are not Ready ("no
+# match found for semver: 0.0.0"). That is the expected state until the first tag; eshop-dev is unaffected.
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: GitRepository
 metadata:
-  name: sphone-release
+  name: eshop-release
   namespace: flux-system
 spec:
   interval: 1m
@@ -26,7 +26,7 @@ spec:
     name: flux-system
   ref:
     # Exactly the release whose images are out (written by the automation below; do not edit by hand).
-    semver: "0.1.1" # {"$imagepolicy": "flux-system:sphone-release:tag"}
+    semver: "0.1.1" # {"$imagepolicy": "flux-system:eshop-release:tag"}
   ignore: |
     /*
     !/deploy/
@@ -38,7 +38,7 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:
-  name: sphone-release
+  name: eshop-release
   namespace: flux-system
 spec:
   image: ghcr.io/pkhamdee/eshop-api
@@ -47,11 +47,11 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImagePolicy
 metadata:
-  name: sphone-release
+  name: eshop-release
   namespace: flux-system
 spec:
   imageRepositoryRef:
-    name: sphone-release
+    name: eshop-release
   filterTags:
     pattern: '^[0-9]+\.[0-9]+\.[0-9]+$'
   policy:
@@ -61,7 +61,7 @@ spec:
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageUpdateAutomation
 metadata:
-  name: sphone-prod
+  name: eshop-prod
   namespace: flux-system
 spec:
   interval: 1m
@@ -77,7 +77,7 @@ spec:
         name: fluxcdbot
         email: fluxcdbot@users.noreply.github.com
       messageTemplate: |
-        sphone-prod: follow the newest release
+        eshop-prod: follow the newest release
 
         {{ range .Changed.Changes -}}
         - {{ .OldValue }} -> {{ .NewValue }}

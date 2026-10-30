@@ -1,5 +1,5 @@
-# Image service. Each environment's overlay supplies the `sphone-node-api-smb` secret (its own SMB account) for
-# its own share on the shared Samba in namespace thirdparty: SMB_SHARE is sphone-dev here, prod patches it.
+# Image service. Each environment's overlay supplies the `eshop-node-api-smb` secret (its own SMB account) for
+# its own share on the shared Samba in namespace thirdparty: SMB_SHARE is eshop-dev here, prod patches it.
 # Only /images (public read) is routed by the Gateway; /internal/images (upload, private read) is reached by
 # eshop-api in-cluster at http://eshop-node-api/internal/images/...
 apiVersion: apps/v1
@@ -32,16 +32,16 @@ spec:
             - name: SMB_HOST
               value: samba.thirdparty.svc.cluster.local
             - name: SMB_SHARE
-              value: sphone-dev
+              value: eshop-dev
             - name: SMB_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: sphone-node-api-smb
+                  name: eshop-node-api-smb
                   key: username
             - name: SMB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: sphone-node-api-smb
+                  name: eshop-node-api-smb
                   key: password
           ports:
             - name: http
@@ -100,11 +100,11 @@ metadata:
   name: eshop-node-api
 spec:
   parentRefs:
-    - name: sphone
+    - name: eshop
       namespace: gateway
       sectionName: https
   hostnames:
-    - sphone.localhost
+    - eshop.localhost
   rules:
     - matches:
         - path:

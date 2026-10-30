@@ -1,5 +1,5 @@
 # Arrows: Gateway (Traefik) -> thirdparty-mock (developer pages: home, SMS inbox, Enterprise admin);
-# eshop-api (sphone-dev, sphone-prod) -> thirdparty-mock; thirdparty-mock -> SQL Server (admin tool).
+# eshop-api (eshop-dev, eshop-prod) -> thirdparty-mock; thirdparty-mock -> SQL Server (admin tool).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -23,9 +23,9 @@ spec:
             matchExpressions:
               - key: kubernetes.io/metadata.name
                 operator: In
-                values: [sphone-dev, sphone-prod]
-          # sphone-api: its name in releases up to v0.1.x, still running in sphone-prod until v0.2.0 (#49).
-          # Drop it once prod runs v0.2.0 or later.
+                values: [eshop-dev, eshop-prod, sphone-prod]
+          # sphone-prod and sphone-api: prod's namespace and this caller's name in releases up to v0.1.x,
+          # which prod runs until v0.2.0 (#49, #50). Drop both once prod runs v0.2.0 or later (docs/setup.md).
           podSelector:
             matchExpressions:
               - key: app.kubernetes.io/name

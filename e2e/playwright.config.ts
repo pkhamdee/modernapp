@@ -2,8 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 import { baseURL } from './environment'
 
 // Seam 4: the definition-of-done demo in a real browser against a deployed environment (never on every CI run).
-// npm run e2e                                           -> https://sphone.localhost (sphone-dev)
-// E2E_BASE_URL=https://prod.sphone.localhost npm run e2e -> sphone-prod (post-release smoke test)
+// npm run e2e                                          -> https://eshop.localhost (eshop-dev)
+// E2E_BASE_URL=https://prod.eshop.localhost npm run e2e -> eshop-prod (post-release smoke test)
 export default defineConfig({
   testDir: './tests',
   globalSetup: './global-setup.ts',

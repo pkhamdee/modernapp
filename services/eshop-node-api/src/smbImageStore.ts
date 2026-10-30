@@ -12,7 +12,7 @@ export interface SmbOptions {
   /** Samba/Windows host, e.g. samba.thirdparty.svc.cluster.local */
   host: string
   port?: number
-  /** Share name for this environment, e.g. sphone-dev */
+  /** Share name for this environment, e.g. eshop-dev */
   share: string
   domain?: string
   username: string

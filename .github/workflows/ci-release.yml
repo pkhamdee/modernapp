@@ -2,14 +2,14 @@
 #   - push / PR to main or release/*  -> lint + test every service
 #   - push to main                    -> also build changed services for arm64, Trivy scan,
 #                                        push ghcr.io/pkhamdee/<service>:main-<sha>[-<unix-ts>]
-#                                        (Flux image automation deploys the newest to sphone-dev)
+#                                        (Flux image automation deploys the newest to eshop-dev)
 #   - push tag vX.Y.Z                 -> lint + test, validate the tag, build EVERY service, scan,
 #                                        push ghcr.io/pkhamdee/<service>:X.Y.Z, then publish the GitHub Release
-#                                        (Flux then runs tag vX.Y.Z with the X.Y.Z images in sphone-prod)
+#                                        (Flux then runs tag vX.Y.Z with the X.Y.Z images in eshop-prod)
 #   - workflow_dispatch               -> no input, on main: rebuild and push every service as main-<sha>
 #                                        input version=0.0.0-test.N: dry run of the release build on any
 #                                        branch; pushes every service as that pre-release tag, no GitHub Release
-#                                        (never deployed: sphone-prod follows plain X.Y.Z releases only)
+#                                        (never deployed: eshop-prod follows plain X.Y.Z releases only)
 #
 # Adding a service: add a lint/test job below and to `plan.needs`, and an entry in
 # .github/services.json (build context, Dockerfile, source paths). Release builds pick it up automatically.
@@ -201,7 +201,7 @@ jobs:
             version="${TAG#v}"
             matrix="$all"
           elif [ "$EVENT" = "workflow_dispatch" ] && [ -n "$DRY_RUN_VERSION" ]; then
-            # Only 0.0.0-test.N: never deployed (sphone-prod follows plain X.Y.Z releases only), so a dry run is harmless.
+            # Only 0.0.0-test.N: never deployed (eshop-prod follows plain X.Y.Z releases only), so a dry run is harmless.
             if ! [[ "$DRY_RUN_VERSION" =~ ^0\.0\.0-test\.[0-9]+$ ]]; then
               echo "::error::Dry-run version must be 0.0.0-test.N"; exit 1
             fi
@@ -248,13 +248,13 @@ jobs:
       - id: tags
         run: |
           if [ -n "$VERSION" ]; then
-            # Release (X.Y.Z; Flux moves sphone-prod to the newest) or dry run (0.0.0-test.N; never deployed).
+            # Release (X.Y.Z; Flux moves eshop-prod to the newest) or dry run (0.0.0-test.N; never deployed).
             echo "list=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
             echo "scan=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
           else
             sha=$(git rev-parse --short=7 HEAD)
             ts=$(git show -s --format=%ct HEAD)
-            # main-<sha> for humans; main-<sha>-<commit-ts> is what Flux's sphone-dev ImagePolicy orders by.
+            # main-<sha> for humans; main-<sha>-<commit-ts> is what Flux's eshop-dev ImagePolicy orders by.
             echo "list=${IMAGE}:main-${sha},${IMAGE}:main-${sha}-${ts}" >> "$GITHUB_OUTPUT"
             echo "scan=${IMAGE}:main-${sha}" >> "$GITHUB_OUTPUT"
           fi
@@ -308,4 +308,4 @@ jobs:
           images=$(jq -r --arg owner "${GITHUB_REPOSITORY_OWNER}" --arg v "$VERSION" \
             '.[] | "- `ghcr.io/\($owner)/\(.service):\($v)`"' <<<"$SERVICES")
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG" \
-            --notes "$(printf 'Images (deployed to sphone-prod by Flux):\n%s\n' "$images")"
+            --notes "$(printf 'Images (deployed to eshop-prod by Flux):\n%s\n' "$images")"

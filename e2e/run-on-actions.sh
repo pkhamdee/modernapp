@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Run the E2E smoke test (.github/workflows/e2e.yml) on GitHub Actions, on an on-demand runner on this machine.
 #
-#   e2e/run-on-actions.sh                                  # sphone-prod: https://prod.sphone.localhost
-#   e2e/run-on-actions.sh https://sphone.localhost         # sphone-dev
+#   e2e/run-on-actions.sh                                  # eshop-prod: https://prod.eshop.localhost
+#   e2e/run-on-actions.sh https://eshop.localhost          # eshop-dev
 #
 # The cluster is local, so the job must run here. The repository is public, so no runner stays registered:
-# this registers an ephemeral runner (label `sphone-e2e` only, no default `self-hosted` label), dispatches the
+# this registers an ephemeral runner (label `eshop-e2e` only, no default `self-hosted` label), dispatches the
 # workflow to it, and the runner unregisters itself after that one job. On exit (also Ctrl-C) whatever is left
 # is stopped, unregistered and deleted.
 #
@@ -14,9 +14,9 @@
 set -euo pipefail
 
 REPO=pkhamdee/modernapp
-LABEL=sphone-e2e
-BASE_URL=${1:-https://prod.sphone.localhost}
-CACHE=${SPHONE_E2E_RUNNER_CACHE:-$HOME/.cache/sphone-e2e-runner}
+LABEL=eshop-e2e
+BASE_URL=${1:-https://prod.eshop.localhost}
+CACHE=${ESHOP_E2E_RUNNER_CACHE:-$HOME/.cache/eshop-e2e-runner}
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) PLATFORM=osx-arm64 ;;

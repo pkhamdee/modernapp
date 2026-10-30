@@ -1,6 +1,6 @@
 # Local setup
 
-Takes a fresh Mac (Apple Silicon) to a Rancher Desktop k3s cluster that Flux manages from this repo, serving `https://sphone.localhost` (`sphone-dev`) and `https://prod.sphone.localhost` (`sphone-prod`).
+Takes a fresh Mac (Apple Silicon) to a Rancher Desktop k3s cluster that Flux manages from this repo, serving `https://eshop.localhost` (`eshop-dev`) and `https://prod.eshop.localhost` (`eshop-prod`).
 
 ## 1. Rancher Desktop
 
@@ -17,18 +17,20 @@ kubectl config use-context rancher-desktop
 kubectl get nodes
 ```
 
-Rancher Desktop forwards host ports 80 and 443 to Traefik, and macOS resolves every `*.localhost` name to `127.0.0.1`, so `https://sphone.localhost` and `https://prod.sphone.localhost` reach the cluster without editing `/etc/hosts`.
+Rancher Desktop forwards host ports 80 and 443 to Traefik, and macOS resolves every `*.localhost` name to `127.0.0.1`, so `https://eshop.localhost` and `https://prod.eshop.localhost` reach the cluster without editing `/etc/hosts`.
 
 ### Environments and hostnames
 
-Both environments share the one `sphone` Gateway on port 443 and run the same apps with the same paths (`/`, `/api`, `/images`); they are told apart by hostname, so neither ever shadows the other's routes:
+Both environments share the one `eshop` Gateway on port 443 and run the same apps with the same paths (`/`, `/api`, `/images`); they are told apart by hostname, so neither ever shadows the other's routes:
 
 | Environment | Namespace | Follows | URL | Gateway listener |
 | --- | --- | --- | --- | --- |
-| dev | `sphone-dev` | `main` (`main-<sha>` images) | `https://sphone.localhost` | `https` |
-| prod | `sphone-prod` | the newest release tag `vX.Y.Z` (its manifests and its `X.Y.Z` images, docs/git-workflow.md) | `https://prod.sphone.localhost` | `https-prod` (accepts routes from `sphone-prod` only) |
+| dev | `eshop-dev` | `main` (`main-<sha>` images) | `https://eshop.localhost` | `https` |
+| prod | `eshop-prod` | the newest release tag `vX.Y.Z` (its manifests and its `X.Y.Z` images, docs/git-workflow.md) | `https://prod.eshop.localhost` | `https-prod` (accepts routes from `eshop-prod` only) |
 
-Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/sphone-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials.
+Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/eshop-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials.
+
+Until `v0.2.0` is released, prod still runs v0.1.1 under its old names, in `sphone-prod` at `https://prod.sphone.localhost` (temporary Gateway `sphone`): see [Moving to eShop](#moving-to-eshop-49-50).
 
 ### DOCKER_HOST gotcha
 
@@ -83,42 +85,155 @@ Bootstrap installs Flux, commits `clusters/local/flux-system/` to `main` if it c
 
 ```sh
 flux get kustomizations          # flux-system, infra-controllers, infra-configs, thirdparty, apps-dev: Ready; apps-prod: see below
-kubectl get gateway -n gateway   # sphone, PROGRAMMED True
-curl -k https://sphone.localhost/api/product-categories   # catalog JSON from eshop-api
-curl -k https://sphone.localhost                          # eshop-web
-curl -kI https://sphone.localhost/images/public/demo-iphone-17.svg   # a Product photo from eshop-node-api
-curl -I http://sphone.localhost  # 301 to https
-curl -k https://prod.sphone.localhost/api/product-categories   # sphone-prod (after the first release; own database)
-open https://sphone.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-in codes for any mobile number
-open https://sphone.localhost/thirdparty-mock/enterprise/ # mock Enterprise System: pushed Contracts, simulate Payment, cancel
+kubectl get gateway -n gateway   # eshop, PROGRAMMED True
+curl -k https://eshop.localhost/api/product-categories   # catalog JSON from eshop-api
+curl -k https://eshop.localhost                          # eshop-web
+curl -kI https://eshop.localhost/images/public/demo-iphone-17.svg   # a Product photo from eshop-node-api
+curl -I http://eshop.localhost  # 301 to https
+curl -k https://prod.eshop.localhost/api/product-categories   # eshop-prod (after the first release; own database)
+open https://eshop.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-in codes for any mobile number
+open https://eshop.localhost/thirdparty-mock/enterprise/ # mock Enterprise System: pushed Contracts, simulate Payment, cancel
 ```
 
-**`sphone-prod` before the first release.** Prod runs only what a release tag says (docs/git-workflow.md). Until the first `vX.Y.Z` tag has been pushed and its images built, there is nothing to deploy, so the GitRepository `sphone-release`, the ImagePolicy `flux-system/sphone-release` and the Kustomization `apps-prod` are not Ready (`no match found for semver: 0.0.0`) and `https://prod.sphone.localhost` serves nothing. That is expected; they turn Ready a few minutes after the first release (docs/git-workflow.md, "Releasing"). On a cluster bootstrapped before this change, the old `sphone-prod` objects keep running until then and the first release replaces them.
+**`eshop-prod` before the first release.** Prod runs only what a release tag says (docs/git-workflow.md). Until the first `vX.Y.Z` tag has been pushed and its images built, there is nothing to deploy, so the GitRepository `eshop-release`, the ImagePolicy `flux-system/eshop-release` and the Kustomization `apps-prod` are not Ready (`no match found for semver: 0.0.0`) and `https://prod.eshop.localhost` serves nothing. That is expected; they turn Ready a few minutes after the first release (docs/git-workflow.md, "Releasing").
 
-**After the rename to `eshop-*` images (#49).** Human-only, once: when CI has first pushed `ghcr.io/pkhamdee/eshop-api`, `eshop-web`, `eshop-node-api` and `eshop-sync-master`, make each GHCR package public (github.com/pkhamdee?tab=packages → package → Package settings → Change visibility). Until then Flux cannot scan them and the pods cannot pull them, so `sphone-dev` shows ImagePullBackOff and `apps-dev` stays not Ready. The CloudNativePG cluster is now `eshop-db`, so dev starts from an empty database (re-seeded demo data). Contract numbers restart too, and the push never overwrites a Contract number the Enterprise System already has, so also empty `enterprise_dev` (`DELETE FROM hp.payment; DELETE FROM hp.contract;` as `sa`), or a new dev Contract may take over an old one's status and Payments. `sphone-prod` keeps running its `sphone-*` release until `v0.2.0` is tagged.
+**A cluster that ran the old names** (before #49 and #50) needs a few human steps: see [Moving to eShop](#moving-to-eshop-49-50) below.
 
 The certificate comes from a local CA created by cert-manager. To stop browser warnings, trust the CA once:
 
 ```sh
-kubectl -n cert-manager get secret sphone-local-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/sphone-local-ca.crt
-sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/sphone-local-ca.crt
+kubectl -n cert-manager get secret eshop-local-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/eshop-local-ca.crt
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/eshop-local-ca.crt
 ```
 
-Recreating the cluster creates a new CA; remove the old "S Phone Local CA" from Keychain Access and trust the new one.
+Recreating the cluster creates a new CA; remove the old "eShop Local CA" from Keychain Access and trust the new one.
+
+## Moving to eShop (#49, #50)
+
+The rename to eShop (spec #46) moves the environments from `sphone-dev` / `sphone-prod` at `sphone.localhost` /
+`prod.sphone.localhost` to `eshop-dev` / `eshop-prod` at `https://eshop.localhost` / `https://prod.eshop.localhost`,
+with no redirect from the old names and no data migration. A fresh cluster needs none of this section; a cluster that
+ran the old names needs the steps marked **human** (agents don't change the cluster or GitHub settings).
+
+### 1. When #49 is on `main`: make the new images public
+
+**Human**, once: when CI has first pushed `ghcr.io/pkhamdee/eshop-api`, `eshop-web`, `eshop-node-api` and
+`eshop-sync-master`, make each GHCR package public (github.com/pkhamdee?tab=packages → package → Package settings →
+Change visibility). Until then Flux cannot scan them and the pods cannot pull them: dev shows ImagePullBackOff and
+`apps-dev` stays not Ready.
+
+### 2. When #50 is on `main`: dev moves, prod stays on v0.1.1
+
+What Flux does by itself:
+
+- **dev** moves to namespace `eshop-dev` at `https://eshop.localhost`. `infra-controllers` deletes namespace
+  `sphone-dev` with everything in it (its database volume too: StorageClass `local-path` deletes it). Dev starts from
+  an empty database `eshop` (demo data re-seeded), new SMB account and share `eshopdev` / `eshop-dev` (new password),
+  SQL Server login `eshop_sync_dev`, image automation `eshop-dev` (its commits read "eshop-dev: update images").
+  `https://sphone.localhost` is no longer served.
+- **Gateway and certificate**: the Gateway `eshop` serves both eShop names with the certificate
+  `gateway/eshop-localhost-tls`, issued by a **new** local CA `eshop-local-ca` ("eShop Local CA").
+- **prod keeps running v0.1.1** in `sphone-prod` at `https://prod.sphone.localhost`, unchanged, until `v0.2.0` is
+  out. A release's own manifests name its namespace, Gateway, Secrets, SMB account and SQL login, and v0.1.x still
+  uses the old ones, so `main` keeps these **temporary** entries for it, each commented in place:
+  - Namespace `sphone-prod` (`deploy/infrastructure/controllers/namespaces.yaml`);
+  - Gateway `sphone` with only the `https-prod` / `http-prod` listeners for `prod.sphone.localhost`, and its
+    certificate `gateway/sphone-localhost-tls` from the new CA (`deploy/infrastructure/configs/gateway-v0.1-prod.yaml`);
+  - `sphone-prod` and the `sphone-*` caller names in the thirdparty NetworkPolicies
+    (`deploy/thirdparty/{mssql,samba,thirdparty-mock}/network-policy.yaml`);
+  - Samba account `sphoneprod` and share `sphone-prod` (`deploy/thirdparty/samba/samba.yaml`, key `sphoneprod` in
+    `samba-accounts.sops.yaml`, password unchanged because v0.1.1's own Secret holds it);
+  - SQL Server login `sphone_sync_prod` (`deploy/thirdparty/mssql/logins.sql`, same password as `eshop_sync_prod`);
+  - the `ghcr.io/pkhamdee/sphone-*` entries in `apps-prod`'s `images` (`clusters/local/apps.yaml`).
+
+  The Flux objects that drive prod are renamed (GitRepository and ImagePolicy `eshop-release`, ImageUpdateAutomation
+  `eshop-prod`); `apps-prod` keeps its name and re-applies the same v0.1.1. Samba and SQL Server restart once (their
+  configuration changed), so prod's image uploads and sync pause for a minute; on that restart the schema also
+  sets the Contracts' `source_system` default to `ESHOP` in both Enterprise databases. `https://prod.eshop.localhost`
+  answers 404 until `v0.2.0`, and `npm run e2e:prod` targets it, so it is for `v0.2.0` and later. A `v0.1.x` patch
+  release would not reach prod any more (its images are still named `sphone-*`; see #49).
+
+**Human**, after Flux has applied it (`flux get kustomizations` all Ready):
+
+```sh
+# a. Trust the new CA (both hostnames, and the old prod one, now use it); then delete "S Phone Local CA"
+#    in Keychain Access → System.
+kubectl -n cert-manager get secret eshop-local-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > /tmp/eshop-local-ca.crt
+sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain /tmp/eshop-local-ca.crt
+
+# b. Empty the dev Enterprise database, before anyone creates a Contract in the new dev: Contract numbers restart,
+#    and the push never overwrites a Contract number the Enterprise System already has, so an old row would take
+#    over a new Contract's status and Payments. DELETE (not DROP DATABASE), so rowversions keep counting up and the
+#    sync master's pull watermark stays valid. Also drops the old dev login.
+kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
+  '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -b -d enterprise_dev -Q "DELETE FROM hp.payment; DELETE FROM hp.contract; DROP USER IF EXISTS sphone_sync_dev; DROP LOGIN sphone_sync_dev"'
+
+# c. Leftovers (optional): the old CA's key, and dev's old folder on the Samba volume.
+kubectl -n cert-manager delete secret sphone-local-ca --ignore-not-found
+kubectl -n thirdparty exec deploy/samba -c samba -- rm -rf /shares/sphone-dev
+rm -rf ~/.cache/sphone-e2e-runner    # e2e/run-on-actions.sh now caches in ~/.cache/eshop-e2e-runner
+```
+
+If a Kustomization hangs at "Reconciliation in progress" while `sphone-dev` terminates:
+`kubectl -n flux-system rollout restart deploy/kustomize-controller`.
+
+### 3. Cut-over at `v0.2.0`: prod moves
+
+**Human**: release as usual ([Releasing](#releasing)), `scripts/release.sh 0.2.0`. Then, by itself: CI builds
+`eshop-*:0.2.0`; the ImagePolicy `eshop-release` picks `0.2.0`; the automation commits `eshop-release` → `v0.2.0` and
+every `apps-prod` image → `0.2.0` ("eshop-prod: follow the newest release"); `apps-prod` applies v0.2.0's
+`deploy/apps/prod` to `eshop-prod` at `https://prod.eshop.localhost` (empty database) and prunes what v0.1.1 had in
+`sphone-prod`, including its database and volume. `https://prod.sphone.localhost` stops answering.
+
+**Human**, as soon as `flux get kustomization apps-prod` shows `v0.2.0@…` and before using prod:
+
+```sh
+# Empty the prod Enterprise database (same reason and method as dev in step 2b).
+kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
+  '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -b -d enterprise_prod -Q "DELETE FROM hp.payment; DELETE FROM hp.contract"'
+cd e2e && npm run e2e:prod      # smoke test against https://prod.eshop.localhost
+```
+
+### 4. After `v0.2.0` runs in prod: remove the temporary entries
+
+A PR to `main` (`git grep -n -i sphone` lists every line; keep only the history in ADRs and issue links) that:
+
+- deletes `deploy/infrastructure/configs/gateway-v0.1-prod.yaml` and its line in that folder's `kustomization.yaml`;
+- deletes the `sphone-prod` Namespace from `deploy/infrastructure/controllers/namespaces.yaml`;
+- drops `sphone-prod` and the `sphone-*` names from the three thirdparty NetworkPolicies (back to
+  `values: [eshop-dev, eshop-prod]` and a `matchLabels` on the `eshop-*` name);
+- drops the `sphoneprod` account, UID, share and folder from `deploy/thirdparty/samba/samba.yaml`, and the key
+  `sphoneprod` from `samba-accounts.sops.yaml` (`sops deploy/thirdparty/samba/samba-accounts.sops.yaml`);
+- drops the `sphone_sync_prod` lines from `deploy/thirdparty/mssql/logins.sql` and the note in
+  `mssql-credentials.sops.yaml`;
+- drops the `ghcr.io/pkhamdee/sphone-*` entries and their comment from `apps-prod` in `clusters/local/apps.yaml`.
+
+Flux then deletes namespace `sphone-prod` and the Gateway `sphone`. From then on prod can't be rolled back to a
+v0.1.x release. **Human**, after it is applied:
+
+```sh
+kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
+  '/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P "$MSSQL_SA_PASSWORD" -b -d enterprise_prod -Q "DROP USER IF EXISTS sphone_sync_prod; DROP LOGIN sphone_sync_prod"'
+kubectl -n gateway delete secret sphone-localhost-tls --ignore-not-found
+kubectl -n thirdparty exec deploy/samba -c samba -- rm -rf /shares/sphone-prod
+```
+
+Nothing else is needed: the `flux-system/sops-age` key is the same, and GitHub has no required checks that name the
+renamed CI jobs.
 
 ## Staff back office (demo account)
 
-The back office is at `https://sphone.localhost/staff` (prod: `https://prod.sphone.localhost/staff`). Each environment has
+The back office is at `https://eshop.localhost/staff` (prod: `https://prod.eshop.localhost/staff`). Each environment has
 one demo Staff account; its username and password live **only** in the SOPS-encrypted Secret
-`deploy/apps/<env>/sphone-api-staff.sops.yaml` (never in plain text in git). Read them with:
+`deploy/apps/<env>/eshop-api-staff.sops.yaml` (never in plain text in git). Read them with:
 
 ```sh
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/sphone-api-staff.sops.yaml   # or prod
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/eshop-api-staff.sops.yaml   # or prod
 ```
 
 eshop-api provisions the account at startup from `Staff__Accounts__0__Username|Password|DisplayName` (stored as a salted
-PBKDF2 hash). To change the password: `sops deploy/apps/<env>/sphone-api-staff.sops.yaml`, commit, and once Flux applies
-it restart eshop-api (`kubectl -n sphone-<env> rollout restart deploy/eshop-api`); the Secret is the source of truth.
+PBKDF2 hash). To change the password: `sops deploy/apps/<env>/eshop-api-staff.sops.yaml`, commit, and once Flux applies
+it restart eshop-api (`kubectl -n eshop-<env> rollout restart deploy/eshop-api`); the Secret is the source of truth.
 More accounts: add `Staff__Accounts__1__*` env vars from the same kind of Secret.
 
 Running eshop-api locally, give it a Staff account the same way (any password you like, not committed):
@@ -141,17 +256,17 @@ about 2 GB of memory and a slow first start) in the `thirdparty` namespace, shar
 databases `enterprise_dev` and `enterprise_prod`, fake schema `hp.contract` / `hp.payment`
 (`deploy/thirdparty/mssql/enterprise-schema.sql`). The pod's `schema` container creates the databases, applies the
 schema and (re)sets the logins on every start. Passwords are in the SOPS Secret
-`deploy/thirdparty/mssql/mssql-credentials.sops.yaml` (`sa`, `enterprise_admin` for the admin tool, `sphone_sync_dev` /
-`sphone_sync_prod` for eshop-sync-master). Each environment's copy of its sync login is in
-`deploy/apps/<env>/sphone-sync-master-enterprise.sops.yaml` and must match.
+`deploy/thirdparty/mssql/mssql-credentials.sops.yaml` (`sa`, `enterprise_admin` for the admin tool, `eshop_sync_dev` /
+`eshop_sync_prod` for eshop-sync-master). Each environment's copy of its sync login is in
+`deploy/apps/<env>/eshop-sync-master-enterprise.sops.yaml` and must match.
 
-**Admin tool** (story 62): `https://sphone.localhost/thirdparty-mock/enterprise/` → `dev/` or `prod/` lists the Contracts
+**Admin tool** (story 62): `https://eshop.localhost/thirdparty-mock/enterprise/` → `dev/` or `prod/` lists the Contracts
 eshop-sync-master pushed (newest first) with their Payments, and per Contract: **Simulate Payment** (one Installment by
 default; the last one makes it `PAID_OFF`), **Mark overdue / Mark active**, **Cancel Contract**. The same as JSON for
 scripts:
 
 ```sh
-B=https://sphone.localhost/thirdparty-mock/enterprise/dev
+B=https://eshop.localhost/thirdparty-mock/enterprise/dev
 curl -k $B/contracts                                                          # Contracts + Payments
 curl -k -H 'content-type: application/json' -d '{}' $B/contracts/SP-202610-000001/payments    # {amount?, channel?}
 curl -k -H 'content-type: application/json' -d '{"status":"OVERDUE"}' $B/contracts/SP-202610-000001/status
@@ -167,7 +282,7 @@ on the Enterprise `payment_id`). It finds changes by the `row_ver` rowversion wa
 `sync_watermarks`, stored in the same transaction as the copied rows; only committed changes are read
 (`row_ver < MIN_ACTIVE_ROWVERSION()`). The Customer's Contract page therefore lags the admin tool by at most one
 cycle (≈30 s). A Contract cancelled there stops its Handover (ADR-0004). eShop never computes overdue itself.
-Logs: `kubectl -n sphone-dev logs deploy/eshop-sync-master`.
+Logs: `kubectl -n eshop-dev logs deploy/eshop-sync-master`.
 
 Read-only look at the database (sa password from the Secret, never printed):
 
@@ -197,21 +312,21 @@ demo data. It takes about 3–4 minutes (the two parts run in parallel).
 ```sh
 cd e2e
 npm ci && npx playwright install chromium            # once
-npm run e2e                                          # sphone-dev: https://sphone.localhost
-E2E_BASE_URL=https://prod.sphone.localhost npm run e2e   # sphone-prod (same as npm run e2e:prod)
+npm run e2e                                          # eshop-dev: https://eshop.localhost
+E2E_BASE_URL=https://prod.eshop.localhost npm run e2e   # eshop-prod (same as npm run e2e:prod)
 npm run report                                       # HTML report of the last run (traces of failures)
 ```
 
-- **Staff credentials** come from the environment's SOPS Secret (`deploy/apps/<env>/sphone-api-staff.sops.yaml`),
+- **Staff credentials** come from the environment's SOPS Secret (`deploy/apps/<env>/eshop-api-staff.sops.yaml`),
   decrypted at run time by `global-setup.ts` with `sops` and the age key (`SOPS_AGE_KEY_FILE`, default
   `~/.config/sops/age/keys.txt`) into the test process's environment only; it is never printed or written to the
   report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|prod` overrides the environment name
   derived from the host (it picks the Enterprise database in the admin tool and the Secret).
 - The certificate is self-signed; the test accepts it.
-- **GitHub Actions**: `e2e/run-on-actions.sh [base_url]` (default `https://prod.sphone.localhost`) runs
+- **GitHub Actions**: `e2e/run-on-actions.sh [base_url]` (default `https://prod.eshop.localhost`) runs
   `.github/workflows/e2e.yml` on GitHub Actions with the job on this machine, which GitHub-hosted runners can't
   reach. The repository is public, so no runner stays registered: the script registers an ephemeral runner
-  (label `sphone-e2e` only), dispatches the workflow to it, follows the run (the Playwright report is a run
+  (label `eshop-e2e` only), dispatches the workflow to it, follows the run (the Playwright report is a run
   artifact) and unregisters the runner when it ends. It needs `gh` logged in as a repo admin, and `sops` with the
   age key: the job decrypts the Staff account itself, so no Staff secrets are stored in GitHub. Workflow runs
   from outside contributors' pull requests always wait for approval (repo setting), so nobody else's workflow
@@ -219,7 +334,7 @@ npm run report                                       # HTML report of the last r
 
 ## Releasing
 
-Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is your step: agents can't push release tags. Cut the release, let CI build it and Flux deploy it to `sphone-prod`, then run the smoke test there:
+Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is your step: agents can't push release tags. Cut the release, let CI build it and Flux deploy it to `eshop-prod`, then run the smoke test there:
 
 ```sh
 # 1. Tag (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
@@ -229,12 +344,12 @@ scripts/release.sh 0.2.0
 gh run watch "$(gh run list --workflow ci-release.yml --branch v0.2.0 --limit 1 --json databaseId --jq '.[0].databaseId')"
 
 # 3. Flux follows the release a few minutes later (clusters/local/prod-release.yaml)
-flux get images policy sphone-release -n flux-system  # 0.2.0
+flux get images policy eshop-release -n flux-system  # 0.2.0
 flux get kustomization apps-prod                      # Applied revision: v0.2.0@…
-kubectl -n sphone-prod get deploy -o wide             # images :0.2.0, all READY
-curl -k https://prod.sphone.localhost/api/product-categories
+kubectl -n eshop-prod get deploy -o wide             # images :0.2.0, all READY
+curl -k https://prod.eshop.localhost/api/product-categories
 
-# 4. Post-release smoke test against sphone-prod (locally, or on GitHub Actions)
+# 4. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
 cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh
 ```
 
@@ -245,13 +360,13 @@ A fix after the release goes to `release/0.x` **and** `main`, then the next patc
 | Path | What | Flux Kustomization |
 | --- | --- | --- |
 | `clusters/local/` | Cluster entry point: `flux-system/` (generated by bootstrap) plus the Kustomizations below | `flux-system` |
-| `clusters/local/prod-release.yaml` | What `sphone-prod` runs: GitRepository `sphone-release` (one release tag) and the image automation that moves it, and `apps-prod`'s image tags, to the newest `X.Y.Z` release once its images exist, committed to `main` | `flux-system` |
+| `clusters/local/prod-release.yaml` | What `eshop-prod` runs: GitRepository `eshop-release` (one release tag) and the image automation that moves it, and `apps-prod`'s image tags, to the newest `X.Y.Z` release once its images exist, committed to `main` | `flux-system` |
 | `deploy/infrastructure/controllers/` | Namespaces, Traefik `HelmChartConfig` (Gateway API provider), cert-manager, CloudNativePG operator | `infra-controllers` |
-| `deploy/infrastructure/configs/` | Issuers, the `sphone` Gateway and its certificate, platform secrets | `infra-configs` (after controllers) |
+| `deploy/infrastructure/configs/` | Issuers, the `eshop` Gateway and its certificate, platform secrets | `infra-configs` (after controllers) |
 | `deploy/apps/base/` | One directory per app, environment-neutral | – |
-| `deploy/apps/dev/` | `sphone-dev` overlay, follows `main` | `apps-dev` (after configs) |
+| `deploy/apps/dev/` | `eshop-dev` overlay, follows `main` | `apps-dev` (after configs) |
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
-| `deploy/apps/prod/` | `sphone-prod` overlay, applied as it is in the newest release tag, served at `prod.sphone.localhost` | `apps-prod` (after configs; source `sphone-release`) |
+| `deploy/apps/prod/` | `eshop-prod` overlay, applied as it is in the newest release tag, served at `prod.eshop.localhost` | `apps-prod` (after configs; source `eshop-release`) |
 | `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, `samba/`: image share with one share per environment, `mssql/`: mock Enterprise System, ...); thirdparty-mock follows `main` via its own image automation | `thirdparty` (after configs) |
 | `services/eshop-api/` | .NET solution: `src/Eshop.Domain`, `src/Eshop.Data` (EF Core, migrations), `src/Eshop.Api`, `src/Eshop.SyncMaster` (eshop-sync-master), `tests/Eshop.Api.Tests` (Seam 1), `tests/Eshop.SyncMaster.Tests` (Seam 2) | – |
 | `services/eshop-web/` | React + Vite + TypeScript, served by Caddy | – |
@@ -275,8 +390,8 @@ dotnet test
 dotnet format --verify-no-changes                                   # lint, as CI runs it
 dotnet tool restore && dotnet ef migrations add <Name> --project src/Eshop.Data
 
-# Run locally: a PostgreSQL on localhost:5432 (user/password/db sphone), then
-docker run -d --name sphone-pg -p 5432:5432 -e POSTGRES_USER=sphone -e POSTGRES_PASSWORD=sphone -e POSTGRES_DB=sphone postgres:18-alpine
+# Run locally: a PostgreSQL on localhost:5432 (user/password/db eshop), then
+docker run -d --name eshop-pg -p 5432:5432 -e POSTGRES_USER=eshop -e POSTGRES_PASSWORD=eshop -e POSTGRES_DB=eshop postgres:18-alpine
 dotnet run --project src/Eshop.Api                                  # http://localhost:5080, migrates and seeds
 # eshop-sync-master needs a SQL Server on localhost:1433 with enterprise_dev and the schema (appsettings.Development.json):
 docker run -d --name enterprise-sql --platform linux/amd64 -p 1433:1433 -e ACCEPT_EULA=Y -e MSSQL_SA_PASSWORD=Local_Dev_Passw0rd mcr.microsoft.com/mssql/server:2022-CU27-ubuntu-22.04
@@ -306,5 +421,5 @@ flux get all -A                             # anything not Ready
 flux logs --level=error
 flux reconcile kustomization flux-system --with-source
 kubectl -n kube-system get job helm-install-traefik   # Traefik config re-applied by k3s
-kubectl describe gateway -n gateway sphone
+kubectl describe gateway -n gateway eshop
 ```
