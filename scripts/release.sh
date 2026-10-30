@@ -55,7 +55,7 @@ for _ in $(seq 30); do
   run=$(gh run list --repo "$REPO" --workflow ci-release.yml --branch "$tag" --limit 1 --json url --jq '.[0].url // empty')
   if [ -n "$run" ]; then
     echo "CI: $run"
-    echo "Then: Flux moves sphone-prod to $version; smoke test with e2e/run-on-actions.sh (docs/setup.md)."
+    echo "Then: Flux moves eshop-prod to $version; smoke test with e2e/run-on-actions.sh (docs/setup.md)."
     exit 0
   fi
   sleep 2

@@ -1,66 +1,66 @@
-# sphone-prod: same apps as sphone-dev, its own database, served at https://prod.sphone.localhost.
+# eshop-prod: same apps as eshop-dev, its own database, served at https://prod.eshop.localhost.
 # Flux applies this folder as it is in the newest release tag vX.Y.Z, with the X.Y.Z images (apps-prod in
 # clusters/local/apps.yaml, clusters/local/prod-release.yaml, docs/git-workflow.md); there are no image tags here.
 # To add a service to prod: add ../base/<service> to resources and an `images:` entry to apps-prod in
-# clusters/local/apps.yaml (with the flux-system:sphone-release marker). HTTPRoutes are moved to the prod hostname
+# clusters/local/apps.yaml (with the flux-system:eshop-release marker). HTTPRoutes are moved to the prod hostname
 # by the patch below automatically.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: sphone-prod
+namespace: eshop-prod
 resources:
   - ../../network-policies/default-deny
-  - sphone-db-credentials.sops.yaml
-  - sphone-api-auth.sops.yaml
-  - sphone-api-staff.sops.yaml
-  - sphone-node-api-smb.sops.yaml
-  - sphone-sync-master-enterprise.sops.yaml
-  - ../base/sphone-db
-  - ../base/sphone-api
-  - ../base/sphone-web
-  - ../base/sphone-node-api
-  - ../base/sphone-sync-master
+  - eshop-db-credentials.sops.yaml
+  - eshop-api-auth.sops.yaml
+  - eshop-api-staff.sops.yaml
+  - eshop-node-api-smb.sops.yaml
+  - eshop-sync-master-enterprise.sops.yaml
+  - ../base/eshop-db
+  - ../base/eshop-api
+  - ../base/eshop-web
+  - ../base/eshop-node-api
+  - ../base/eshop-sync-master
 patches:
-  # Every app route: prod hostname on the Gateway's prod listener (base routes use sphone.localhost / https).
+  # Every app route: prod hostname on the Gateway's prod listener (base routes use eshop.localhost / https).
   - target:
       kind: HTTPRoute
     patch: |-
       - op: replace
         path: /spec/hostnames
-        value: [prod.sphone.localhost]
+        value: [prod.eshop.localhost]
       - op: replace
         path: /spec/parentRefs/0/sectionName
         value: https-prod
-  # sphone-node-api: prod's own share on the shared Samba (thirdparty).
+  # eshop-node-api: prod's own share on the shared Samba (thirdparty).
   - target:
       kind: Deployment
-      name: sphone-node-api
+      name: eshop-node-api
     patch: |-
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: sphone-node-api
+        name: eshop-node-api
       spec:
         template:
           spec:
             containers:
-              - name: sphone-node-api
+              - name: eshop-node-api
                 env:
                   - name: SMB_SHARE
-                    value: sphone-prod
-  # sphone-sync-master: prod's own Enterprise database on the shared SQL Server (thirdparty).
+                    value: eshop-prod
+  # eshop-sync-master: prod's own Enterprise database on the shared SQL Server (thirdparty).
   - target:
       kind: Deployment
-      name: sphone-sync-master
+      name: eshop-sync-master
     patch: |-
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: sphone-sync-master
+        name: eshop-sync-master
       spec:
         template:
           spec:
             containers:
-              - name: sphone-sync-master
+              - name: eshop-sync-master
                 env:
                   - name: ENTERPRISE_DATABASE
                     value: enterprise_prod

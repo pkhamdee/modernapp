@@ -1,6 +1,8 @@
-# sphone-dev follows main (newest main-<sha> images, manifests from main).
-# sphone-prod follows release tags: manifests AND images come from the newest vX.Y.Z release (see prod-release.yaml
-# and docs/git-workflow.md).
+# eshop-dev follows main (newest main-<sha> images, manifests from main).
+# eshop-prod follows release tags: manifests AND images come from the newest vX.Y.Z release (see prod-release.yaml
+# and docs/git-workflow.md). The release's own manifests name its namespace: releases up to v0.1.x still deploy
+# to sphone-prod at prod.sphone.localhost, which main keeps serving until prod runs v0.2.0 (docs/setup.md,
+# "Moving to eShop").
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -37,22 +39,32 @@ spec:
   path: ./deploy/apps/prod
   prune: true
   wait: true
-  # deploy/apps/prod as it is in the release tag (GitRepository sphone-release, prod-release.yaml).
+  # deploy/apps/prod as it is in the release tag (GitRepository eshop-release, prod-release.yaml).
   sourceRef:
     kind: GitRepository
-    name: sphone-release
+    name: eshop-release
   decryption:
     provider: sops
     secretRef:
       name: sops-age
   # The release's images, X.Y.Z for vX.Y.Z. Written by Flux image automation (prod-release.yaml) in the same commit
-  # that moves sphone-release to that tag; do not edit by hand. 0.0.0 = no release yet.
+  # that moves eshop-release to that tag; do not edit by hand. 0.0.0 = no release yet.
+  # Releases up to v0.1.x run the old sphone-* image names (#49 renamed them): keep those entries until prod runs
+  # v0.2.0 or later, then delete them (docs/setup.md, "Moving to eShop"). An entry whose name the release's manifests don't use changes nothing.
   images:
     - name: ghcr.io/pkhamdee/sphone-api
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: ghcr.io/pkhamdee/sphone-web
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: ghcr.io/pkhamdee/sphone-node-api
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
     - name: ghcr.io/pkhamdee/sphone-sync-master
-      newTag: 0.1.1 # {"$imagepolicy": "flux-system:sphone-release:tag"}
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+    - name: ghcr.io/pkhamdee/eshop-api
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+    - name: ghcr.io/pkhamdee/eshop-web
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+    - name: ghcr.io/pkhamdee/eshop-node-api
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}
+    - name: ghcr.io/pkhamdee/eshop-sync-master
+      newTag: 0.1.1 # {"$imagepolicy": "flux-system:eshop-release:tag"}

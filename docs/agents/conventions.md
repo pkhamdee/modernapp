@@ -1,7 +1,7 @@
 # Conventions and gotchas for agents
 
 What the code does not tell you at a glance. Commands, layout and setup live in `docs/setup.md`
-("Developing", "Repo layout"); releases and how a tag reaches `sphone-prod` in `docs/git-workflow.md`; domain
+("Developing", "Repo layout"); releases and how a tag reaches `eshop-prod` in `docs/git-workflow.md`; domain
 terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather than repeating them.
 
 ## Local environment
@@ -24,31 +24,31 @@ terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather 
 - **Scripted API checks**: macOS `/bin/bash` 3.2 mangles Thai/multibyte JSON inside `"$(curl -d ...)"`; use Python
   `urllib` for anything with Thai text.
 - **Shared cluster**: the cluster also runs unrelated workloads: only touch namespaces this repo manages
-  (sphone-dev, sphone-prod, thirdparty, gateway, cert-manager, cnpg-system, flux-system).
+  (eshop-dev, eshop-prod, thirdparty, gateway, cert-manager, cnpg-system, flux-system).
 - **Secrets in output**: decrypt Staff/DB/SMB passwords only inside a script that uses them and never prints them.
   Printing them is blocked for agents and leaks into logs.
 - `gh pr create` can fail with "connection reset by peer" after the push succeeded: check
   `gh pr list --head <branch>` before retrying.
 
-## sphone-api (.NET solution `services/sphone-api`)
+## eshop-api (.NET solution `services/eshop-api`)
 
 Layout:
 
-- `Sphone.Domain` holds the rules and no infrastructure: one folder per area. Reuse the domain rules
+- `Eshop.Domain` holds the rules and no infrastructure: one folder per area. Reuse the domain rules
   (`Catalog/InstallmentPlan`, `Applications/Eligibility`, `Customers/SmsCode`) instead of re-implementing them.
-- `Sphone.Data`: `SphoneDbContext`, one `Configurations/<X>Configuration.cs` per entity, snake_case names via
+- `Eshop.Data`: `EshopDbContext`, one `Configurations/<X>Configuration.cs` per entity, snake_case names via
   EFCore.NamingConventions, `Seed/DemoData.cs`.
-- `Sphone.Api`: one folder per feature with `<X>Endpoints.cs` exposing `Map<X>Endpoints(this IEndpointRouteBuilder)`,
+- `Eshop.Api`: one folder per feature with `<X>Endpoints.cs` exposing `Map<X>Endpoints(this IEndpointRouteBuilder)`,
   wired on the `/api` group in `Program.cs`. Health probes `/healthz/live|ready` sit outside `/api` so the Gateway
   never exposes them.
-- `Sphone.SyncMaster` (sphone-sync-master) lives in the same solution and references `Sphone.Data`; it never migrates.
+- `Eshop.SyncMaster` (eshop-sync-master) lives in the same solution and references `Eshop.Data`; it never migrates.
 - Package versions only in `Directory.Packages.props` (`<PackageReference>` without `Version`). Warnings are errors,
   including NuGet audit (`NU1903`): a vulnerable transitive package is fixed by pinning a `PackageVersion` plus a
   direct reference (see `System.Security.Cryptography.Pkcs`).
 
 Adding an endpoint:
 
-1. Test first in `tests/Sphone.Api.Tests/<Area>/<X>Tests.cs`: `public sealed class XTests(SphoneApiFactory api)`,
+1. Test first in `tests/Eshop.Api.Tests/<Area>/<X>Tests.cs`: `public sealed class XTests(EshopApiFactory api)`,
    `api.CreateClient()` (or a signed-in client, below), `TestContext.Current.CancellationToken`. Assert on HTTP
    responses only; read JSON into private records.
 2. Add `Map<X>Endpoints` (a `MapGroup`, private static handlers, `internal sealed record <X>Response` DTOs) and wire
@@ -66,7 +66,7 @@ Rules the code follows:
 
 - **Time** comes only from the injected `TimeProvider` (singleton in `Program.cs`). Timeouts too:
   `new CancellationTokenSource(delay, timeProvider)` so the fake clock fires them. Bangkok dates/times via
-  `Sphone.Domain.Bangkok`.
+  `Eshop.Domain.Bangkok`.
 - **First writer wins** (no-tie Bids, Lot edits, payment vs forfeit): one conditional `ExecuteUpdateAsync`
   (`WHERE ... AND <precondition>`) and act on rows affected = 0. A read-then-write loses races; the concurrency
   tests catch it.
@@ -78,7 +78,7 @@ Rules the code follows:
   `SqlQuery<int>(...).ToListAsync()`; composing it with `SingleAsync` makes EF wrap the INSERT in a subquery.
 - Contract, outbox row and Handover are written in one explicit transaction (`OfferEndpoints.Accept`).
 
-Test harness (Seam 1, `SphoneApiFactory`):
+Test harness (Seam 1, `EshopApiFactory`):
 
 - One `[assembly: AssemblyFixture]`: one Postgres container and one host for every test, started in
   `InitializeAsync` to avoid double seeding. All tests share one database: create unique data per test
@@ -98,19 +98,19 @@ Test harness (Seam 1, `SphoneApiFactory`):
   `[Collection(nameof(ProductCategorySettings))]` and restore in `finally`.
 - Filter tests with `dotnet test <proj> --filter "FullyQualifiedName~X"` (vstest runner).
 
-Third-party ports: interface + real adapter in `Sphone.Api/ThirdParty/` (typed `HttpClient`), registered in
+Third-party ports: interface + real adapter in `Eshop.Api/ThirdParty/` (typed `HttpClient`), registered in
 `AddThirdParties` against `ThirdParty:BaseUrl`; an in-memory fake in `tests/.../Fakes/` exposed as a property on
-`SphoneApiFactory`. The image service port is `Images/IImageStore`; store only the image ID in Postgres.
+`EshopApiFactory`. The image service port is `Images/IImageStore`; store only the image ID in Postgres.
 
-Migrations: `dotnet ef migrations add <Name> --project src/Sphone.Data` (`docs/setup.md`). Only sphone-api applies
+Migrations: `dotnet ef migrations add <Name> --project src/Eshop.Data` (`docs/setup.md`). Only eshop-api applies
 them, at startup (`Database:MigrateOnStartup`). Demo data is seeded by `UseSeeding`/`UseAsyncSeeding` into empty
 tables only (no `HasData`, so identity sequences stay right). On a model-snapshot conflict after a rebase, or after
-a bad `migrations remove`: check out `origin/main`'s `SphoneDbContextModelSnapshot.cs`, delete your migration files
+a bad `migrations remove`: check out `origin/main`'s `EshopDbContextModelSnapshot.cs`, delete your migration files
 and run `migrations add` again.
 
-sphone-sync-master:
+eshop-sync-master:
 
-- Seam-2 tests (`tests/Sphone.SyncMaster.Tests`, `SyncMasterFactory`) run Postgres and an amd64 SQL Server; CI keeps
+- Seam-2 tests (`tests/Eshop.SyncMaster.Tests`, `SyncMasterFactory`) run Postgres and an amd64 SQL Server; CI keeps
   them on x86 (`ubuntu-latest`). Locally SQL Server runs under Rosetta (~20 s start).
 - A new pulled Enterprise table follows `Sync/ContractPull`: `row_ver` watermark per table in `sync_watermarks`,
   bounded by `MIN_ACTIVE_ROWVERSION()`, saved in the same transaction under `pg_advisory_xact_lock`. Without the
@@ -118,14 +118,14 @@ sphone-sync-master:
 - Enterprise tables have triggers, so `UPDATE ... OUTPUT` without `INTO` fails; use rows affected. Schema changes go
   in `deploy/thirdparty/mssql/enterprise-schema.sql` (idempotent); the tests run the same file.
 - SqlClient needs ICU: SyncMaster sets `InvariantGlobalization=false` and uses the `-chiseled-extra` image.
-  sphone-api stays invariant. Npgsql connection strings include `GSS Encryption Mode=Disable` (libgssapi noise on
+  eshop-api stays invariant. Npgsql connection strings include `GSS Encryption Mode=Disable` (libgssapi noise on
   chiseled images).
 
-## Node services (`sphone-node-api`, `thirdparty-mock`)
+## Node services (`eshop-node-api`, `thirdparty-mock`)
 
 - Node 24 runs `src/*.ts` directly (type stripping): no build step, imports end in `.ts`, `erasableSyntaxOnly`,
   so no enums or parameter properties. `npm run lint` / `typecheck` as in `package.json`.
-- sphone-node-api: ports as interfaces (`ImageStore`) with adapters (`folderImageStore`, `smbImageStore`). Tests
+- eshop-node-api: ports as interfaces (`ImageStore`) with adapters (`folderImageStore`, `smbImageStore`). Tests
   (`node --test`) start the real service on port 0 via `test/harness.ts` and assert on HTTP only;
   `startSmbService()` puts `test/fake-smbclient/` (an ESM script: use `import`) on `PATH`. Extend that fake when the
   adapter sends a new smbclient command.
@@ -138,7 +138,7 @@ sphone-sync-master:
   `/thirdparty-mock/`). State is in memory, one replica. Test ID numbers (outcome by last two digits) are in
   `src/testIdNumbers.ts`; the 30-day re-apply wait follows the ID number, so use a fresh prefix per demo run.
 
-## sphone-web (`services/sphone-web`)
+## eshop-web (`services/eshop-web`)
 
 - Routes in `src/routes.tsx`; signed-in sections are nested layout routes guarded by `<RequireRole role=.../>`, and
   the back office is its own `/staff` branch with `StaffLayout`. Pages in `src/pages/` (`src/pages/staff/`), API
@@ -146,8 +146,45 @@ sphone-sync-master:
 - Fetch only through `src/api/client.ts` (`useApi`, `useReloadableApi`, `apiGet/Post/Put/GetBlob`,
   `problemMessage`): it adds the Bearer token and clears the session on a 401. Format money, dates and Flat Rate
   with `src/format.ts` (Asia/Bangkok).
-- Thai copy, mobile-first (`src/index.css`, 640 px column, 44 px touch targets).
+- Thai copy, mobile-first, plain CSS in one file (`src/index.css`), 44 px touch targets, visible `:focus-visible`.
+- Breakpoints are defined once, in the comment at the top of `src/index.css`: phone (base, 360 px and up), tablet
+  `min-width: 768px`, wide `min-width: 1024px`, desktop `min-width: 1280px`. Use only these widths in media
+  queries and name the breakpoint in a comment. Customer content sits in `.frame` (centred, max 1200 px); the
+  header shows a menu button below 768 px and a top bar from 768 px (`AppLayout.tsx`). Staff screens
+  (`StaffLayout.tsx`) have a sidebar from 1280 px and a slide-out menu behind a button below it. Both menus use
+  `layout/useMenu.ts` for open/closed state, Escape-to-close from anywhere and focus back on the button (pass it
+  the nav's ref to also move focus to its first link on opening, as Staff does); reuse it for any new menu.
+- Lists of rows (Staff lists, including an Auction's Lots, and a Contract's Installments and Payments) use `components/ResponsiveList.tsx`, not
+  per-page markup: give it `label`, `columns` (`{ label, cell, align?, block? }`, the first one names the row),
+  `rows`, `rowKey`, and optionally `rowLink` / `dimmed` / `summary` (a total line: a table footer row, or a line
+  after the cards). It renders a `<table>` from 1280 px and a list of cards
+  (each value beside its column label) below, never both. Forms and action buttons inside a row go in a
+  `block: true` column (as the Staff Lot actions and closed-Lot settlement do).
+- Customer forms (sign-in, SMS code, Apply, Offer) and short personal screens (Application, Account, Contracts)
+  sit in `.column-narrow` (~480 px, centred, at every size); a Contract in `.column-wide` (960 px). e2e checks a
+  form with `expectFormColumn(field)` and the 360 px phone with `expectFitsNarrowestPhone(page)`.
+- Staff sign-in is a `.column-narrow` card too. Other Staff forms (Product, Lot, new Auction) are `.staff-form`
+  cards (full width on a phone, at most 760 px) and put two related fields in a `.staff-field-pair` (stacked on a
+  phone, side by side from 768 px). e2e runs a Staff session at 360 px with `atNarrowestPhone(page)` and checks
+  pairs with `placement(first, second)`.
+- e2e: Customer sections are reached with `navigateTo(page, 'สินค้า' | 'ประมูล' | 'บัญชีของฉัน' | 'เข้าสู่ระบบ')`
+  in `e2e/tests/steps.ts` (menu on phone, top bar on desktop), Staff sections with `navigateStaffTo(page, …)`
+  (slide-out menu on phone, sidebar on desktop); `isPhone()` tells the projects apart. `expectResponsiveList`
+  checks a list is a table on desktop and labelled cards on phone.
+- Card lists (catalog Products, Auction Lots) use `ul.card-grid` (1 / 2 / 3 / 4 columns at phone / tablet / wide /
+  desktop). Product and Lot pages use `.detail-layout` with `.detail-media` (photo) and `.detail-panel`: stacked
+  below 1024 px, side by side from it. e2e checks layouts by position, not class: `gridColumns(list)` and
+  `placement(photo, panel)` (`'beside' | 'below' | 'overlapping'`) in `e2e/tests/steps.ts`; `cardsAcross(list)` reads columns from
+  the first card's width when a grid holds fewer cards than columns (an Auction with one Lot). The Lot page
+  (`.lot-detail`) puts its bidding panel before the photos in the page, so it is on screen unscrolled on a phone;
+  from 1024 px the photos sit left of it. That is fine for focus order only while the photo area holds nothing
+  focusable.
 - The image drops all capabilities: Caddy's file capability is removed with `setcap -r` and it listens on 8080.
+- Service worker (ADR 0006, #59): hand-written `src/pwa/sw.js`, built to `/sw.js` by the `serviceWorker()` plugin in
+  `vite.config.ts` (it injects the build's file list and a content hash), registered in production builds only.
+  It pre-caches built static files and `public/offline.html` and never intercepts `/api/*`, `/images/*` or
+  `/thirdparty-mock/*`; don't add runtime caching of API responses. Anything in `public/` is pre-cached, so keep
+  it small. `vite dev` has no worker; test it with `vite build && vite preview` or the image.
 
 ## Deploy and Flux
 
@@ -161,19 +198,21 @@ sphone-sync-master:
   (`# {"$imagepolicy": "<ns>:<policy>:tag"}`) that Flux rewrites. Leave the tag values to Flux.
 - Flux image-automation commits touch only `deploy/**` and `clusters/**`, which CI ignores (`paths-ignore`); a commit
   mixing code with those paths still runs CI.
-- Base HTTPRoutes are dev-shaped (`sphone.localhost`, `sectionName: https`, one parentRef); the prod overlay patches
+- Base HTTPRoutes are dev-shaped (`eshop.localhost`, `sectionName: https`, one parentRef); the prod overlay patches
   every HTTPRoute. Keep prod hostnames out of base.
-- **NetworkPolicies** (default deny in sphone-dev, sphone-prod, thirdparty; enforced by k3s' kube-router): each call
+- **NetworkPolicies** (default deny in eshop-dev, eshop-prod, thirdparty; enforced by k3s' kube-router): each call
   needs both ends, caller egress and callee ingress. Egress names the container port number (e.g. 8080), not the
   Service port. Gateway = `kube-system` namespace + `app.kubernetes.io/name: traefik`; same-namespace callers by
-  podSelector only (keeps dev and prod apart); thirdparty callees list callers by namespace `In [sphone-dev,
-  sphone-prod]`. Copy `deploy/apps/base/sphone-api/network-policy.yaml`.
+  podSelector only (keeps dev and prod apart); thirdparty callees list callers by namespace `In [eshop-dev,
+  eshop-prod]`. Copy `deploy/apps/base/eshop-api/network-policy.yaml`.
+- Until prod runs `v0.2.0`, `main` also carries commented, temporary `sphone-*` entries that keep the v0.1.x release
+  running (docs/setup.md, "Moving to eShop"); `git grep -n -i sphone` lists them. Don't copy them into new work.
 - **Secrets**: one SOPS file per env, `deploy/apps/{dev,prod}/<name>.sops.yaml`, listed in that overlay's
   resources; `.sops.yaml` encrypts only `data`/`stringData`. Pairs that must match: each env's
-  `sphone-node-api-smb` with `deploy/thirdparty/samba/samba-accounts.sops.yaml`, and each env's
-  `sphone-sync-master-enterprise` with `deploy/thirdparty/mssql/mssql-credentials.sops.yaml`.
+  `eshop-node-api-smb` with `deploy/thirdparty/samba/samba-accounts.sops.yaml`, and each env's
+  `eshop-sync-master-enterprise` with `deploy/thirdparty/mssql/mssql-credentials.sops.yaml`.
 - Images whose binary carries a file capability (Caddy, `sqlservr`) fail with "operation not permitted" under
-  `drop: [ALL]`: remove the capability in the image (as sphone-web does) or add `NET_BIND_SERVICE` back (as mssql
+  `drop: [ALL]`: remove the capability in the image (as eshop-web does) or add `NET_BIND_SERVICE` back (as mssql
   does).
 - Trivy fails CI on any CRITICAL, fixed or not. For an unfixable one add a `.trivyignore` (CVE, reason, date) and
   pass it to the action.
@@ -185,7 +224,7 @@ sphone-sync-master:
 - `deploy/thirdparty` (Flux Kustomization `thirdparty`, namespace `thirdparty`) holds mocks shared by both envs:
   thirdparty-mock, Samba (one share per env), SQL Server (one database per env). It follows `main` with its own image
   automation, independent of releases.
-- thirdparty-mock is routed only on `https://sphone.localhost/thirdparty-mock/`, never on `prod.sphone.localhost`;
+- thirdparty-mock is routed only on `https://eshop.localhost/thirdparty-mock/`, never on `prod.eshop.localhost`;
   prod's SMS inbox and Enterprise admin (`.../enterprise/prod/`) are reached there too (`e2e/environment.ts`).
 - SQL Server is amd64-only and runs under Rosetta with no nodeSelector. Its `schema` sidecar re-applies the schema
   on every start; changing a file in its ConfigMap generator restarts the pod.

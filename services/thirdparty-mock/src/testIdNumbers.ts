@@ -32,7 +32,7 @@ export function exampleIdNumber(suffix: string): string {
 }
 
 const FIRST_NAMES = ['สมชาย', 'สมหญิง', 'วิชัย', 'มาลี', 'ประเสริฐ', 'สุดา', 'อนันต์', 'กมลา']
-const LAST_NAMES = ['ใจดี', 'รักไทย', 'มั่นคง', 'ศรีสวัสดิ์', 'สุขสันต์', 'บุญมี']
+const LAST_NAMES = ['ใจดี', 'รักไทย', 'มั่นคง', 'ทองดี', 'สุขสันต์', 'บุญมี']
 
 /** A stable fake Thai name for an ID number. */
 export function fullNameFor(idNumber: string): string {

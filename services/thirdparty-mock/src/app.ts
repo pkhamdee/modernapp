@@ -8,7 +8,7 @@ import { log } from './log.ts'
 import { smsRouter } from './sms.ts'
 import { exampleIdNumber, TEST_OUTCOMES } from './testIdNumbers.ts'
 
-// thirdparty-mock: ONE service pretending to be every third party sphone-api talks to.
+// thirdparty-mock: ONE service pretending to be every third party eshop-api talks to.
 // Each mocked party is a module exporting a Router, mounted below. To add one: create src/<party>.ts
 // exporting `<party>Router()`, mount it here behind `simulatedDelay` (from delay.ts) if its responses
 // should honour the adjustable delay, and link it from the home page.
@@ -58,7 +58,7 @@ function homePage(): string {
     `<h1>thirdparty-mock</h1>
 <ul>
   <li><a href="sms/inbox">กล่องข้อความ SMS (mock inbox)</a></li>
-  <li><a href="enterprise/">Enterprise System (Contracts, simulate Payment, cancel)</a></li>
+  <li><a href="enterprise/">eShop Co. Enterprise System (Contracts, simulate Payment, cancel)</a></li>
 </ul>
 <section>
   <h2>Response delay</h2>
@@ -66,7 +66,7 @@ function homePage(): string {
     <label>ms <input name="ms" type="number" min="0" max="120000" step="100" value="${currentDelayMs()}"></label>
     <button type="submit">Save</button>
   </form>
-  <p class="muted">Applies to ID Verification and Credit Check (not SMS). sphone-api gives up after 60 s (Rejected, timed out): set 65000 to demo it.</p>
+  <p class="muted">Applies to ID Verification and Credit Check (not SMS). eshop-api gives up after 60 s (Rejected, timed out): set 65000 to demo it.</p>
 </section>
 <section>
   <h2>Test ID numbers</h2>

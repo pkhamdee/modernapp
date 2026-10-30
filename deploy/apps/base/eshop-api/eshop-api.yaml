@@ -1,0 +1,126 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eshop-api
+  labels:
+    app.kubernetes.io/name: eshop-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: eshop-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: eshop-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: eshop-api
+          # Tag set per environment by the overlay (Flux image automation).
+          image: ghcr.io/pkhamdee/eshop-api
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-db-credentials
+                  key: password
+            - name: ConnectionStrings__Eshop
+              value: Host=eshop-db-rw;Database=eshop;Username=eshop;Password=$(DB_PASSWORD);GSS Encryption Mode=Disable
+            # Migrations and demo seed data are applied at startup (EF Core takes a lock, so this is safe).
+            - name: Database__MigrateOnStartup
+              value: "true"
+            # Token signing key, per environment (deploy/apps/<env>/eshop-api-auth.sops.yaml).
+            - name: Auth__SigningKey
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-api-auth
+                  key: signing-key
+            # SMS, ID Verification and Credit Check go to the shared thirdparty-mock.
+            - name: ThirdParty__BaseUrl
+              value: http://thirdparty-mock.thirdparty.svc.cluster.local/
+            # Product photos (and later ID card photos) go to the image service's internal API.
+            - name: ImageService__BaseUrl
+              value: http://eshop-node-api/
+            # Demo Staff account, per environment (deploy/apps/<env>/eshop-api-staff.sops.yaml); provisioned at startup.
+            - name: Staff__Accounts__0__Username
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-api-staff
+                  key: username
+            - name: Staff__Accounts__0__Password
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-api-staff
+                  key: password
+            - name: Staff__Accounts__0__DisplayName
+              value: พนักงานสาธิต
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz/live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz/live
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: http
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 384Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eshop-api
+spec:
+  selector:
+    app.kubernetes.io/name: eshop-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: eshop-api
+spec:
+  parentRefs:
+    - name: eshop
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - eshop.localhost
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      backendRefs:
+        - name: eshop-api
+          port: 80

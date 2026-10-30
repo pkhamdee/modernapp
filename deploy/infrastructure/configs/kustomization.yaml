@@ -3,4 +3,5 @@ kind: Kustomization
 resources:
   - issuers.yaml
   - gateway.yaml
+  - gateway-v0.1-prod.yaml # temporary, until prod runs v0.2.0 (see the file)
   - sops-smoke-test.sops.yaml

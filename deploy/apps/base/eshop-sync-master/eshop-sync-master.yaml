@@ -1,0 +1,87 @@
+# eshop-sync-master: every 30 s pushes queued Contracts (contract_outbox) to the Enterprise System (SQL Server in
+# thirdparty, database enterprise_<env>) and, from #10, pulls changes back. No Service: its only HTTP surface is
+# the probes. One replica (cycles are idempotent, but one is enough). Never migrates PostgreSQL (eshop-api does).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eshop-sync-master
+  labels:
+    app.kubernetes.io/name: eshop-sync-master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: eshop-sync-master
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: eshop-sync-master
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: eshop-sync-master
+          # Tag set per environment by the overlay (Flux image automation).
+          image: ghcr.io/pkhamdee/eshop-sync-master
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-db-credentials
+                  key: password
+            - name: ConnectionStrings__Eshop
+              value: Host=eshop-db-rw;Database=eshop;Username=eshop;Password=$(DB_PASSWORD);GSS Encryption Mode=Disable
+            # Per environment: the prod overlay patches it to enterprise_prod.
+            - name: ENTERPRISE_DATABASE
+              value: enterprise_dev
+            # Per-environment SQL Server login (deploy/apps/<env>/eshop-sync-master-enterprise.sops.yaml).
+            - name: ENTERPRISE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-sync-master-enterprise
+                  key: username
+            - name: ENTERPRISE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-sync-master-enterprise
+                  key: password
+            - name: ConnectionStrings__Enterprise
+              value: Server=mssql.thirdparty.svc.cluster.local,1433;Database=$(ENTERPRISE_DATABASE);User Id=$(ENTERPRISE_USER);Password=$(ENTERPRISE_PASSWORD);Encrypt=True;TrustServerCertificate=True
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz/live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz/live
+              port: http
+          # Ready = PostgreSQL and the Enterprise database both answer.
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: http
+            periodSeconds: 15
+          resources:
+            requests:
+              cpu: 20m
+              memory: 96Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -4,7 +4,7 @@
 # The image is linux/amd64 only. The node is arm64: Rancher Desktop runs it under Rosetta (its manifest is
 # single-platform, so the arm64 node pulls it as is). No arch nodeSelector, since there is no amd64 node; it
 # needs Rosetta enabled in Rancher Desktop and about 2 GB of memory.
-# Admin tool (list Contracts, simulate Payment, cancel): https://sphone.localhost/thirdparty-mock/enterprise/
+# Admin tool (list Contracts, simulate Payment, cancel): https://eshop.localhost/thirdparty-mock/enterprise/
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:

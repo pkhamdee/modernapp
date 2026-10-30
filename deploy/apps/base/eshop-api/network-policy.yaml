@@ -1,0 +1,45 @@
+# Arrows: Gateway (Traefik) -> eshop-api -> its PostgreSQL, eshop-node-api (same namespace)
+# and thirdparty-mock (thirdparty). The other ends allow these in their own policies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: eshop-api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: eshop-api
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - port: http
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              cnpg.io/cluster: eshop-db
+      ports:
+        - port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: eshop-node-api
+      ports:
+        - port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: thirdparty
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: thirdparty-mock
+      ports:
+        - port: 8080

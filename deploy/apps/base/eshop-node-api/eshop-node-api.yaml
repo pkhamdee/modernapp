@@ -1,0 +1,115 @@
+# Image service. Each environment's overlay supplies the `eshop-node-api-smb` secret (its own SMB account) for
+# its own share on the shared Samba in namespace thirdparty: SMB_SHARE is eshop-dev here, prod patches it.
+# Only /images (public read) is routed by the Gateway; /internal/images (upload, private read) is reached by
+# eshop-api in-cluster at http://eshop-node-api/internal/images/...
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eshop-node-api
+  labels:
+    app.kubernetes.io/name: eshop-node-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: eshop-node-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: eshop-node-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: eshop-node-api
+          # Tag set per environment by the overlay (Flux image automation).
+          image: ghcr.io/pkhamdee/eshop-node-api
+          env:
+            - name: SMB_HOST
+              value: samba.thirdparty.svc.cluster.local
+            - name: SMB_SHARE
+              value: eshop-dev
+            - name: SMB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-node-api-smb
+                  key: username
+            - name: SMB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: eshop-node-api-smb
+                  key: password
+          ports:
+            - name: http
+              containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz/live
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz/live
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eshop-node-api
+spec:
+  selector:
+    app.kubernetes.io/name: eshop-node-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# Only public images are reachable from outside; the app itself refuses everything under /images except
+# /images/public/<id>, and /internal is never routed.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: eshop-node-api
+spec:
+  parentRefs:
+    - name: eshop
+      namespace: gateway
+      sectionName: https
+  hostnames:
+    - eshop.localhost
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /images
+      backendRefs:
+        - name: eshop-node-api
+          port: 80
