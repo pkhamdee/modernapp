@@ -16,10 +16,10 @@ public sealed class InstallmentTests(SphoneApiFactory api)
         // iPhone 17 128GB: ฿29,900, mobile phone 1.5% / month, longest Term 24.
         var id = await ProductId("mobile-phone", "iPhone 17 128GB");
 
-        var quote = await _client.GetFromJsonAsync<InstallmentPlans>($"/api/products/{id}/installment-plans", Ct);
+        var offered = await _client.GetFromJsonAsync<InstallmentPlans>($"/api/products/{id}/installment-plans", Ct);
 
-        Assert.NotNull(quote);
-        Assert.Equal((29_900m, 0m), (quote.Price, quote.DownPayment));
+        Assert.NotNull(offered);
+        Assert.Equal((29_900m, 0m), (offered.Price, offered.DownPayment));
         Assert.Equal(
             [
                 new Plan(6, 5_432m, 32_592m),    // 29,900 x 1.09 / 6  = 5,431.83
@@ -28,7 +28,7 @@ public sealed class InstallmentTests(SphoneApiFactory api)
                 new Plan(18, 2_110m, 37_980m),   // 29,900 x 1.27 / 18 = 2,109.61
                 new Plan(24, 1_695m, 40_680m),   // 29,900 x 1.36 / 24 = 1,694.33
             ],
-            quote.Plans);
+            offered.Plans);
     }
 
     [Fact]
@@ -36,11 +36,11 @@ public sealed class InstallmentTests(SphoneApiFactory api)
     {
         var id = await ProductId("mobile-phone", "iPhone 17 128GB");
 
-        var quote = await _client.GetFromJsonAsync<InstallmentPlans>(
+        var offered = await _client.GetFromJsonAsync<InstallmentPlans>(
             $"/api/products/{id}/installment-plans?downPayment=5900", Ct);
 
         // Financed 24,000 x 1.18 / 12 = 2,360 exactly; total = 5,900 + 12 x 2,360.
-        Assert.Equal(new Plan(12, 2_360m, 34_220m), quote!.Plans.Single(p => p.Term == 12));
+        Assert.Equal(new Plan(12, 2_360m, 34_220m), offered!.Plans.Single(p => p.Term == 12));
     }
 
     [Fact]
@@ -49,10 +49,10 @@ public sealed class InstallmentTests(SphoneApiFactory api)
         // Samsung fridge: ฿15,990, electrical appliance 1.25% / month, longest Term 18.
         var id = await ProductId("electrical-appliance", "ตู้เย็น 2 ประตู Samsung 13.8 คิว");
 
-        var quote = await _client.GetFromJsonAsync<InstallmentPlans>($"/api/products/{id}/installment-plans", Ct);
+        var offered = await _client.GetFromJsonAsync<InstallmentPlans>($"/api/products/{id}/installment-plans", Ct);
 
-        Assert.Equal([6, 10, 12, 18], quote!.Plans.Select(p => p.Term));
-        Assert.Equal(new Plan(18, 1_089m, 19_602m), quote.Plans[^1]); // 15,990 x 1.225 / 18 = 1,088.21
+        Assert.Equal([6, 10, 12, 18], offered!.Plans.Select(p => p.Term));
+        Assert.Equal(new Plan(18, 1_089m, 19_602m), offered.Plans[^1]); // 15,990 x 1.225 / 18 = 1,088.21
     }
 
     [Fact]
@@ -63,10 +63,10 @@ public sealed class InstallmentTests(SphoneApiFactory api)
         // Term 10: 2,750 x 1.15 / 10 = 316.25 -> not offered (nor any longer Term).
         var id = await ProductId("ipad", "iPad (A16) Wi-Fi 128GB");
 
-        var quote = await _client.GetFromJsonAsync<InstallmentPlans>(
+        var offered = await _client.GetFromJsonAsync<InstallmentPlans>(
             $"/api/products/{id}/installment-plans?downPayment=10150", Ct);
 
-        Assert.Equal([new Plan(6, 500m, 13_150m)], quote!.Plans);
+        Assert.Equal([new Plan(6, 500m, 13_150m)], offered!.Plans);
     }
 
     [Fact]
