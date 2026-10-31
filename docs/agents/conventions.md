@@ -252,6 +252,12 @@ Agents are denied these; ask the user, giving the exact command:
 - restarting Flux controllers (e.g. `kubectl -n flux-system rollout restart deploy/kustomize-controller` when
   Kustomizations hang at "Reconciliation in progress");
 - making a new GHCR package public (the `gh` token has no packages scope);
-- pushing release branches and tags, and dispatching the release workflow (`docs/git-workflow.md`, "Releasing").
+- pushing release branches and tags, and dispatching the release workflow (`docs/git-workflow.md`, "Releasing");
+  `scripts/release.sh X.Y.Z-rc.N` is how a release candidate is cut, and the release tag `vX.Y.Z` comes only from
+  sign-off (`gh workflow run sign-off.yml --ref main -f version=X.Y.Z-rc.N`, a maintainer's step; its logic is
+  `scripts/sign-off.sh`, tested with fake `gh`/`crane` in `scripts/tests/release-scripts.sh`);
+- creating or renewing repo secrets such as `PROMOTION_TOKEN` (`docs/setup.md`, "Promotion token"); test
+  `scripts/release.sh`, `scripts/check-release-tag.sh` and `scripts/promotion-pr.sh` with
+  `scripts/tests/release-scripts.sh` (throwaway local repos), never against GitHub.
 
 `gh pr merge <n> --squash --delete-branch` works for agents only as a standalone command, not inside a compound one.

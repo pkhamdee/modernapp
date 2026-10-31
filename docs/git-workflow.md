@@ -32,12 +32,15 @@ Production state is defined by **tags**, not branches.
 
 ## Tags
 
-- Format: `vMAJOR.MINOR.PATCH` (semantic versioning), e.g. `v1.0.0`, `v1.0.1`.
-- Always **annotated**: `git tag -a vX.Y.Z -m "Release X.Y.Z"`. Never use lightweight tags for releases.
+- Format: `vMAJOR.MINOR.PATCH` (semantic versioning), e.g. `v1.0.0`, `v1.0.1`, for a **release**, and
+  `vMAJOR.MINOR.PATCH-rc.N` for a **release candidate** of it, e.g. `v1.0.0-rc.1`, `v1.0.0-rc.2`.
+- A person tags only release candidates (`scripts/release.sh X.Y.Z-rc.N`). The release tag `vX.Y.Z` is made by the
+  **"Sign off release candidate"** workflow, on the signed-off candidate's own commit ([Releasing](#releasing)).
+- Always **annotated** (`git tag -a`). Never use lightweight tags for releases or candidates.
 - Tag only on a `release/N.x` branch, never on `main`.
 - Never move or delete a pushed release tag. If a release is bad, ship the next patch version.
 
-Git itself does not stop anyone from force-moving or deleting a tag. On GitHub, the **"Protect release tags"** ruleset (Settings → Rules → Rulesets) blocks deletion, update and force-push of any `v*` tag, with no bypass.
+Git itself does not stop anyone from force-moving or deleting a tag. On GitHub, the **"Protect release tags"** ruleset (Settings → Rules → Rulesets) blocks deletion, update and force-push of any `v*` tag, with no bypass. It doesn't restrict creating tags, so release candidates (`scripts/release.sh`) and sign-off's `vX.Y.Z` (pushed with `PROMOTION_TOKEN`) need no bypass; once pushed, a candidate tag is as permanent as a release tag. Branches have no ruleset, so CI may push `promote/*` branches.
 
 ## Lifecycle
 
@@ -65,16 +68,15 @@ After the freeze:
 - New features go to `main` only.
 - Fixes for 1.x go to `release/1.x` **and** `main`.
 
-### 3. Tag a release
+### 3. Tag a release candidate, then sign it off
 
 ```bash
-git checkout release/1.x
-git pull origin release/1.x
-git tag -a v1.0.0 -m "Release 1.0.0"
-git push origin v1.0.0
+scripts/release.sh 1.0.0-rc.1      # annotated v1.0.0-rc.1 on the head of release/1.x, pushed
 ```
 
-Pushing the tag triggers the CI/CD release build. The branch stays open for future patches.
+Pushing the tag triggers the CI/CD build of the candidate, which opens a QA promotion PR. Once QA has tested it,
+sign-off tags `v1.0.0` on the same commit ([Releasing](#releasing)). A fix found in QA lands on `release/1.x` (and
+`main`) and becomes `v1.0.0-rc.2`. The branch stays open for future patches.
 
 ### 4. Patch release (also used for hotfixes)
 
@@ -91,10 +93,8 @@ git checkout main
 git cherry-pick <fix-commit>
 git push origin main
 
-# Tag the patch
-git checkout release/1.x
-git tag -a v1.0.1 -m "Release 1.0.1 — <what was fixed>"
-git push origin v1.0.1
+# A candidate for the patch; sign-off then tags v1.0.1
+scripts/release.sh 1.0.1-rc.1
 ```
 
 ### 5. Next minor release
@@ -104,7 +104,7 @@ At the next freeze, fork the next series branch (e.g. `release/2.x`) from `main`
 ## Fix routing at a glance
 
 ```
-fix ──► release/1.x ──► tag v1.0.1 ──► CI/CD release build
+fix ──► release/1.x ──► tag v1.0.1-rc.1 ──► CI/CD build ──► QA ──► sign-off: tag v1.0.1
           │
           └── cherry-pick ──► main
 ```
@@ -125,8 +125,10 @@ Defined in `.github/workflows/ci-release.yml`:
 - Pushes and PRs to `main` and `release/*` lint and test every service. Pushes to `release/*` publish nothing.
 - Every push, PR and tag also runs the SAST gate (Semgrep, fails on ERROR) and the dependency-scan gate (Trivy over the lockfiles, fails on critical) from `scripts/gates/`, keeping their reports as artifacts (`docs/setup.md`, "Running the gates locally").
 - Pushes to `main` also build the changed services' images as `main-<sha>`; Flux deploys them to `eshop-dev` (`https://eshop.localhost`).
-- Pushing a `v*` tag lints and tests, validates the tag (must be `vX.Y.Z`, annotated, and on a `release/N.x` branch), builds **every** service in `.github/services.json` for arm64, gates and scans them (below), pushes `docker.io/pkhamdee/<service>:X.Y.Z`, and only then publishes the GitHub Release with generated notes.
-- **Release gates before any push** (ADR 0007), on `main` pushes, release tags and release dry runs, never on pull requests:
+- Pushing a **release-candidate** tag `vX.Y.Z-rc.N` lints and tests, validates the tag (annotated, and on a `release/N.x` branch; `scripts/check-release-tag.sh`), builds **every** service in `.github/services.json` for arm64, gates and scans them (below), pushes `docker.io/pkhamdee/<service>:X.Y.Z-rc.N`, and only then opens the **QA promotion PR** ([Releasing](#releasing)).
+- Pushing a plain **release** tag `vX.Y.Z` only lints and tests: `plan` skips it with a notice, because sign-off made it and copies the candidate's images instead of rebuilding them. Sign-off itself is `.github/workflows/sign-off.yml`, started by hand ([Releasing](#releasing)). Any other `v*` tag (lightweight, on no release branch, or not `vX.Y.Z[-rc.N]`) fails `plan`.
+- `eshop-dev` never runs release-candidate images: its image policies (`deploy/apps/dev/image-automation.yaml`) take only `main-<sha>-<ts>` tags.
+- **Release gates before any push** (ADR 0007), on `main` pushes, release-candidate tags and release dry runs, never on pull requests:
   `build` (one arm64 job per image, handed on as an artifact) → `gate`: the **temporary copy** of eShop started from
   those images must become healthy and seeded (`scripts/gates/temporary-copy.sh up`; services a `main` push didn't
   rebuild run their newest `main-<sha>-<ts>` build, as `eshop-dev` does), then the gates against it (Locust and ZAP,
@@ -167,7 +169,32 @@ curl -k https://prod.eshop.localhost/api/product-categories
 
 **No release yet.** A tag carries its own overlay (below), and `deploy/apps/qa` first appears in the first release candidate cut after #74 landed, so QA cannot run `v0.2.0` or any earlier tag. Until the first QA promotion, `apps-qa` is suspended by a line ending in `# release-pin-until: qa`, and the pin holds `0.2.0` only as a placeholder (`scripts/pin-release.sh qa` prints it and says QA is not deployed). The first QA promotion is the same one-command edit as any other: `scripts/pin-release.sh qa X.Y.Z-rc.N` sets the pin **and deletes the suspend line**, so merging it deploys QA for the first time. Everything else QA needs (namespace, Gateway listener, certificate name, thirdparty accounts, NetworkPolicies) is shared infrastructure that follows `main`, already in place.
 
-To check what QA runs: `scripts/pin-release.sh qa`, `flux get kustomization apps-qa` (`Applied revision: vX.Y.Z-rc.N@sha1:...`), `kubectl -n eshop-qa get deploy -o wide`.
+To check what QA runs: `scripts/pin-release.sh qa` (what Git asks for), `e2e/check-serving.sh qa X.Y.Z-rc.N` (whether the cluster actually serves it), `flux get kustomization apps-qa` (`Applied revision: vX.Y.Z-rc.N@sha1:...`), `kubectl -n eshop-qa get deploy -o wide`.
+
+### QA test run
+
+Once QA serves a release candidate, QA tests it by running the Playwright UI suite against `https://qa.eshop.localhost` **through CI**, so the run is recorded against that candidate. From this Mac (the cluster is local, so the job runs on an on-demand runner here):
+
+```bash
+e2e/run-on-actions.sh qa X.Y.Z-rc.N      # E2E smoke test workflow, environment qa, version X.Y.Z-rc.N
+```
+
+or Actions → **E2E smoke test** → Run workflow (environment `qa`, version `X.Y.Z-rc.N`) while a runner labelled `eshop-e2e` is online. The run:
+
+- **refuses unless QA is serving exactly that candidate**, asked of the cluster rather than Git (`e2e/check-serving.sh`): `apps-qa` not suspended, Ready, its latest spec applied, last applied revision `vX.Y.Z-rc.N@sha1:...` and every image it sets `X.Y.Z-rc.N`; every Deployment in `eshop-qa` rolled out with its `docker.io/pkhamdee/*` images at `X.Y.Z-rc.N`. `run-on-actions.sh` makes the same check before registering a runner. A merged pin that Flux hasn't applied yet, a suspended QA or a half-finished rollout all refuse; wait until Flux is Ready and run it again;
+- checks the same again **after** the test, and fails if QA moved or was redeployed meanwhile;
+- is named **`E2E qa X.Y.Z-rc.N`**, and its job summary records the environment, the version, the applied revision and every image, and the commit of the test code.
+
+Sign-off looks for **the latest completed QA run of that candidate** by its name, on `main` only (a run dispatched from another branch runs that branch's copy of the workflow, which might skip the check), and requires it to have passed:
+
+```bash
+gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch \
+  --status completed --limit 100 --json databaseId,displayTitle,conclusion,url \
+  --jq '[.[] | select(.displayTitle == "E2E qa X.Y.Z-rc.N")] | first'
+# -> {"conclusion":"success", "databaseId":..., "url":"https://github.com/.../actions/runs/..."}; no run gives null
+```
+
+The same environment-and-version check applies to prod: `e2e/run-on-actions.sh prod X.Y.Z` (run named `E2E prod X.Y.Z`); without a version (`e2e/run-on-actions.sh`, `E2E prod`) it is the plain post-release smoke test, as is `e2e/run-on-actions.sh dev` (`E2E dev`; dev follows `main` and has no version).
 
 ### Promotion and rollback
 
@@ -193,23 +220,60 @@ A release tag also carries **its own overlay**: the environment's manifests come
 
 ### Releasing
 
-Releasing is a **human step**: agents are not allowed to push release tags, so an agent hands this to the user. `scripts/release.sh X.Y.Z` runs the lifecycle above (steps 2 to 4):
+A release goes **release candidate → QA → sign-off → prod**, each step a separate decision:
+
+```
+scripts/release.sh X.Y.Z-rc.N ── tag vX.Y.Z-rc.N on release/N.x
+  └─ CI: build → gates → scan → push X.Y.Z-rc.N images → opens "eshop-qa: deploy vX.Y.Z-rc.N" (QA promotion PR)
+       └─ QA merges it (QA's approval) → Flux deploys the candidate to eshop-qa → QA runs Playwright against QA
+            └─ "Sign off release candidate" workflow → tag vX.Y.Z, X.Y.Z images (same digests), GitHub Release,
+               prod promotion PR → the production approver merges it → Flux deploys eshop-prod
+```
+
+**Cutting a release candidate** is a **human step**: agents are not allowed to push release tags, so an agent hands this to the user. `scripts/release.sh X.Y.Z-rc.N` runs the lifecycle above (steps 2 to 4):
 - It forks `release/<MAJOR>.x` from `origin/main` if that branch doesn't exist yet.
-- It tags the branch head with an annotated `vX.Y.Z` and pushes it, after you confirm.
+- It tags the branch head with an annotated `vX.Y.Z-rc.N` and pushes it, after you confirm.
 - It waits until the tag's CI run has started and prints its URL.
 
-It refuses when the commit to tag carries a GitHub skip-ci marker (`[skip ci]`, `[ci skip]`, …). GitHub skips every push workflow on such a commit, and a tag push counts. The tag would then never build and, being immutable, could only be replaced by the next version. That is what happened to `v0.1.0`, so the first release is `v0.1.1`. For the same reason, Flux's commit templates carry no skip-ci marker: CI ignores pushes that only touch `deploy/**` or `clusters/**` instead, and CI's `repo rules` job fails if a marker comes back. Keep markers out of your own commit messages too, even quoted, unless you mean them.
+It refuses plain `X.Y.Z` (sign-off tags releases), a candidate whose tag exists, and a candidate for a version already released (`vX.Y.Z` exists: cut the next version). Candidates are numbered from `rc.1`; a fix found in QA goes to the release branch (and `main`) and becomes the next `rc.N`.
 
-A release tag does not deploy anything: once its CI run has pushed the images, promote it to prod with a promotion PR ([Promotion and rollback](#promotion-and-rollback)).
+**The QA promotion PR.** When every gate passed and the candidate's images are pushed, CI's `promote-qa` job runs `scripts/promotion-pr.sh qa X.Y.Z-rc.N`: a branch `promote/qa-X.Y.Z-rc.N` from `main` whose only commit is the pin edit (`scripts/pin-release.sh qa X.Y.Z-rc.N`), and a PR into `main` titled `eshop-qa: deploy vX.Y.Z-rc.N`. Its description lists the candidate's commit, its images with their digests, each gate's result and a link to the CI run (the gate reports are that run's artifacts). Merging it is QA's approval; nothing reaches QA otherwise. The job uses the repo secret `PROMOTION_TOKEN` (docs/setup.md, "Promotion token"), because a PR opened with the workflow's own token would run no checks; without the secret it fails saying so, and the PR can be opened by hand with the same script. The first QA promotion also starts `eshop-qa` ([QA](#qa-eshop-qa)). A newer candidate's PR simply supersedes an unmerged older one: close the old one.
+
+**Sign-off** makes the release from the candidate QA tested. QA starts it once the candidate's QA test run passed:
+
+```bash
+gh workflow run sign-off.yml --repo pkhamdee/modernapp --ref main -f version=X.Y.Z-rc.N
+```
+
+or Actions → **Sign off release candidate** → Run workflow (branch `main`, version `X.Y.Z-rc.N`). The workflow (`.github/workflows/sign-off.yml`) only supplies tokens and tools; the decisions are `scripts/sign-off.sh`, tested by `scripts/tests/release-scripts.sh`. It **refuses, changing nothing**, unless:
+
+- it runs from `main`, and the person who started it is a **maintainer** (repo role admin or maintain);
+- `vX.Y.Z-rc.N` is on GitHub, and **`main` pins `eshop-qa` to exactly that candidate** (`scripts/pin-release.sh qa`), with `apps-qa` not suspended;
+- **the latest completed QA run of it on `main` passed** (the query in [QA test run](#qa-test-run)): no run, or a newer failed or cancelled one, refuses. That run asked the cluster that QA served the candidate before and after the test; the hosted runner sign-off runs on can't reach the cluster, so the passing run is the evidence that QA ran it;
+- every candidate image `docker.io/pkhamdee/<service>:X.Y.Z-rc.N` (`.github/services.json`) exists, and no `X.Y.Z` image exists with another digest;
+- `vX.Y.Z` doesn't exist yet, unless an earlier sign-off of this same candidate made it (same commit; the tag message says `Signed off from vX.Y.Z-rc.N by @<who>`). A version released otherwise is final: cut the next one.
+
+Then, in this order:
+
+1. copies each candidate image to `docker.io/pkhamdee/<service>:X.Y.Z` **by digest** (`crane copy <image>@sha256:…`, never rebuilt) and checks the copy has the candidate's digest;
+2. tags **`vX.Y.Z`** (annotated) on the candidate's own commit and pushes it with `PROMOTION_TOKEN`; after the images, so a release tag never names images that don't exist. CI runs for the tag, but `plan` skips a plain `vX.Y.Z` and builds nothing;
+3. publishes the **GitHub Release** `vX.Y.Z`: its images with digests, the candidate and commit, the QA run, who signed off and the sign-off run;
+4. opens the **prod promotion PR** `eshop-prod: deploy vX.Y.Z` (`scripts/promotion-pr.sh prod X.Y.Z`), stating the same. Merging it is the production approval.
+
+Each step is skipped or updated when it is already done (an image with the same digest, the tag on the same commit, an existing Release or PR is updated), so **a sign-off that failed half-way is finished by running it again** with the same version. Sign-off never deploys anything: prod moves only when the prod promotion PR is merged.
+
+`scripts/release.sh` refuses when the commit to tag carries a GitHub skip-ci marker (`[skip ci]`, `[ci skip]`, …). GitHub skips every push workflow on such a commit, and a tag push counts. The tag would then never build and, being immutable, could only be replaced by the next version. That is what happened to `v0.1.0`, so the first release is `v0.1.1`. For the same reason, Flux's commit templates carry no skip-ci marker: CI ignores pushes that only touch `deploy/**` or `clusters/**` instead, and CI's `repo rules` job fails if a marker comes back. Keep markers out of your own commit messages too, even quoted, unless you mean them.
+
+No tag deploys anything by itself: QA and prod move only when their promotion PR is merged ([Promotion and rollback](#promotion-and-rollback)).
 
 Things to know:
 
 - **Any release can be promoted**, in any order: the pin names one exact version, so a patch on an older series (`v1.0.5` while `v2.0.0` is out) reaches prod only if someone promotes it.
-- **Prod-only changes** (e.g. a prod patch in `deploy/apps/prod`) are released like code: land them on `main` (and the release branch, if it should ship as a patch), tag, then promote.
-- **Wait for every image.** Services finish building at different times; promote once the tag's CI run has finished (`gh run list --workflow ci-release.yml --branch vX.Y.Z`).
+- **Prod-only changes** (e.g. a prod patch in `deploy/apps/prod`) are released like code: land them on `main` (and the release branch, if it should ship as a patch), cut a candidate, then promote.
+- **Every image first.** The QA promotion PR is opened only after every service's candidate image is pushed. To promote by hand (`scripts/promotion-pr.sh`), wait until the tag's CI run has finished (`gh run list --workflow ci-release.yml --branch vX.Y.Z-rc.N`).
 - **A bad release** is fixed by the next patch (tags are immutable) and a promotion PR, or by a rollback PR when the schema allows ([Promotion and rollback](#promotion-and-rollback)).
-- **Release dry run** without a tag: Actions → CI / Release → Run workflow with `version` = `0.0.0-test.N` (any branch). It builds, scans and pushes every service as that pre-release tag and publishes no Release. It is never deployed.
-- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry to `apps-prod` in `clusters/local/prod-release.yaml` whose `newTag` line ends in `# release-pin: prod` (holding the current pin); its HTTPRoutes are moved to `prod.eshop.localhost` automatically. Do the same for QA (`deploy/apps/qa`, `apps-qa` in `clusters/local/qa-release.yaml`, `# release-pin: qa`), so QA tests what prod will run. The entry can land before a release with the service is promoted: an `images:` entry that matches no Deployment in the pinned release changes nothing.
+- **Release dry run** without a tag: Actions → CI / Release → Run workflow with `version` = `0.0.0-test.N` (any branch). It builds, gates, scans and pushes every service as that pre-release tag, exactly as for a candidate, but opens no promotion PR. It is never deployed.
+- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every release candidate. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry to `apps-prod` in `clusters/local/prod-release.yaml` whose `newTag` line ends in `# release-pin: prod` (holding the current pin); its HTTPRoutes are moved to `prod.eshop.localhost` automatically. Do the same for QA (`deploy/apps/qa`, `apps-qa` in `clusters/local/qa-release.yaml`, `# release-pin: qa`), so QA tests what prod will run. The entry can land before a release with the service is promoted: an `images:` entry that matches no Deployment in the pinned release changes nothing.
 
 ## Why tags rather than branches
 

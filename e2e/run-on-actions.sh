@@ -1,22 +1,39 @@
 #!/usr/bin/env bash
 # Run the E2E smoke test (.github/workflows/e2e.yml) on GitHub Actions, on an on-demand runner on this machine.
 #
-#   e2e/run-on-actions.sh                                  # eshop-prod: https://prod.eshop.localhost
-#   e2e/run-on-actions.sh https://eshop.localhost          # eshop-dev
+#   e2e/run-on-actions.sh qa 0.3.0-rc.1        # QA's test of release candidate 0.3.0-rc.1 (what sign-off needs)
+#   e2e/run-on-actions.sh                       # eshop-prod: https://prod.eshop.localhost
+#   e2e/run-on-actions.sh prod 0.2.0            # eshop-prod, refusing unless it serves 0.2.0
+#   e2e/run-on-actions.sh dev                   # eshop-dev: https://eshop.localhost
+#
+# Given a version, it first checks here that the environment serves it (e2e/check-serving.sh) and stops before
+# registering anything if not; the job checks again before and after the test. The run is named
+# `E2E <environment>[ <version>]` (e.g. `E2E qa 0.3.0-rc.1`), which is how sign-off finds it.
 #
 # The cluster is local, so the job must run here. The repository is public, so no runner stays registered:
 # this registers an ephemeral runner (label `eshop-e2e` only, no default `self-hosted` label), dispatches the
 # workflow to it, and the runner unregisters itself after that one job. On exit (also Ctrl-C) whatever is left
 # is stopped, unregistered and deleted.
 #
-# Needs: gh (logged in, repo admin), curl, shasum; sops + the age key, so the job can decrypt the Staff account
-# (no Staff secrets are stored in GitHub).
+# Needs: gh (logged in, repo admin), curl, shasum, jq; kubectl pointed at the cluster (the job checks the served
+# version with it); sops + the age key, so the job can decrypt the Staff account (no Staff secrets are stored in
+# GitHub).
 set -euo pipefail
 
 REPO=pkhamdee/modernapp
 LABEL=eshop-e2e
-BASE_URL=${1:-https://prod.eshop.localhost}
+ENVIRONMENT=${1:-prod}
+VERSION=${2:-}
 CACHE=${ESHOP_E2E_RUNNER_CACHE:-$HOME/.cache/eshop-e2e-runner}
+
+case "$ENVIRONMENT" in
+  qa) [ -n "$VERSION" ] || { echo "a QA run needs the release candidate QA serves: e2e/run-on-actions.sh qa X.Y.Z-rc.N" >&2; exit 2; } ;;
+  prod | dev) ;;
+  *) echo "usage: e2e/run-on-actions.sh [prod|qa|dev] [version]   (environment, not a URL)" >&2; exit 2 ;;
+esac
+# The same check the job makes, so a wrong version stops here instead of in a run.
+if [ -n "$VERSION" ]; then "$(dirname "$0")/check-serving.sh" "$ENVIRONMENT" "$VERSION"; fi
+TITLE="E2E $ENVIRONMENT${VERSION:+ $VERSION}"
 
 case "$(uname -s)-$(uname -m)" in
   Darwin-arm64) PLATFORM=osx-arm64 ;;
@@ -72,12 +89,13 @@ echo "runner $name online"
 
 # 3. Dispatch the workflow to it and follow the run.
 since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-gh workflow run e2e.yml --repo "$REPO" --ref main -f base_url="$BASE_URL" -f runner="$LABEL"
+gh workflow run e2e.yml --repo "$REPO" --ref main -f environment="$ENVIRONMENT" -f version="$VERSION" -f runner="$LABEL"
 run_id=
 until [ -n "$run_id" ]; do
   sleep 3
   run_id=$(gh run list --repo "$REPO" --workflow e2e.yml --event workflow_dispatch --limit 5 \
-    --json databaseId,createdAt --jq "[.[] | select(.createdAt >= \"$since\")] | last | .databaseId // empty")
+    --json databaseId,createdAt,displayTitle \
+    --jq "[.[] | select(.createdAt >= \"$since\" and .displayTitle == \"$TITLE\")] | last | .databaseId // empty")
 done
 echo "run https://github.com/$REPO/actions/runs/$run_id"
 gh run watch "$run_id" --repo "$REPO" --interval 15 --exit-status

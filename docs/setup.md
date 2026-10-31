@@ -332,7 +332,7 @@ npm run report                                       # HTML report of the last r
   report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|qa|prod` overrides the environment name
   derived from the host (`qa.` → qa, `prod.` → prod, otherwise dev); it picks the Enterprise database in the admin tool and the Secret.
 - The certificate is self-signed; the test accepts it.
-- **GitHub Actions**: `e2e/run-on-actions.sh [base_url]` (default `https://prod.eshop.localhost`) runs
+- **GitHub Actions**: `e2e/run-on-actions.sh [prod|qa|dev] [version]` (default `prod`, no version) runs
   `.github/workflows/e2e.yml` on GitHub Actions with the job on this machine, which GitHub-hosted runners can't
   reach. The repository is public, so no runner stays registered: the script registers an ephemeral runner
   (label `eshop-e2e` only), dispatches the workflow to it, follows the run (the Playwright report is a run
@@ -340,36 +340,94 @@ npm run report                                       # HTML report of the last r
   age key: the job decrypts the Staff account itself, so no Staff secrets are stored in GitHub. Workflow runs
   from outside contributors' pull requests always wait for approval (repo setting), so nobody else's workflow
   can reach a runner here unreviewed.
+- **QA's test of a release candidate** is `e2e/run-on-actions.sh qa X.Y.Z-rc.N`: only such a run counts for
+  sign-off (git-workflow.md, "QA test run"). Given a version (required for `qa`, optional `X.Y.Z` for `prod`, none
+  for `dev`), the run refuses unless the environment is actually serving it, checked against the cluster by
+  `e2e/check-serving.sh <env> <version>` (Flux applied tag `v<version>` to `apps-<env>`, and every Deployment in
+  `eshop-<env>` finished rolling out with the `<version>` images), before and again after the test. The script makes
+  the check here first, so `e2e/run-on-actions.sh qa 0.3.0-rc.1` while QA serves something else stops at once:
+  `eshop-qa is not serving 0.3.0-rc.1: apps-qa applied v0.3.0-rc.2@sha1:...` (while QA has no release yet:
+  `... apps-qa is suspended ...`). The run is named `E2E <environment>[ <version>]` (`E2E qa 0.3.0-rc.1`) and its
+  summary lists the version, the applied revision and the images. The job uses this machine's `kubectl` and `jq`
+  (the runner inherits the shell's `PATH` and `~/.kube/config`, current context the Rancher Desktop cluster).
+  Tests for the check, with a fake kubectl: `e2e/check-serving.test.sh` (run in CI's `repo rules` job).
 
 ## Releasing
 
-Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is your step: agents can't push release tags. Cut the release and let CI build it, promote it to `eshop-prod` with a promotion PR, then run the smoke test there:
+Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"): release candidate → QA → sign-off → prod. Cutting a
+candidate is your step: agents can't push release tags. Needs the [promotion token](#promotion-token) once.
 
 ```sh
-# 1. Tag (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
-scripts/release.sh 0.2.0
+# 1. Release candidate: tag v0.3.0-rc.1 (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
+scripts/release.sh 0.3.0-rc.1
 
-# 2. Watch CI: test → validate tag → build → temporary copy → scan → push docker.io/pkhamdee/<service>:0.2.0 → GitHub Release
-gh run watch "$(gh run list --workflow ci-release.yml --branch v0.2.0 --limit 1 --json databaseId --jq '.[0].databaseId')"
+# 2. Watch CI: test → validate tag → build → temporary copy and gates → scan → push docker.io/pkhamdee/<service>:0.3.0-rc.1
+#    → opens the QA promotion PR "eshop-qa: deploy v0.3.0-rc.1" (images with digests, gate results, CI run link)
+gh run watch "$(gh run list --workflow ci-release.yml --branch v0.3.0-rc.1 --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh pr list --head promote/qa-0.3.0-rc.1
 
-# 3. Promote: a PR into main that changes only the pin (git-workflow.md, "Promotion and rollback"); merging it
-#    is the production approval, and Flux applies it a minute or two later
-git checkout -b promote/prod-0.2.0 origin/main
-scripts/pin-release.sh prod 0.2.0
-git commit -am "eshop-prod: promote v0.2.0" && git push -u origin promote/prod-0.2.0 && gh pr create --fill
-flux get kustomization apps-prod                      # after the merge: Applied revision: v0.2.0@…
-kubectl -n eshop-prod get deploy -o wide             # images :0.2.0, all READY
-curl -k https://prod.eshop.localhost/api/product-categories
+# 3. QA: merging that PR is QA's approval; Flux deploys the candidate to eshop-qa a minute or two later
+flux get kustomization apps-qa                        # Applied revision: v0.3.0-rc.1@…
+kubectl -n eshop-qa get deploy -o wide               # images :0.3.0-rc.1, all READY
 
-# 4. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
-cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh
+# 4. QA's Playwright run against https://qa.eshop.localhost, recorded as "E2E qa 0.3.0-rc.1"
+e2e/run-on-actions.sh qa 0.3.0-rc.1
+
+# 5. Sign-off (a maintainer, from main): refuses unless main pins QA to 0.3.0-rc.1 and its latest QA run passed;
+#    copies the images to 0.3.0 by digest, tags v0.3.0 on the candidate's commit, publishes the GitHub Release and
+#    opens the prod promotion PR "eshop-prod: deploy v0.3.0"; merging that is the production approval
+gh workflow run sign-off.yml --ref main -f version=0.3.0-rc.1
+gh run watch "$(gh run list --workflow sign-off.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh pr list --head promote/prod-0.3.0
+
+# 6. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
+cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh prod 0.3.0
 ```
 
-A fix after the release goes to `release/0.x` **and** `main`, then the next patch, e.g. `scripts/release.sh 0.1.2` (git-workflow.md, "Patch release").
+A fix found in QA goes to `release/0.x` **and** `main`, then the next candidate (`scripts/release.sh 0.3.0-rc.2`); a
+fix after the release, the next patch's candidate (`scripts/release.sh 0.3.1-rc.1`; git-workflow.md, "Patch release").
+`scripts/release.sh X.Y.Z` (no `-rc.N`) refuses: sign-off tags releases.
+
+If the promotion token is missing, CI's `open the QA promotion PR` job fails after the images are pushed and names
+the secret; set it and re-run that job, or open the PR yourself with `scripts/promotion-pr.sh qa 0.3.0-rc.1`
+(`PROMOTION_PUSH=0` first shows the commit and description without pushing).
+
+Sign-off's refusals say what is missing (QA pinned to another candidate or suspended, no passing QA run, a missing
+image, `v0.3.0` already released). If it fails half-way (a registry or GitHub error), run it again with the same
+version: it skips what is done and finishes. It needs `PROMOTION_TOKEN` and the same Docker Hub credentials as CI's
+push job (variable `DOCKERHUB_USERNAME`, secret `DOCKERHUB_TOKEN`, Read & Write), and only maintainers (repo role
+admin or maintain) may run it (git-workflow.md, "Releasing").
+
+### Promotion token
+
+CI opens promotion PRs (and, with sign-off, pushes the release tag) with a **fine-grained personal access token**,
+stored as the repo secret `PROMOTION_TOKEN`. Not the workflow's own `GITHUB_TOKEN`: GitHub runs no workflow for a PR
+or tag that token creates, so a promotion PR would never get its required checks. Commits and PRs made with it show
+you as the actor (the commits themselves are authored by `github-actions[bot]`).
+
+**Human**, once, and again before it expires:
+
+1. github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
+2. Name `modernapp PROMOTION_TOKEN`; resource owner `pkhamdee`; **expiration** 90 days (or what you accept; a calendar
+   reminder a week before helps); **Repository access**: Only select repositories → `pkhamdee/modernapp`.
+3. **Repository permissions**: Contents **Read and write**, Pull requests **Read and write** (Metadata read-only is
+   added by itself). Nothing else; add Workflows read and write only if a promotion ever has to change
+   `.github/workflows/`.
+4. Give it to CI (`gh secret set` prompts for it, so it never lands in shell history):
+
+```sh
+gh secret set PROMOTION_TOKEN --repo pkhamdee/modernapp
+```
+
+**Renewal**: regenerate the token on the same page (or create a new one with the same settings) and run the same
+`gh secret set`. An expired or revoked token makes the promotion job fail at `git push` or `gh pr create` with an
+authentication error; the images are already pushed, so re-run just that job once the secret is updated. The
+"Protect release tags" ruleset blocks only deleting, moving and force-pushing `v*` tags, not creating them, so the
+token needs no bypass (git-workflow.md, "Tags").
 
 ## Temporary copy (release gate)
 
-Before CI pushes any image (`main` pushes, release tags, dry runs; never pull requests), it starts a **temporary
+Before CI pushes any image (`main` pushes, release-candidate tags, dry runs; never pull requests), it starts a **temporary
 copy** of eShop from the images it has just built and pushes nothing unless the copy becomes healthy (ADR 0007). The
 copy is one Compose file, `scripts/gates/temporary-copy/compose.yaml`: eshop-web, eshop-api, eshop-node-api,
 PostgreSQL and thirdparty-mock behind a small gateway that routes like the cluster's HTTPRoutes (`/api`, `/images`,
@@ -421,9 +479,9 @@ Enterprise sync steps can't pass there.
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
-| `scripts/` | Repo tasks: `release.sh X.Y.Z` cuts a release (human-run); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
-| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `dast.sh` (OWASP ZAP against the copy, accepted alerts in `dast-rules.conf`), `latest-main-image.sh`. See [Running the gates locally](#running-the-gates-locally) | – |
-| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
+| `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI; tests in `tests/`); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
+| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `perf.sh` (Locust; load, thresholds and locustfile in `perf/`), `dast.sh` (OWASP ZAP against the copy, accepted alerts in `dast-rules.conf`). See [Running the gates locally](#running-the-gates-locally) | – |
+| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release-candidate tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
 
@@ -488,6 +546,23 @@ scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulne
   fixed or not, as in the image scan.
 - **Temporary copy** (`temporary-copy.sh`, the copy the image gates run against): see
   [Temporary copy](#temporary-copy-release-gate).
+- **Performance** (`perf.sh`, CI: the `gate` job, artifact `perf-report`) runs Locust headless from its pinned image
+  against a running temporary copy, on the copy's Compose network: about 50 Customers for 60 s over the catalog,
+  Products, sign-in by SMS code (each user with its own mobile number), and the Auction and its Lots. It fails when
+  the p95 of all requests is over 500 ms or more than 1% of them failed. Staff sign-in is left out on purpose: its
+  password check is deliberately slow. The load and the thresholds are in `scripts/gates/perf/locust.conf`; the
+  flows in `locustfile.py` beside it. `reports/perf/summary.txt` gives the verdict and the slowest endpoints;
+  `locust.html` and `locust_*.csv` the per-endpoint numbers.
+
+  ```sh
+  scripts/gates/temporary-copy.sh build && scripts/gates/temporary-copy.sh up
+  scripts/gates/perf.sh                              # ~70 s
+  LOCUST_RUN_TIME=15s LOCUST_USERS=10 scripts/gates/perf.sh   # any locust.conf value, for one run
+  scripts/gates/temporary-copy.sh down
+  ```
+
+  With a copy started under another project name (`TEMPORARY_COPY_PROJECT`), run `perf.sh` with the same variable
+  so it joins that copy's network; `PERF_NETWORK` and `PERF_HOST` point it anywhere else.
 - **DAST** (`dast.sh`, OWASP ZAP, signed out) runs against a running temporary copy, on its Compose network, in the
   `gate` job (artifact `dast-report`):
 
@@ -506,9 +581,9 @@ scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulne
   for some URLs) under a `# reason: ...` comment; a rule without a reason fails the gate. For a copy started with
   another `TEMPORARY_COPY_PROJECT`, export the same value for `dast.sh`. `DAST_SCANS=web` (or `api`) runs one scan.
 - To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, a lockfile
-  entry such as lodash 4.17.4, or for DAST a response header leaking a password hash in eshop-web's `Caddyfile`,
-  `header X-Debug-Hash "$2a$10$..."`, then `temporary-copy.sh build`), run the gate, see it fail, and revert. Never
-  commit the plant.
+  entry such as lodash 4.17.4, an `await Task.Delay(800)` in a catalog endpoint, or a response header leaking a
+  password hash in eshop-web's `Caddyfile`, `X-Debug-Hash "$2a$10$..."`, for DAST), rebuild that image and restart
+  the copy, run the gate, see it fail, and revert. Never commit the plant.
 
 ## Troubleshooting
 
