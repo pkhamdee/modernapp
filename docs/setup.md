@@ -434,8 +434,8 @@ you as the actor (the commits themselves are authored by `github-actions[bot]`).
 **Renewal**: regenerate the token on the same page (or create a new one with the same settings) and run the same
 `gh secret set PROMOTION_TOKEN --env release --repo pkhamdee/modernapp`. An expired or revoked token makes the promotion job fail at `git push` or `gh pr create` with an
 authentication error; the images are already pushed, so re-run just that job once the secret is updated. The
-"Protect release tags" ruleset blocks only deleting, moving and force-pushing `v*` tags, not creating them, so the
-token needs no bypass (git-workflow.md, "Tags"). It pushes only `promote/*` branches and `vX.Y.Z` tags, never `main`,
+token must belong to a repository admin or maintainer: only they may create `v*` tags (ruleset "Create release
+tags"; git-workflow.md, "Tags"). It pushes only `promote/*` branches and `vX.Y.Z` tags, never `main`,
 so `main`'s ruleset needs no bypass for it either: a person merges the promotion PR.
 
 ### Protecting main
@@ -447,10 +447,13 @@ or the names of ci-release.yml's pull-request jobs change:
 ```sh
 git checkout main && git pull
 scripts/protect-main.sh --dry-run    # prints every request it would send; reads only
-scripts/protect-main.sh              # creates or updates ruleset "Protect main" and environment "release"
+scripts/protect-main.sh              # creates or updates rulesets "Protect main", "Protect release tags",
+                                     # "Create release tags" and environment "release"
 ```
 
-Check: Settings → Rules → Rulesets → **Protect main** (Active; bypass: Deploy keys; required checks listed), and
+Check: Settings → Rules → Rulesets → **Protect main** (Active; bypass: Deploy keys; required checks listed),
+**Protect release tags** (no bypass; deletion, update, force-push), **Create release tags** (bypass: Repository
+admin and Maintain roles; creation), and
 Settings → Environments → **release** (Deployment branches and tags: `main`, tag `v*`). Then:
 
 - `git push origin HEAD:main` from a clone is rejected (`GH013: Repository rule violations`);

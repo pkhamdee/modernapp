@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Protects main and the release secrets on GitHub, as code (docs/git-workflow.md, "Protecting main"; ADR 0007).
-# Idempotent: run it again after changing it, or to put the settings back after an emergency.
+# Protects main, the release tags and the release secrets on GitHub, as code (docs/git-workflow.md, "Protecting
+# main"; ADR 0007). Idempotent: run it again after changing it, or to put the settings back after an emergency.
 #
 #   scripts/protect-main.sh --dry-run        # prints every request it would send (reads only); run this first
 #   scripts/protect-main.sh                  # applies them
@@ -16,7 +16,15 @@
 #      push to be approved by someone other than its pusher;
 #    - bypass: deploy keys only, so Flux's image automation (it pushes with the flux-system deploy key) still commits
 #      dev's image updates straight to main. Nobody else bypasses, admins included; an emergency is in the docs.
-# 2. Environment "release", deployable only from main and from v* tags. ci-release.yml's push and promote-qa jobs and
+# 2. Tag rulesets on refs/tags/v* (release candidates and releases), each created or updated in place by name:
+#    - "Protect release tags": no v* tag is ever deleted, moved or force-pushed, by anyone (no bypass). QA and prod
+#      are pinned to a tag, so a moved tag would change what Flux deploys without a promotion PR;
+#    - "Create release tags": only repository admins and maintainers create v* tags (rule `creation`, bypassed by
+#      the repository roles admin and maintain). A pushed v* tag runs CI in environment `release`, so anyone else
+#      could reach its secrets by pushing a tag. scripts/release.sh (a maintainer) and sign-off (PROMOTION_TOKEN, a
+#      maintainer's token) create them. A ruleset of its own because a bypass actor bypasses every rule of its
+#      ruleset: in "Protect release tags" it would also let maintainers move and delete tags.
+# 3. Environment "release", deployable only from main and from v* tags. ci-release.yml's push and promote-qa jobs and
 #    sign-off.yml use it, so its secrets (DOCKERHUB_TOKEN, PROMOTION_TOKEN) are out of reach of a workflow run from
 #    any other branch. The secrets themselves are a human step (docs/setup.md, "Release secrets").
 #
@@ -25,6 +33,11 @@ set -euo pipefail
 
 REPO=pkhamdee/modernapp
 RULESET="Protect main"
+TAG_RULESET="Protect release tags"
+TAG_CREATION_RULESET="Create release tags"
+# Repository role ids in bypass_actors (actor_type RepositoryRole): 2 maintain, 4 write, 5 admin.
+ROLE_MAINTAIN=2
+ROLE_ADMIN=5
 ENVIRONMENT=release
 GITHUB_ACTIONS_APP_ID=15368 # required checks must come from GitHub Actions, not from any status a token can post
 
@@ -78,6 +91,25 @@ ruleset=$(jq -n --arg name "$RULESET" --argjson approvals "$approvals" --argjson
         required_status_checks: [ $checks | split("\n")[] | { context: ., integration_id: $app } ] } }
   ] }')
 
+tag_ruleset=$(jq -n --arg name "$TAG_RULESET" '{
+  name: $name,
+  target: "tag",
+  enforcement: "active",
+  conditions: { ref_name: { include: ["refs/tags/v*"], exclude: [] } },
+  bypass_actors: [],
+  rules: [ { type: "deletion" }, { type: "update" }, { type: "non_fast_forward" } ] }')
+
+tag_creation_ruleset=$(jq -n --arg name "$TAG_CREATION_RULESET" --argjson admin "$ROLE_ADMIN" \
+  --argjson maintain "$ROLE_MAINTAIN" '{
+  name: $name,
+  target: "tag",
+  enforcement: "active",
+  conditions: { ref_name: { include: ["refs/tags/v*"], exclude: [] } },
+  bypass_actors: [
+    { actor_id: $admin, actor_type: "RepositoryRole", bypass_mode: "always" },
+    { actor_id: $maintain, actor_type: "RepositoryRole", bypass_mode: "always" } ],
+  rules: [ { type: "creation" } ] }')
+
 # send <METHOD> <path> [json]: prints it on --dry-run, sends it otherwise.
 send() {
   if $dry_run; then
@@ -90,15 +122,19 @@ send() {
   fi
 }
 
-# 1. The ruleset, found by name.
-id=$(gh api "repos/$REPO/rulesets" | jq -r --arg name "$RULESET" 'map(select(.name == $name)) | first | .id // empty')
-if [ -n "$id" ]; then
-  send PUT "repos/$REPO/rulesets/$id" "$ruleset"
-else
-  send POST "repos/$REPO/rulesets" "$ruleset"
-fi
+# 1. and 2. The rulesets, each found by name: updated in place, or created.
+existing_rulesets=$(gh api "repos/$REPO/rulesets")
+upsert_ruleset() { # upsert_ruleset <ruleset json>
+  local id
+  id=$(jq -r --arg name "$(jq -r .name <<<"$1")" 'map(select(.name == $name)) | first | .id // empty' \
+    <<<"$existing_rulesets")
+  if [ -n "$id" ]; then send PUT "repos/$REPO/rulesets/$id" "$1"; else send POST "repos/$REPO/rulesets" "$1"; fi
+}
+upsert_ruleset "$ruleset"
+upsert_ruleset "$tag_ruleset"
+upsert_ruleset "$tag_creation_ruleset"
 
-# 2. The environment and its deployment branch and tag policies: exactly main and v* tags.
+# 3. The environment and its deployment branch and tag policies: exactly main and v* tags.
 send PUT "repos/$REPO/environments/$ENVIRONMENT" \
   '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
 policies_path="repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies"
@@ -114,7 +150,9 @@ jq -r --argjson wanted "$wanted" '.branch_policies[] | select({name, type} as $p
 
 if $dry_run; then
   echo "Dry run: nothing sent. Required checks:"; while read -r check; do echo "  $check"; done <<<"$checks"
+  echo "v* tags: never deleted, moved or force-pushed; created only by repository admins and maintainers."
 else
-  echo "main is protected ($approvals approvals); environment $ENVIRONMENT deploys from main and v* tags only."
+  echo "main is protected ($approvals approvals); v* tags are immutable and only admins and maintainers create them;"
+  echo "environment $ENVIRONMENT deploys from main and v* tags only."
   echo "Next, if not done yet: the release secrets (docs/setup.md, \"Release secrets\")."
 fi

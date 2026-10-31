@@ -460,6 +460,19 @@ required_checks='[
   "repo rules (manifests, workflows, scripts, e2e)",
   "thirdparty-mock (lint, type-check)"
 ]'
+# The tag rulesets: v* tags never deleted, moved or force-pushed by anyone; created only by admins (repository role
+# 5) and maintainers (2). Separate, since a bypass actor bypasses every rule of its ruleset.
+tag_rulesets='[
+  {"name": "Create release tags", "target": "tag", "enforcement": "active",
+   "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
+   "bypass_actors": [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"},
+                     {"actor_id": 2, "actor_type": "RepositoryRole", "bypass_mode": "always"}],
+   "rules": [{"type": "creation"}]},
+  {"name": "Protect release tags", "target": "tag", "enforcement": "active",
+   "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
+   "bypass_actors": [],
+   "rules": [{"type": "deletion"}, {"type": "update"}, {"type": "non_fast_forward"}]}
+]'
 
 dry_run_prints_and_changes_nothing() {
   rm -f "$GH_STATE"/*; : >"$GH_LOG"
@@ -468,7 +481,9 @@ dry_run_prints_and_changes_nothing() {
   ruleset=$(sent "POST $repo_api/rulesets"); env=$(sent "PUT $repo_api/environments/release")
   policies=$(sent "POST $repo_api/environments/release/deployment-branch-policies")
   [ "$(writes)" = 0 ] && [ -z "$(ls "$GH_STATE")" ] \
-    && jq -e --argjson checks "$required_checks" 'length == 1 and (.[0] |
+    && jq -e --argjson tags "$tag_rulesets" '[.[] | select(.target == "tag")] | sort_by(.name) == $tags' \
+      <<<"$ruleset" >/dev/null \
+    && jq -e --argjson checks "$required_checks" '[.[] | select(.target == "branch")] | length == 1 and (.[0] |
          .name == "Protect main" and .target == "branch" and .enforcement == "active"
          and .conditions.ref_name.include == ["refs/heads/main"]
          and .bypass_actors == [{"actor_id": null, "actor_type": "DeployKey", "bypass_mode": "always"}]
@@ -483,7 +498,7 @@ dry_run_prints_and_changes_nothing() {
     && jq -e 'sort_by(.name) == [{"name": "main", "type": "branch"}, {"name": "v*", "type": "tag"}]' \
       <<<"$policies" >/dev/null
 }
-check "protect-main.sh --dry-run prints main's ruleset (every PR check required, 0 approvals, Flux's deploy key bypasses) and the release environment (main and v* tags only), sending nothing" \
+check "protect-main.sh --dry-run prints main's ruleset (every PR check required, 0 approvals, Flux's deploy key bypasses), the tag rulesets (v* immutable, created by admins and maintainers only) and the release environment (main and v* tags only), sending nothing" \
   dry_run_prints_and_changes_nothing
 
 applies_idempotently() {
@@ -493,7 +508,11 @@ applies_idempotently() {
     protect || return 1
   local s="$GH_STATE/api"
   jq -e '.name == "Protect main"' "$s-PUT-${repo_api//\//_}_rulesets_42" >/dev/null \
-    && [ ! -e "$s-POST-${repo_api//\//_}_rulesets" ] && [ ! -e "$s-PUT-${repo_api//\//_}_rulesets_7" ] \
+    && jq -e '.name == "Protect release tags" and ([.rules[].type] == ["deletion", "update", "non_fast_forward"])
+              and .bypass_actors == []' "$s-PUT-${repo_api//\//_}_rulesets_7" >/dev/null \
+    && [ "$(grep -c "api $repo_api/rulesets --method POST" "$GH_LOG")" = 1 ] \
+    && jq -e '.name == "Create release tags" and .rules == [{"type": "creation"}]' \
+      "$s-POST-${repo_api//\//_}_rulesets" >/dev/null \
     && [ -e "$s-PUT-${repo_api//\//_}_environments_release" ] \
     && [ "$(grep -c "api $repo_api/environments/release/deployment-branch-policies --method POST" "$GH_LOG")" = 1 ] \
     && jq -e '. == {"name": "v*", "type": "tag"}' \
@@ -501,7 +520,7 @@ applies_idempotently() {
     && [ -e "$s-DELETE-${repo_api//\//_}_environments_release_deployment-branch-policies_9" ] \
     && [ ! -e "$s-DELETE-${repo_api//\//_}_environments_release_deployment-branch-policies_1" ]
 }
-check "protect-main.sh updates an existing ruleset in place and leaves the environment exactly main and v* tags" \
+check "protect-main.sh updates existing rulesets in place (release tags keep their rules), creates a missing one and leaves the environment exactly main and v* tags" \
   applies_idempotently
 
 two_approvals() {

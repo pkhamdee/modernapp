@@ -54,9 +54,15 @@ git log main --oneline --grep "<subject>"       # cherry-picked commits get new 
 - Always **annotated**, always on a `release/N.x` branch; CI rejects anything else (`scripts/check-release-tag.sh`).
 - Never moved or deleted. A bad candidate is followed by the next `rc.N`, a bad release by the next patch.
 
-The **"Protect release tags"** ruleset (Settings → Rules → Rulesets) blocks deleting, moving and force-pushing any
-`v*` tag, with no bypass. It doesn't restrict creating tags, so `scripts/release.sh` and sign-off (pushing with
-`PROMOTION_TOKEN`) need no bypass.
+Two tag rulesets, kept as code in `scripts/protect-main.sh` (Settings → Rules → Rulesets):
+
+- **"Protect release tags"** blocks deleting, moving and force-pushing any `v*` tag, with no bypass: QA and prod are
+  pinned to a tag, so a moved tag would change what Flux deploys without a promotion PR.
+- **"Create release tags"** lets only repository admins and maintainers create `v*` tags (its bypass actors are the
+  repository roles admin and maintain). A pushed tag runs CI in the `release` environment, so anyone else could
+  otherwise reach its secrets by pushing a tag. `scripts/release.sh` (run by a maintainer) and sign-off (pushing with
+  `PROMOTION_TOKEN`, a maintainer's token) create them. It is a ruleset of its own because a bypass actor bypasses
+  every rule of its ruleset: in "Protect release tags" it would also let maintainers move and delete tags.
 
 ## Protecting main
 
