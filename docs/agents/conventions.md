@@ -44,7 +44,11 @@ Layout:
 - `Eshop.SyncMaster` (eshop-sync-master) lives in the same solution and references `Eshop.Data`; it never migrates.
 - Package versions only in `Directory.Packages.props` (`<PackageReference>` without `Version`). Warnings are errors,
   including NuGet audit (`NU1903`): a vulnerable transitive package is fixed by pinning a `PackageVersion` plus a
-  direct reference (see `System.Security.Cryptography.Pkcs`).
+  direct reference (see `System.Security.Cryptography.Pkcs`). Each project has a committed `packages.lock.json`
+  (the dependency-scan gate reads it; CI restores with `--locked-mode`): run `dotnet restore` after any package
+  change and commit the lock files.
+- Gates (`scripts/gates/*.sh`, `docs/setup.md` "Running the gates locally"): a Semgrep ERROR that is a false
+  positive goes in `scripts/gates/sast-accepted.txt` with a reason; `nosemgrep` comments are ignored.
 
 Adding an endpoint:
 

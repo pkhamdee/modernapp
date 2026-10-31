@@ -377,6 +377,7 @@ A fix after the release goes to `release/0.x` **and** `main`, then the next patc
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
 | `scripts/` | Repo tasks: `release.sh X.Y.Z` cuts a release (human-run); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
+| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles). See [Running the gates locally](#running-the-gates-locally) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
@@ -416,6 +417,32 @@ cd services/eshop-node-api
 npm ci && npm run lint && npm test                                  # as CI runs it
 npm run dev                                                         # http://localhost:8081, images in ./.local-share
 ```
+
+### Running the gates locally
+
+The gates in `scripts/gates/` run exactly as CI runs them (jobs `sast` and `deps` in `ci-release.yml`, on every PR,
+push and tag). Each needs only git and Docker: it pulls its tool's pinned image, writes its reports to
+`reports/<gate>/` (git-ignored; CI uploads them as the `sast-report` and `deps-report` artifacts) and exits non-zero
+when the gate fails. Downloads (Semgrep rules, Trivy's database) are cached in `~/.cache/eshop-gates`.
+
+```sh
+export DOCKER_HOST=unix://$HOME/.rd/docker.sock
+scripts/gates/sast.sh     # Semgrep CE: fails on an ERROR finding; reports/sast/summary.txt lists every finding
+scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulnerability; reports/deps/trivy.txt
+```
+
+- **SAST** scans `services`, `e2e`, `scripts`, `.github`, `deploy` and `clusters` (test code included) with the
+  semgrep-rules repository at a pinned commit (`RULES_COMMIT` in `sast.sh`). WARNING and INFO findings are reported,
+  never blocking. To accept a false positive, add `rule-id | path-glob | reason` to
+  `scripts/gates/sast-accepted.txt`; the reason is required, and inline `nosemgrep` comments are ignored. Paths
+  skipped inside those folders are in `.semgrepignore`.
+- **Dependency scan** reads the npm `package-lock.json` files (dev dependencies included) and eshop-api's NuGet
+  `packages.lock.json` files. Those exist because `Directory.Build.props` sets `RestorePackagesWithLockFile`: after
+  changing a package in `Directory.Packages.props`, run `dotnet restore` and commit the updated lock files (CI
+  restores with `--locked-mode` and fails on a stale one). Every severity is in the report; only CRITICAL fails,
+  fixed or not, as in the image scan.
+- To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, or a lockfile
+  entry such as lodash 4.17.4), run the gate, see it fail, and revert. Never commit the plant.
 
 ## Troubleshooting
 

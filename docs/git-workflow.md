@@ -123,6 +123,7 @@ git log main..release/1.x --oneline        # commits on release/1.x not yet on m
 Defined in `.github/workflows/ci-release.yml`:
 
 - Pushes and PRs to `main` and `release/*` lint and test every service. Pushes to `release/*` publish nothing.
+- Every push, PR and tag also runs the SAST gate (Semgrep, fails on ERROR) and the dependency-scan gate (Trivy over the lockfiles, fails on critical) from `scripts/gates/`, keeping their reports as artifacts (`docs/setup.md`, "Running the gates locally").
 - Pushes to `main` also build the changed services' images as `main-<sha>`; Flux deploys them to `eshop-dev` (`https://eshop.localhost`).
 - Pushing a `v*` tag lints and tests, validates the tag (must be `vX.Y.Z`, annotated, and on a `release/N.x` branch), builds **every** service in `.github/services.json` for arm64, scans each with Trivy (fails on critical), pushes `docker.io/pkhamdee/<service>:X.Y.Z`, and only then publishes the GitHub Release with generated notes.
 - If the build system can't trigger on tags, this workflow doesn't fit; switch to the branch-based workflow (Workflow A in the source article).
