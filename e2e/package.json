@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "e2e": "playwright test",
+    "e2e:qa": "E2E_BASE_URL=https://qa.eshop.localhost playwright test",
     "e2e:prod": "E2E_BASE_URL=https://prod.eshop.localhost playwright test",
     "typecheck": "tsc --noEmit",
     "report": "playwright show-report"
