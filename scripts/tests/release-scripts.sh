@@ -125,5 +125,55 @@ check "check-release-tag.sh rejects a lightweight candidate" rejected v0.3.0-rc.
 check "check-release-tag.sh rejects a tag that is neither" rejected v0.3.0-beta.1 'not vX.Y.Z-rc.N'
 check "check-release-tag.sh rejects a candidate on no release/N.x branch" rejected v0.4.0-rc.1 'release/N.x'
 
+# --- scripts/promotion-pr.sh (CI's QA promotion job; sign-off's prod promotion) ---
+
+clone=$(fresh promotion)
+git -C "$clone" tag -a v0.3.0-rc.1 -m "Release candidate 0.3.0-rc.1"
+git -C "$clone" push -q origin refs/tags/v0.3.0-rc.1
+rc_commit=$(git -C "$clone" rev-parse 'v0.3.0-rc.1^{commit}')
+git -C "$clone" commit -q --allow-empty -m "main moves on"
+git -C "$clone" push -q origin HEAD:main
+git -C "$clone" reset -q --hard HEAD~1                       # a stale checkout: the PR must start from origin/main
+export PROMOTION_IMAGES="docker.io/pkhamdee/eshop-api:0.3.0-rc.1@sha256:aaaa
+docker.io/pkhamdee/eshop-web:0.3.0-rc.1@sha256:bbbb"
+export PROMOTION_DETAILS="### Gates
+CI run: https://github.com/test/run/1"
+promote() { (cd "$clone" && scripts/promotion-pr.sh "$@") >"$work/out" 2>&1; }
+
+pin_commit_and_body() {
+  : >"$GH_LOG"
+  PROMOTION_PUSH=0 promote qa 0.3.0-rc.1 || return 1
+  local branch=promote/qa-0.3.0-rc.1
+  [ "$(git -C "$clone" rev-parse "$branch~1")" = "$(origin rev-parse main)" ] \
+    && [ "$(git -C "$clone" log -1 --format=%s "$branch")" = "eshop-qa: deploy v0.3.0-rc.1" ] \
+    && [ "$(git -C "$clone" diff --name-only "$branch~1" "$branch")" = clusters/local/qa-release.yaml ] \
+    && (cd "$clone" && git checkout -q "$branch" && [ "$(scripts/pin-release.sh qa 2>/dev/null)" = 0.3.0-rc.1 ]) \
+    && ! grep -q 'release-pin-until: qa$' "$clone/clusters/local/qa-release.yaml" \
+    && grep -qF 'docker.io/pkhamdee/eshop-web:0.3.0-rc.1@sha256:bbbb' "$work/out" \
+    && grep -qF 'CI run: https://github.com/test/run/1' "$work/out" \
+    && grep -qF "$rc_commit" "$work/out" \
+    && grep -qF 'https://qa.eshop.localhost' "$work/out" \
+    && grep -qF 'starts eshop-qa' "$work/out" \
+    && [ ! -s "$GH_LOG" ] \
+    && ! origin rev-parse -q --verify refs/heads/$branch >/dev/null
+}
+check "promotion-pr.sh commits only the pin on a branch from origin/main and writes the PR body (no push)" \
+  pin_commit_and_body
+
+pushes_and_opens_pr() {
+  git -C "$clone" checkout -q main
+  : >"$GH_LOG"
+  promote qa 0.3.0-rc.1 \
+    && [ "$(origin log -1 --format=%s refs/heads/promote/qa-0.3.0-rc.1)" = "eshop-qa: deploy v0.3.0-rc.1" ] \
+    && grep -qF 'gh pr create --base main --head promote/qa-0.3.0-rc.1 --title eshop-qa: deploy v0.3.0-rc.1' "$GH_LOG" \
+    && grep -qF 'https://github.com/test/pull/1' "$work/out"
+}
+check "promotion-pr.sh pushes the branch and opens the PR into main" pushes_and_opens_pr
+
+missing_tag_refused() { ! PROMOTION_PUSH=0 promote qa 0.3.0-rc.9 && grep -qF 'v0.3.0-rc.9' "$work/out"; }
+check "promotion-pr.sh refuses a version with no tag" missing_tag_refused
+dry_run_refused() { ! PROMOTION_PUSH=0 promote qa 0.0.0-test.1 && grep -qF 'usage: scripts/promotion-pr.sh' "$work/out"; }
+check "promotion-pr.sh refuses a dry-run version" dry_run_refused
+
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
 echo "all passed"
