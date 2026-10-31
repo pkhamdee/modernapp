@@ -1,7 +1,5 @@
 # SMB account passwords of the mock Samba (deploy/thirdparty/samba/samba.yaml), one account per environment:
 # eshopdev / eshopprod must equal the password in deploy/apps/<env>/eshop-node-api-smb.sops.yaml.
-# Temporary: the third key is the prod account of releases up to v0.1.x (the release's own SOPS file holds the
-# same password); delete it once prod runs v0.2.0 or later (docs/setup.md).
 apiVersion: v1
 kind: Secret
 metadata:
@@ -10,7 +8,6 @@ type: Opaque
 stringData:
     eshopdev: ENC[AES256_GCM,data:/KJWpk8uSLo05y+cAsDwRelfz0IACsDaKcdquUv+lgiacnv/g7EOzeJF/7kTTzl7,iv:fommBZlMVXP70S7Jh2XdOQOMlE+JrfmjIDCdncMr1kw=,tag:vAYpnBNvX5qZzKr7j3qZdA==,type:str]
     eshopprod: ENC[AES256_GCM,data:czMSr2aeNMSK/3VUogbFGot52fOlWXG7Qhqtn01IYr6Kc8O4fRp+U/wFDav+9szU,iv:mJaloyaxOx6GTTh/qlazBDD1ci1sOdRCyLwuAlge1tE=,tag:u5xhaHkkQ2XTbxZsdwxf5Q==,type:str]
-    sphoneprod: ENC[AES256_GCM,data:9IUb2TT1NYgKhr4Wr4JxB8Q4KDIOWLTGzoDeA68wPS0=,iv:DjafjJRXTboToYOcAw0QoY+z58eqSDCr64hn9MKyNX8=,tag:s0vKSgIA/LoOCkVxdDefCw==,type:str]
 sops:
     age:
         - enc: |
@@ -23,6 +20,6 @@ sops:
             -----END AGE ENCRYPTED FILE-----
           recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
     encrypted_regex: ^(data|stringData)$
-    lastmodified: "2026-10-30T11:49:50Z"
-    mac: ENC[AES256_GCM,data:dEBBRqu7iTuTKXxMF0yY53vuISSSRcZDZPBIdkzNDG/lA7F5sfQUWGfOgJqagWH2I5nHnYQOOe1f/IXyJk/qbGEc0HAoWOYArKZTd7OqvGdoU6fEBdwAOMzLwkn2B/i8i4zc5WZkhKexjQ3dSW30b4RjXgEc0MSufqKHRZH5q+w=,iv:WGJRMnQ42J1vyCKCUXN5NF8MG2s+whEnL3TdxNFBQ+I=,tag:rGgNnVOD6whSaQkNabzh1A==,type:str]
+    lastmodified: "2026-10-31T13:16:24Z"
+    mac: ENC[AES256_GCM,data:eVzYfxcslH3pvRTQqVNZQ1BpGzPtqk6K0kjtgWdlyWCl8gs9NdF/jcYUKN+/YUCVW8Yjicm/Vx+pJ6y7qR5BzihCJOaeQm8jUnSf+U4Eg5ty0cqtHcCZzMwEMRgHzFvKO7+JZbDzcVK2rOXnnj/ZwdwhHO48ktaYvwZN34u8e0k=,iv:glnm2BVUifmJq02Cm/6Gn+mM2AGLuj1imYhSCtIwJow=,tag:89UVQTmaJVFA6EhgNILY7w==,type:str]
     version: 3.13.3

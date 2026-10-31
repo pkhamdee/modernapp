@@ -33,8 +33,6 @@ spec:
 ---
 # Every release builds every service, so one service's tags stand for the release. eshop-api is one of the
 # slower builds; a service whose X.Y.Z image lands a minute later just retries its image pull.
-# Releases up to v0.1.x were built as sphone-* (renamed in #49): until v0.2.0 is out this repository has no X.Y.Z
-# tag, the ImagePolicy is not Ready and prod stays on the release it runs (a v0.1.x patch would not be picked up).
 apiVersion: image.toolkit.fluxcd.io/v1
 kind: ImageRepository
 metadata:

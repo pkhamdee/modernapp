@@ -2,8 +2,6 @@
 # each with a `public` and a `private` area (folders eshop-node-api creates). Each environment has its own
 # SMB account that can open only its own share; passwords live in samba-accounts.sops.yaml and must match
 # the eshop-node-api-smb secret of that environment.
-# Temporary (#50): account sphoneprod and share sphone-prod are prod's in releases up to v0.1.x, which prod runs
-# until v0.2.0. Delete every *sphoneprod / sphone-prod entry below once prod runs v0.2.0 or later (docs/setup.md).
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -44,10 +42,9 @@ spec:
             - -c
             - |
               set -e
-              mkdir -p /shares/eshop-dev /shares/eshop-prod /shares/sphone-prod
+              mkdir -p /shares/eshop-dev /shares/eshop-prod
               chown 1003:1003 /shares/eshop-dev && chmod 0700 /shares/eshop-dev
               chown 1004:1004 /shares/eshop-prod && chmod 0700 /shares/eshop-prod
-              chown 1002:1002 /shares/sphone-prod && chmod 0700 /shares/sphone-prod
           volumeMounts:
             - name: shares
               mountPath: /shares
@@ -79,19 +76,10 @@ spec:
                   key: eshopprod
             - name: UID_eshopprod
               value: "1004"
-            - name: ACCOUNT_sphoneprod
-              valueFrom:
-                secretKeyRef:
-                  name: samba-accounts
-                  key: sphoneprod
-            - name: UID_sphoneprod
-              value: "1002"
             - name: SAMBA_VOLUME_CONFIG_eshopdev
               value: "[eshop-dev]; path = /shares/eshop-dev; valid users = eshopdev; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
             - name: SAMBA_VOLUME_CONFIG_eshopprod
               value: "[eshop-prod]; path = /shares/eshop-prod; valid users = eshopprod; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
-            - name: SAMBA_VOLUME_CONFIG_sphoneprod
-              value: "[sphone-prod]; path = /shares/sphone-prod; valid users = sphoneprod; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
           ports:
             - name: smb
               containerPort: 445

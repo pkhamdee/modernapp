@@ -205,8 +205,6 @@ eshop-sync-master:
   Service port. Gateway = `kube-system` namespace + `app.kubernetes.io/name: traefik`; same-namespace callers by
   podSelector only (keeps dev and prod apart); thirdparty callees list callers by namespace `In [eshop-dev,
   eshop-prod]`. Copy `deploy/apps/base/eshop-api/network-policy.yaml`.
-- Until prod runs `v0.2.0`, `main` also carries commented, temporary `sphone-*` entries that keep the v0.1.x release
-  running (docs/setup.md, "Moving to eShop"); `git grep -n -i sphone` lists them. Don't copy them into new work.
 - **Secrets**: one SOPS file per env, `deploy/apps/{dev,prod}/<name>.sops.yaml`, listed in that overlay's
   resources; `.sops.yaml` encrypts only `data`/`stringData`. Pairs that must match: each env's
   `eshop-node-api-smb` with `deploy/thirdparty/samba/samba-accounts.sops.yaml`, and each env's
