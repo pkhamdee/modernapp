@@ -9,11 +9,15 @@
 #   - Flux Kustomization apps-<env> is not suspended, has applied its latest spec, is Ready, its last applied
 #     revision is the tag vX@sha1:..., and every image it sets (spec.images) has tag X;
 #   - every Deployment in eshop-<env> has finished rolling out (no old pod left) and every eShop image
-#     (docker.io/pkhamdee/...) it runs has tag X.
+#     ($IMAGE_REGISTRY/..., scripts/lib/repo.sh) it runs has tag X.
 # The e2e workflow (.github/workflows/e2e.yml) runs this before and after a test run given a version, and sign-off
 # relies on that (docs/setup.md, "End-to-end smoke test"). Needs kubectl (pointed at the cluster) and jq.
-# Tests: e2e/check-serving.test.sh.
+# The version grammar (which environment takes which) is scripts/lib/versions.sh. Tests: e2e/check-serving.test.sh.
 set -euo pipefail
+# shellcheck source=../scripts/lib/versions.sh
+. "$(dirname "$0")/../scripts/lib/versions.sh"
+# shellcheck source=../scripts/lib/repo.sh
+. "$(dirname "$0")/../scripts/lib/repo.sh"
 
 env=${1:-}
 version=${2:-}
@@ -21,8 +25,7 @@ ns=eshop-$env
 
 usage() { echo "check-serving.sh: $*" >&2; echo "usage: e2e/check-serving.sh qa X.Y.Z-rc.N | prod X.Y.Z" >&2; exit 2; }
 case "$env" in
-  qa) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]] || usage "qa takes a release candidate X.Y.Z-rc.N, not '$version'" ;;
-  prod) [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || usage "prod takes a release X.Y.Z, not '$version'" ;;
+  qa | prod) env_takes "$env" "$version" || usage "$env takes $(env_grammar "$env"), not '$version'" ;;
   dev) usage "dev follows main and has no release to check" ;;
   *) usage "unknown environment '$env'" ;;
 esac
@@ -50,11 +53,11 @@ others=$(field --arg v "$version" '.spec.images[]? | select(.newTag != $v) | "\(
 
 deployments=$(kubectl -n "$ns" get deployment -o json 2>"$err") || refuse "cannot list Deployments ($(cat "$err"))"
 [ "$(jq '.items | length' <<<"$deployments")" -gt 0 ] || refuse "no Deployments in $ns"
-# Every eShop image (docker.io/pkhamdee/...) is the release's tag, and every Deployment has finished rolling out:
+# Every eShop image ($IMAGE_REGISTRY/...) is the release's tag, and every Deployment has finished rolling out:
 # its newest spec observed, all its pods updated and ready, and no old pod left.
-problems=$(jq -r --arg v "$version" '.items[] | .metadata.name as $d
+problems=$(jq -r --arg v "$version" --arg registry "$IMAGE_REGISTRY/" '.items[] | .metadata.name as $d
   | ([(.spec.template.spec.initContainers // []) + .spec.template.spec.containers | .[].image
-      | select(startswith("docker.io/pkhamdee/")) | select(test(":" + ($v | gsub("\\."; "\\.")) + "(@|$)") | not)
+      | select(startswith($registry)) | select(test(":" + ($v | gsub("\\."; "\\.")) + "(@|$)") | not)
       | "\($d) runs \(.)"]
     + (.status as $s | .spec.replicas as $r
       | if ($s.observedGeneration // 0) < .metadata.generation or ($s.replicas // 0) != $r

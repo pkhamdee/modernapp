@@ -14,12 +14,15 @@
 # with a token that may open PRs. Commits with the current git identity. The GitHub-specific part is the last
 # step (`gh pr`); scripts/tests/release-scripts.sh tests it against a throwaway origin.
 set -euo pipefail
+# shellcheck source=lib/versions.sh
+. "$(dirname "$0")/lib/versions.sh"
+# shellcheck source=lib/images.sh
+. "$(dirname "$0")/lib/images.sh"
 
-usage() { echo "usage: scripts/promotion-pr.sh <env> <X.Y.Z | X.Y.Z-rc.N>" >&2; exit 2; }
+usage() { echo "usage: scripts/promotion-pr.sh qa X.Y.Z-rc.N | prod X.Y.Z" >&2; exit 2; }
 env=${1:-}
 version=${2:-}
-[[ "$env" =~ ^[a-z]+$ ]] || usage
-[[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || usage
+env_takes "$env" "$version" || { echo "eshop-$env takes $(env_grammar "$env"), not '$version'" >&2; usage; }
 tag="v$version"
 branch="promote/$env-$version"
 title="eshop-$env: deploy $tag"
@@ -33,7 +36,7 @@ commit=$(git rev-parse "$tag^{commit}")
 
 git checkout --quiet -B "$branch" origin/main
 first=false
-if grep -q -- "# release-pin-until: $env\$" clusters/local/*.yaml; then first=true; fi
+if scripts/pin-release.sh --suspended "$env"; then first=true; fi
 was=$(scripts/pin-release.sh "$env" 2>/dev/null)
 scripts/pin-release.sh "$env" "$version" >/dev/null
 if git diff --quiet; then
@@ -56,7 +59,7 @@ trap 'rm -f "$body"' EXIT
     echo
     echo "### Images"
     echo
-    while read -r image; do [ -z "$image" ] || echo "- \`$image\`"; done <<<"$PROMOTION_IMAGES"
+    image_list <<<"$PROMOTION_IMAGES"
   fi
   if [ -n "${PROMOTION_DETAILS:-}" ]; then
     echo

@@ -19,8 +19,9 @@
 # version with it); sops + the age key, so the job can decrypt the Staff account (no Staff secrets are stored in
 # GitHub).
 set -euo pipefail
+# shellcheck source=../scripts/lib/repo.sh
+. "$(dirname "$0")/../scripts/lib/repo.sh"
 
-REPO=pkhamdee/modernapp
 LABEL=eshop-e2e
 ENVIRONMENT=${1:-prod}
 VERSION=${2:-}

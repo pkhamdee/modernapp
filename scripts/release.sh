@@ -22,21 +22,24 @@
 # replaced by the next candidate. After pushing it waits for the tag's CI run to start and prints its URL.
 # Releasing is a human step: agents are not allowed to push release tags. scripts/tests/release-scripts.sh tests it.
 set -euo pipefail
+# shellcheck source=lib/versions.sh
+. "$(dirname "$0")/lib/versions.sh"
+# shellcheck source=lib/repo.sh
+. "$(dirname "$0")/lib/repo.sh"
 
-REPO=pkhamdee/modernapp
 version=${1:-}
-if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+if is_release "$version"; then
   echo "scripts/release.sh no longer tags a release: cut a release candidate (scripts/release.sh $version-rc.N)," \
     "promote it to QA, then sign it off with the \"Sign off release candidate\" workflow, which tags v$version" \
     "(docs/git-workflow.md, \"Releasing\")." >&2
   exit 2
 fi
-[[ "$version" =~ ^(([0-9]+)\.[0-9]+\.([0-9]+))-rc\.([0-9]+)$ ]] || { echo "usage: scripts/release.sh X.Y.Z-rc.N" >&2; exit 2; }
+[[ "$version" =~ $CANDIDATE ]] || { echo "usage: scripts/release.sh X.Y.Z-rc.N" >&2; exit 2; }
 release="v${BASH_REMATCH[1]}"
 tag="v$version"
 branch="release/${BASH_REMATCH[2]}.x"
 new_minor=false
-[ "${BASH_REMATCH[3]}" = 0 ] && [ "${BASH_REMATCH[4]}" = 1 ] && new_minor=true
+[ "${BASH_REMATCH[4]}" = 0 ] && [ "${BASH_REMATCH[5]}" = 1 ] && new_minor=true
 
 cd "$(git rev-parse --show-toplevel)"
 git fetch --quiet --tags origin

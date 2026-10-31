@@ -274,4 +274,9 @@ from `main` and `v*` tags, so those jobs fail on any other branch (a release dry
 `scripts/release.sh X.Y.0-rc.1` on an existing `release/N.x` merges `origin/main` into it first and refuses while the
 branch has commits not on `main` by patch-id (`git cherry`).
 
+Release and e2e scripts share `scripts/lib/` (sourced): the version grammar is `versions.sh` (`is_candidate`,
+`env_takes qa|prod <version>`, ...), the repository and image registry `repo.sh` (`REPO`, `IMAGE_REGISTRY`); use
+them rather than a new regex or a literal `pkhamdee/...`. Whether an environment is still suspended is
+`scripts/pin-release.sh --suspended <env>` (exit 0 suspended, 1 not, 2 no pin), not a grep for the marker.
+
 `gh pr merge <n> --squash --delete-branch` works for agents only as a standalone command, not inside a compound one.

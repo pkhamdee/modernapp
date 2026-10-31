@@ -259,7 +259,8 @@ jobs:
             fi
           elif [ "$EVENT" = "workflow_dispatch" ] && [ -n "$DRY_RUN_VERSION" ]; then
             # Only 0.0.0-test.N: never deployed (no environment can be pinned to it) and no promotion PR is opened.
-            if ! [[ "$DRY_RUN_VERSION" =~ ^0\.0\.0-test\.[0-9]+$ ]]; then
+            . scripts/lib/versions.sh
+            if ! is_dry_run "$DRY_RUN_VERSION"; then
               echo "::error::Dry-run version must be 0.0.0-test.N"; exit 1
             fi
             version="$DRY_RUN_VERSION"

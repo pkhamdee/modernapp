@@ -243,6 +243,24 @@ check "check-release-tag.sh rejects a lightweight candidate" rejected v0.3.0-rc.
 check "check-release-tag.sh rejects a tag that is neither" rejected v0.3.0-beta.1 'not vX.Y.Z-rc.N'
 check "check-release-tag.sh rejects a candidate on no release/N.x branch" rejected v0.4.0-rc.1 'release/N.x'
 
+# --- scripts/pin-release.sh (the pins in clusters/local) ---
+
+mkdir -p "$work/pins" && cp "$root"/clusters/local/*.yaml "$work/pins/"
+pin() { PIN_DIR="$work/pins" "$root/scripts/pin-release.sh" "$@" >"$work/out" 2>&1; }
+suspended_until_first_release() {
+  # QA has no release yet on this checkout's main: suspended until the first candidate is pinned; prod never is.
+  pin --suspended qa && ! pin --suspended prod \
+    && pin qa 0.3.0-rc.1 && ! pin --suspended qa && pin qa && [ "$(cat "$work/out")" = 0.3.0-rc.1 ]
+}
+check "pin-release.sh --suspended <env> says (exit code) whether the env has no release yet; pinning one starts it" \
+  suspended_until_first_release
+no_pin_is_an_error() { # exit 2, not 1: "not suspended" must not be read into a missing pin
+  local status=0
+  pin --suspended dev || status=$?
+  [ "$status" = 2 ] && grep -qF "no '# release-pin: dev' lines" "$work/out"
+}
+check "pin-release.sh --suspended fails (exit 2) for an env with no pin" no_pin_is_an_error
+
 # --- scripts/promotion-pr.sh (CI's QA promotion job; sign-off's prod promotion) ---
 
 clone=$(fresh promotion)

@@ -23,12 +23,18 @@
 #   3. publishes (or updates) the GitHub Release vX.Y.Z: the images with digests, the QA run, who signed off;
 #   4. opens (or updates) the prod promotion PR: scripts/promotion-pr.sh prod X.Y.Z.
 #
-# Environment: SIGN_OFF_ACTOR (required), REPO (default pkhamdee/modernapp), IMAGE_REGISTRY (default
-# docker.io/pkhamdee), SIGN_OFF_RUN_URL (the workflow run, linked in the Release and PR), SIGN_OFF_READ_TOKEN (a
-# token for the checks, e.g. the workflow's own; default: gh's token). Needs a clean checkout of main, push access to
+# Environment: SIGN_OFF_ACTOR (required), REPO and IMAGE_REGISTRY (defaults: scripts/lib/repo.sh),
+# SIGN_OFF_RUN_URL (the workflow run, linked in the Release and PR), SIGN_OFF_READ_TOKEN (a token for the checks,
+# e.g. the workflow's own; default: gh's token). Needs a clean checkout of main, push access to
 # origin, `gh` with a token that may create Releases and PRs, crane logged in to the registry with push access, and
 # jq. scripts/tests/release-scripts.sh tests it with fake gh and crane against a throwaway origin.
 set -euo pipefail
+# shellcheck source=lib/versions.sh
+. "$(dirname "$0")/lib/versions.sh"
+# shellcheck source=lib/repo.sh
+. "$(dirname "$0")/lib/repo.sh"
+# shellcheck source=lib/images.sh
+. "$(dirname "$0")/lib/images.sh"
 
 usage() { echo "usage: scripts/sign-off.sh X.Y.Z-rc.N" >&2; exit 2; }
 refuse() { echo "Sign-off refused: $*" >&2; exit 1; }
@@ -37,12 +43,12 @@ gh_read() { if [ -n "${SIGN_OFF_READ_TOKEN:-}" ]; then GH_TOKEN=$SIGN_OFF_READ_T
 
 main() {
   local candidate=${1:-}
-  [[ "$candidate" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-rc\.[0-9]+$ ]] || usage
-  local version=${BASH_REMATCH[1]}
+  is_candidate "$candidate" || usage
+  local version
+  version=$(release_of "$candidate")
   local rc_tag="v$candidate" tag="v$version"
   local actor=${SIGN_OFF_ACTOR:?SIGN_OFF_ACTOR (who signs off) is required}
-  local repo=${REPO:-pkhamdee/modernapp}
-  local registry=${IMAGE_REGISTRY:-docker.io/pkhamdee}
+  local repo=$REPO registry=$IMAGE_REGISTRY
   cd "$(git rev-parse --show-toplevel)"
 
   # --- Checks: nothing is changed until every one passed ---
@@ -78,7 +84,7 @@ main() {
   git archive origin/main clusters/local | tar -x -C "$pins"
   local qa
   qa=$(PIN_DIR="$pins/clusters/local" scripts/pin-release.sh qa 2>/dev/null) || refuse "eshop-qa's pin on main is unreadable"
-  if grep -q -- '# release-pin-until: qa$' "$pins"/clusters/local/*.yaml; then
+  if PIN_DIR="$pins/clusters/local" scripts/pin-release.sh --suspended qa; then
     refuse "eshop-qa has no release yet on main (apps-qa is suspended): QA must be running $candidate"
   fi
   [ "$qa" = "$candidate" ] || refuse "eshop-qa is pinned to $qa on main, not $candidate: QA must be running the candidate it signs off"
@@ -144,7 +150,7 @@ main() {
     echo
     echo "Copied from $rc_tag by digest, never rebuilt:"
     echo
-    while read -r image; do [ -z "$image" ] || echo "- \`$image\`"; done <<<"$images"
+    image_list <<<"$images"
     echo
     echo "### QA"
     echo

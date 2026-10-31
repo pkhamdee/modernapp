@@ -31,7 +31,6 @@
 # Needs gh signed in as a repo admin, and jq. scripts/tests/release-scripts.sh tests it against a fake gh.
 set -euo pipefail
 
-REPO=pkhamdee/modernapp
 RULESET="Protect main"
 TAG_RULESET="Protect release tags"
 TAG_CREATION_RULESET="Create release tags"
@@ -55,6 +54,8 @@ done
 [[ "$approvals" =~ ^([0-9]|10)$ ]] || usage
 
 cd "$(dirname "$0")/.."
+# shellcheck source=lib/repo.sh
+. scripts/lib/repo.sh
 
 # The checks: jobs of ci-release.yml with neither `needs:` nor `if:` run on every pull request.
 checks=$(awk '
