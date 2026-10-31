@@ -72,6 +72,8 @@ services:
       Staff__Accounts__0__Username: ${TEMPORARY_COPY_STAFF_USERNAME:-staff}
       Staff__Accounts__0__Password: ${TEMPORARY_COPY_STAFF_PASSWORD:-temporary-copy-staff}
       Staff__Accounts__0__DisplayName: พนักงานสาธิต
+      # Serves /openapi/v1.json (outside /api, so not through the gateway) for the ZAP API scan (dast.sh). Only here.
+      OpenApi__Enabled: "true"
     # The chiseled image has no shell or HTTP client for a healthcheck: ready.mjs checks /healthz/ready instead.
     depends_on:
       postgres: { condition: service_healthy }
