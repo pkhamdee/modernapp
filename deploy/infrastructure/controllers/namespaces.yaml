@@ -9,6 +9,13 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: eshop-qa
+  labels:
+    eshop.io/gateway-access: "true"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: eshop-prod
   labels:
     eshop.io/gateway-access: "true"

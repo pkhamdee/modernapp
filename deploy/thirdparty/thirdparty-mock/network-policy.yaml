@@ -1,5 +1,5 @@
 # Arrows: Gateway (Traefik) -> thirdparty-mock (developer pages: home, SMS inbox, Enterprise admin);
-# eshop-api (eshop-dev, eshop-prod) -> thirdparty-mock; thirdparty-mock -> SQL Server (admin tool).
+# eshop-api (eshop-dev, eshop-qa, eshop-prod) -> thirdparty-mock; thirdparty-mock -> SQL Server (admin tool).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -23,7 +23,7 @@ spec:
             matchExpressions:
               - key: kubernetes.io/metadata.name
                 operator: In
-                values: [eshop-dev, eshop-prod]
+                values: [eshop-dev, eshop-qa, eshop-prod]
           podSelector:
             matchLabels:
               app.kubernetes.io/name: eshop-api

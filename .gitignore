@@ -1,2 +1,2 @@
-# Gate reports (scripts/gates/*), also kept as CI artifacts.
+# Gate reports (scripts/gates/*.sh); CI keeps them as workflow artifacts.
 /reports/

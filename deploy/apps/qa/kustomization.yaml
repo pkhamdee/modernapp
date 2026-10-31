@@ -1,0 +1,67 @@
+# eshop-qa: same apps as eshop-prod, its own database (kept from one release candidate to the next), served at
+# https://qa.eshop.localhost. Flux applies this folder as it is in the pinned release-candidate tag vX.Y.Z-rc.N,
+# with the X.Y.Z-rc.N images (apps-qa in clusters/local/qa-release.yaml, docs/git-workflow.md); there are no image
+# tags here. Keep it in step with deploy/apps/prod: QA should test what prod will run.
+# To add a service to QA: add ../base/<service> to resources and an `images:` entry to apps-qa in
+# clusters/local/qa-release.yaml (its newTag line ending in `# release-pin: qa`). HTTPRoutes are moved to the
+# QA hostname by the patch below automatically.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: eshop-qa
+resources:
+  - ../../network-policies/default-deny
+  - eshop-db-credentials.sops.yaml
+  - eshop-api-auth.sops.yaml
+  - eshop-api-staff.sops.yaml
+  - eshop-node-api-smb.sops.yaml
+  - eshop-sync-master-enterprise.sops.yaml
+  - ../base/eshop-db
+  - ../base/eshop-api
+  - ../base/eshop-web
+  - ../base/eshop-node-api
+  - ../base/eshop-sync-master
+patches:
+  # Every app route: QA hostname on the Gateway's QA listener (base routes use eshop.localhost / https).
+  - target:
+      kind: HTTPRoute
+    patch: |-
+      - op: replace
+        path: /spec/hostnames
+        value: [qa.eshop.localhost]
+      - op: replace
+        path: /spec/parentRefs/0/sectionName
+        value: https-qa
+  # eshop-node-api: QA's own share on the shared Samba (thirdparty).
+  - target:
+      kind: Deployment
+      name: eshop-node-api
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: eshop-node-api
+      spec:
+        template:
+          spec:
+            containers:
+              - name: eshop-node-api
+                env:
+                  - name: SMB_SHARE
+                    value: eshop-qa
+  # eshop-sync-master: QA's own Enterprise database on the shared SQL Server (thirdparty).
+  - target:
+      kind: Deployment
+      name: eshop-sync-master
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: eshop-sync-master
+      spec:
+        template:
+          spec:
+            containers:
+              - name: eshop-sync-master
+                env:
+                  - name: ENTERPRISE_DATABASE
+                    value: enterprise_qa

@@ -14,6 +14,16 @@ K8S_VERSION=1.36.0 # k3s v1.36 (docs/setup.md)
 KUBECONFORM=ghcr.io/yannh/kubeconform:v0.7.0
 
 cd "$(git rev-parse --show-toplevel)"
+
+# Every pinned environment (`# release-pin: <env>` lines in clusters/local) names one exact release.
+# prod must stay pinned.
+envs=$(grep -ho '# release-pin: [a-z]*$' clusters/local/*.yaml | sed 's/.* //' | sort -u)
+grep -qx prod <<<"$envs" || { echo "prod has no '# release-pin: prod' lines in clusters/local" >&2; exit 1; }
+while read -r env; do
+  pin=$(scripts/pin-release.sh "$env")
+  echo "release pin $env: $pin"
+done <<<"$envs"
+
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 
