@@ -9,6 +9,8 @@
 #   ESHOP_WEB_IMAGE, ESHOP_API_IMAGE, ESHOP_NODE_API_IMAGE, THIRDPARTY_MOCK_IMAGE
 # (default: the temporary-copy/<service>:local images that `temporary-copy.sh build` makes from this checkout).
 #
+# The Staff account and the readiness check's Node image come from temporary-copy/defaults.env, exported by
+# temporary-copy.sh (run `docker compose` through it, or with `--env-file defaults.env`).
 # Every value below is throwaway and exists only inside the copy: the database password, the token signing key and
 # the Staff account are not secrets and are never used anywhere else.
 name: ${TEMPORARY_COPY_PROJECT:-eshop-temporary-copy}
@@ -69,8 +71,8 @@ services:
       ThirdParty__BaseUrl: http://thirdparty-mock:8080/
       ImageService__BaseUrl: http://eshop-node-api:8080/
       # Throwaway Staff account, provisioned at startup; exists only in this copy.
-      Staff__Accounts__0__Username: ${TEMPORARY_COPY_STAFF_USERNAME:-staff}
-      Staff__Accounts__0__Password: ${TEMPORARY_COPY_STAFF_PASSWORD:-temporary-copy-staff}
+      Staff__Accounts__0__Username: ${TEMPORARY_COPY_STAFF_USERNAME:?run through temporary-copy.sh (defaults.env)}
+      Staff__Accounts__0__Password: ${TEMPORARY_COPY_STAFF_PASSWORD:?run through temporary-copy.sh (defaults.env)}
       Staff__Accounts__0__DisplayName: พนักงานสาธิต
       # Serves /openapi/v1.json (outside /api, so not through the gateway) for the ZAP API scan (dast.sh). Only here.
       OpenApi__Enabled: "true"
@@ -116,13 +118,14 @@ services:
   # started (`docker compose run ready`). See ready.mjs.
   ready:
     profiles: [check]
-    image: node:24.22.1-alpine3.24
+    image: ${TEMPORARY_COPY_NODE_IMAGE:?run through temporary-copy.sh (defaults.env)}
     read_only: true
     cap_drop: [ALL]
     volumes:
       - ./ready.mjs:/ready/ready.mjs:ro
+      - ./gateway-client.mjs:/ready/gateway-client.mjs:ro
     environment:
       READY_TIMEOUT_SECONDS: ${TEMPORARY_COPY_TIMEOUT_SECONDS:-180}
-      STAFF_USERNAME: ${TEMPORARY_COPY_STAFF_USERNAME:-staff}
-      STAFF_PASSWORD: ${TEMPORARY_COPY_STAFF_PASSWORD:-temporary-copy-staff}
+      STAFF_USERNAME: ${TEMPORARY_COPY_STAFF_USERNAME:?run through temporary-copy.sh (defaults.env)}
+      STAFF_PASSWORD: ${TEMPORARY_COPY_STAFF_PASSWORD:?run through temporary-copy.sh (defaults.env)}
     command: ["node", "/ready/ready.mjs"]

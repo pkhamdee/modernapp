@@ -16,8 +16,10 @@ set -euo pipefail
 
 LOCUST_IMAGE=locustio/locust:2.47.0@sha256:90fdf5b9632e67bb556d17784095652871be68318c5074731d911d4caaa42cc3
 
-root=$(cd "$(dirname "$0")/../.." && pwd)
-report_dir=$(mkdir -p "${REPORT_DIR:-$root/reports/perf}" && cd "${REPORT_DIR:-$root/reports/perf}" && pwd)
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+root=$GATES_ROOT
+report_dir=$(gate_report_dir perf)
 network=${PERF_NETWORK:-${TEMPORARY_COPY_PROJECT:-eshop-temporary-copy}_default}
 host=${PERF_HOST:-http://gateway:8080}
 rm -f "$report_dir"/locust* "$report_dir/summary.txt"

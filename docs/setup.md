@@ -516,7 +516,7 @@ scripts/gates/latest-main-image.sh docker.io/pkhamdee/eshop-web
 Other settings (header of `scripts/gates/temporary-copy.sh`): `TEMPORARY_COPY_PORT` (default 8090),
 `TEMPORARY_COPY_TIMEOUT_SECONDS` (180), `TEMPORARY_COPY_KEEP=1` to leave a copy that failed running for a look. The
 SMS inbox is at `http://localhost:8090/thirdparty-mock/sms/inbox`. The Staff account, the database password and the
-token signing key are throwaway values that exist only in the copy. To run the Playwright demo against it, set
+token signing key are throwaway values that exist only in the copy (Staff and the Node image: `temporary-copy/defaults.env`). To run the Playwright demo against it, set
 `E2E_BASE_URL=http://localhost:8090 E2E_MOCK_URL=http://localhost:8090 E2E_ENV=dev STAFF_USERNAME=staff
 STAFF_PASSWORD=temporary-copy-staff`; its two
 Enterprise sync steps can't pass there.
@@ -646,9 +646,10 @@ scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulne
   scans** (ZAP's API-Minimal active rules) of every operation in eshop-api's OpenAPI description, sent through the
   gateway: **signed out**, **as a Customer** and **as Staff**. The description is `/openapi/v1.json` on eshop-api,
   served only when `OpenApi__Enabled=true`, which only the copy's `compose.yaml` sets (the cluster never does, and
-  the Gateway routes only `/api`). The sessions are obtained as a user would, inside the copy only
+  the Gateway routes only `/api`). The sessions are obtained as a Customer or Staff member would, inside the copy only
   (`scripts/gates/dast-session.mjs`): the Customer by SMS code read from thirdparty-mock's inbox, with a fresh mobile
-  number per run; Staff with the copy's throwaway account (`TEMPORARY_COPY_STAFF_USERNAME` / `_PASSWORD`, default
+  number per run; Staff with the copy's throwaway account (`TEMPORARY_COPY_STAFF_USERNAME` / `_PASSWORD`, default in
+  `scripts/gates/temporary-copy/defaults.env`:
   `staff` / `temporary-copy-staff`). ZAP sends the token as `Authorization: Bearer ...` on every request to the
   gateway. The signed-in scans change the copy's data (they submit, bid, add Branches, retire and reinstate
   Products), which is why they run last, Customer before Staff; tokens are stateless and Staff sign-in has no lockout,

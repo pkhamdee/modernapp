@@ -10,7 +10,7 @@
 #             is outside /api and served only because the copy sets OpenApi__Enabled), signed out;
 #   customer  the same API scan signed in as a Customer (a fresh one, signed in by SMS code from the mock's inbox);
 #   staff     the same API scan signed in as Staff (the copy's throwaway Staff account).
-# The sessions come from dast-session.mjs, run on the copy's network as a user would sign in; ZAP sends the token as
+# The sessions come from dast-session.mjs, run on the copy's network, signing in as a Customer or Staff member does; ZAP sends the token as
 # `Authorization: Bearer ...` on every request to the gateway (ZAP_AUTH_HEADER*). Customer runs before Staff, whose
 # back-office attacks may retire Products or change the Auction the Customer scan works on. Tokens are stateless
 # (no sign-out to hit) and Staff sign-in has no lockout, so neither session can be lost during its scan.
@@ -27,7 +27,7 @@
 # endpoints only its role may use).
 #
 # TEMPORARY_COPY_PROJECT  the copy's Compose project (default eshop-temporary-copy); the scans join its network
-# TEMPORARY_COPY_STAFF_USERNAME / _PASSWORD   the copy's Staff account (default staff / temporary-copy-staff)
+# TEMPORARY_COPY_STAFF_USERNAME / _PASSWORD   the copy's Staff account (default: temporary-copy/defaults.env)
 # DAST_WEB_URL            what the baseline scans (default http://gateway:8080)
 # DAST_OPENAPI_URL        the API description (default http://eshop-api:8080/openapi/v1.json)
 # DAST_API_HOST           where the API scans send requests (default http://gateway:8080)
@@ -37,16 +37,17 @@
 set -euo pipefail
 
 ZAP_IMAGE=ghcr.io/zaproxy/zaproxy:2.17.0@sha256:030d3df57735dacbb83464854758e674dd9ad01d79d12a129a8e58b1fd384238
-# The same Node image as the copy's readiness check (temporary-copy/compose.yaml), for dast-session.mjs.
-NODE_IMAGE=node:24.22.1-alpine3.24
 
 # Endpoints only a signed-in role may use (paths under the gateway; Roles.Customer / Roles.Staff in eshop-api).
 # A signed-in scan must get at least one 2xx answer from one of its role's endpoints.
 CUSTOMER_ONLY='^/api/(applications|offers|contracts|eligibility|lots/won|lots/[0-9]+/bids)(/|$)'
 STAFF_ONLY='^/api/back-office(/|$)'
 
-root=$(cd "$(dirname "$0")/../.." && pwd)
-report_dir=$(mkdir -p "${REPORT_DIR:-$root/reports/dast}" && cd "${REPORT_DIR:-$root/reports/dast}" && pwd)
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+gate_copy_defaults # the Staff account and the Node image (temporary-copy/defaults.env)
+root=$GATES_ROOT
+report_dir=$(gate_report_dir dast)
 network=${TEMPORARY_COPY_PROJECT:-eshop-temporary-copy}_default
 web_url=${DAST_WEB_URL:-http://gateway:8080}
 openapi_url=${DAST_OPENAPI_URL:-http://eshop-api:8080/openapi/v1.json}
@@ -84,9 +85,9 @@ session() {
   local token
   if ! token=$(docker run --rm --network "$network" --read-only --cap-drop ALL \
     -v "$root/scripts/gates/dast-session.mjs:/dast/dast-session.mjs:ro" \
-    -e STAFF_USERNAME="${TEMPORARY_COPY_STAFF_USERNAME:-staff}" \
-    -e STAFF_PASSWORD="${TEMPORARY_COPY_STAFF_PASSWORD:-temporary-copy-staff}" \
-    "$NODE_IMAGE" node /dast/dast-session.mjs "$1"); then
+    -v "$root/scripts/gates/temporary-copy/gateway-client.mjs:/dast/gateway-client.mjs:ro" \
+    -e STAFF_USERNAME="$TEMPORARY_COPY_STAFF_USERNAME" -e STAFF_PASSWORD="$TEMPORARY_COPY_STAFF_PASSWORD" \
+    "$TEMPORARY_COPY_NODE_IMAGE" node /dast/dast-session.mjs "$1"); then
     echo "::error::Could not sign in as $1 for the signed-in ZAP scan (see above)" >&2
     exit 2
   fi

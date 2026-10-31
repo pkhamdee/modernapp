@@ -3,7 +3,7 @@
 # every service: npm package-lock.json (development dependencies included: they run in our builds) and NuGet
 # packages.lock.json (eshop-api / eshop-sync-master; kept by RestorePackagesWithLockFile).
 #
-#   scripts/gates/deps.sh          # needs docker and git; CI runs it in the `deps` job (ci-release.yml)
+#   scripts/gates/deps.sh          # needs docker; CI runs it in the `deps` job (ci-release.yml)
 #
 # Fails (exit 1) on any CRITICAL vulnerability, fixed or not, as the image scan does. Other severities are
 # reported but never fail. Reports go to $REPORT_DIR (default: reports/deps): trivy.json (every severity),
@@ -14,11 +14,11 @@ TRIVY_IMAGE=aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f1
 # Not ours (third-party agent skills, other worktrees) or not lockfiles (installed and built output).
 SKIP_DIRS=(.git .agents .claude "**/node_modules" "**/bin" "**/obj")
 
-cd "$(git rev-parse --show-toplevel)"
-repo=$PWD
-report_dir=$(mkdir -p "${REPORT_DIR:-reports/deps}" && cd "${REPORT_DIR:-reports/deps}" && pwd)
-cache=${GATES_CACHE:-$HOME/.cache/eshop-gates}/trivy
-mkdir -p "$cache"
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+report_dir=$(gate_report_dir deps)
+cache=$(gate_cache trivy)
+repo=$GATES_ROOT
 
 skips=()
 for dir in "${SKIP_DIRS[@]}"; do skips+=(--skip-dirs "$dir"); done

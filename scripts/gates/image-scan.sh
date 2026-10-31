@@ -20,10 +20,11 @@ TRIVY_IMAGE=aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f1
 
 [ $# -gt 0 ] || { echo "usage: scripts/gates/image-scan.sh <image.tar>..." >&2; exit 2; }
 
-root=$(cd "$(dirname "$0")/../.." && pwd)
-report_dir=$(mkdir -p "${REPORT_DIR:-$root/reports/image-scan}" && cd "${REPORT_DIR:-$root/reports/image-scan}" && pwd)
-cache=${GATES_CACHE:-$HOME/.cache/eshop-gates}/trivy
-mkdir -p "$cache"
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+root=$GATES_ROOT
+report_dir=$(gate_report_dir image-scan)
+cache=$(gate_cache trivy)
 
 failed=()
 for archive in "$@"; do

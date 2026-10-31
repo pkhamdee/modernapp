@@ -13,7 +13,8 @@
 # TEMPORARY_COPY_TIMEOUT_SECONDS  how long `up` waits for every part to become healthy (default 180)
 # TEMPORARY_COPY_REPORT_DIR       where `up` writes the copy's status and logs when it fails (default reports/temporary-copy)
 # TEMPORARY_COPY_KEEP=1           `up` leaves a copy that failed running, to look into it (then run `down`)
-# TEMPORARY_COPY_STAFF_USERNAME / _PASSWORD   the throwaway Staff account (default staff / temporary-copy-staff)
+# TEMPORARY_COPY_STAFF_USERNAME / _PASSWORD   the throwaway Staff account, and TEMPORARY_COPY_NODE_IMAGE the
+#                                 readiness check's Node image (defaults: temporary-copy/defaults.env)
 #
 # Ready means: eshop-api, eshop-node-api, thirdparty-mock, eshop-web and the gateway answer their probes
 # (PostgreSQL through eshop-api's readiness), and through the gateway the demo catalog and its photos are there, a
@@ -21,9 +22,11 @@
 # On this Mac, point Docker at Rancher Desktop first: DOCKER_HOST=unix://$HOME/.rd/docker.sock.
 set -euo pipefail
 
-root=$(cd "$(dirname "$0")/../.." && pwd)
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+gate_copy_defaults # the Staff account and the Node image (temporary-copy/defaults.env); compose.yaml reads them
+root=$GATES_ROOT
 compose_file="$root/scripts/gates/temporary-copy/compose.yaml"
-report_dir=${TEMPORARY_COPY_REPORT_DIR:-$root/reports/temporary-copy}
 timeout=${TEMPORARY_COPY_TIMEOUT_SECONDS:-180}
 
 compose() {
@@ -39,7 +42,8 @@ build() {
 }
 
 report_failure() {
-  mkdir -p "$report_dir"
+  local report_dir
+  report_dir=$(gate_report_dir temporary-copy "${TEMPORARY_COPY_REPORT_DIR:-}")
   compose ps -a >"$report_dir/ps.txt" 2>&1 || true
   compose logs --no-color --timestamps >"$report_dir/logs.txt" 2>&1 || true
   echo "::error::The temporary copy did not become ready; status and logs in $report_dir"

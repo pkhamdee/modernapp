@@ -19,11 +19,12 @@ RULE_SETS=(csharp typescript javascript dockerfile bash yaml/github-actions html
 # The repo's own code and configuration; .agents/.claude hold third-party agent skills.
 TARGETS=(services e2e scripts .github deploy clusters)
 
-cd "$(git rev-parse --show-toplevel)"
-repo=$PWD
-report_dir=$(mkdir -p "${REPORT_DIR:-reports/sast}" && cd "${REPORT_DIR:-reports/sast}" && pwd)
-cache=${GATES_CACHE:-$HOME/.cache/eshop-gates}
-mkdir -p "$cache"
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+report_dir=$(gate_report_dir sast)
+cache=$(gate_cache)
+repo=$GATES_ROOT
+cd "$repo"
 rules="$cache/semgrep-rules-$RULES_COMMIT"
 
 if [ ! -d "$rules" ]; then
