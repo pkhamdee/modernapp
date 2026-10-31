@@ -343,33 +343,65 @@ npm run report                                       # HTML report of the last r
 
 ## Releasing
 
-Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is your step: agents can't push release tags. Cut the release and let CI build it, promote it to `eshop-prod` with a promotion PR, then run the smoke test there:
+Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"): release candidate → QA → sign-off → prod. Cutting a
+candidate is your step: agents can't push release tags. Needs the [promotion token](#promotion-token) once.
 
 ```sh
-# 1. Tag (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
-scripts/release.sh 0.2.0
+# 1. Release candidate: tag v0.3.0-rc.1 (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
+scripts/release.sh 0.3.0-rc.1
 
-# 2. Watch CI: test → validate tag → build → temporary copy → scan → push docker.io/pkhamdee/<service>:0.2.0 → GitHub Release
-gh run watch "$(gh run list --workflow ci-release.yml --branch v0.2.0 --limit 1 --json databaseId --jq '.[0].databaseId')"
+# 2. Watch CI: test → validate tag → build → temporary copy and gates → scan → push docker.io/pkhamdee/<service>:0.3.0-rc.1
+#    → opens the QA promotion PR "eshop-qa: deploy v0.3.0-rc.1" (images with digests, gate results, CI run link)
+gh run watch "$(gh run list --workflow ci-release.yml --branch v0.3.0-rc.1 --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh pr list --head promote/qa-0.3.0-rc.1
 
-# 3. Promote: a PR into main that changes only the pin (git-workflow.md, "Promotion and rollback"); merging it
-#    is the production approval, and Flux applies it a minute or two later
-git checkout -b promote/prod-0.2.0 origin/main
-scripts/pin-release.sh prod 0.2.0
-git commit -am "eshop-prod: promote v0.2.0" && git push -u origin promote/prod-0.2.0 && gh pr create --fill
-flux get kustomization apps-prod                      # after the merge: Applied revision: v0.2.0@…
-kubectl -n eshop-prod get deploy -o wide             # images :0.2.0, all READY
-curl -k https://prod.eshop.localhost/api/product-categories
+# 3. QA: merging that PR is QA's approval; Flux deploys the candidate to eshop-qa a minute or two later
+flux get kustomization apps-qa                        # Applied revision: v0.3.0-rc.1@…
+kubectl -n eshop-qa get deploy -o wide               # images :0.3.0-rc.1, all READY
 
-# 4. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
-cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh
+# 4. QA's Playwright run against https://qa.eshop.localhost, then the "Sign off release candidate" workflow: it tags
+#    v0.3.0, copies the images to 0.3.0, publishes the GitHub Release and opens the prod promotion PR; merging that
+#    is the production approval
 ```
 
-A fix after the release goes to `release/0.x` **and** `main`, then the next patch, e.g. `scripts/release.sh 0.1.2` (git-workflow.md, "Patch release").
+A fix found in QA goes to `release/0.x` **and** `main`, then the next candidate (`scripts/release.sh 0.3.0-rc.2`); a
+fix after the release, the next patch's candidate (`scripts/release.sh 0.3.1-rc.1`; git-workflow.md, "Patch release").
+`scripts/release.sh X.Y.Z` (no `-rc.N`) refuses: sign-off tags releases.
+
+If the promotion token is missing, CI's `open the QA promotion PR` job fails after the images are pushed and names
+the secret; set it and re-run that job, or open the PR yourself with `scripts/promotion-pr.sh qa 0.3.0-rc.1`
+(`PROMOTION_PUSH=0` first shows the commit and description without pushing).
+
+### Promotion token
+
+CI opens promotion PRs (and, with sign-off, pushes the release tag) with a **fine-grained personal access token**,
+stored as the repo secret `PROMOTION_TOKEN`. Not the workflow's own `GITHUB_TOKEN`: GitHub runs no workflow for a PR
+or tag that token creates, so a promotion PR would never get its required checks. Commits and PRs made with it show
+you as the actor (the commits themselves are authored by `github-actions[bot]`).
+
+**Human**, once, and again before it expires:
+
+1. github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
+2. Name `modernapp PROMOTION_TOKEN`; resource owner `pkhamdee`; **expiration** 90 days (or what you accept; a calendar
+   reminder a week before helps); **Repository access**: Only select repositories → `pkhamdee/modernapp`.
+3. **Repository permissions**: Contents **Read and write**, Pull requests **Read and write** (Metadata read-only is
+   added by itself). Nothing else; add Workflows read and write only if a promotion ever has to change
+   `.github/workflows/`.
+4. Give it to CI (`gh secret set` prompts for it, so it never lands in shell history):
+
+```sh
+gh secret set PROMOTION_TOKEN --repo pkhamdee/modernapp
+```
+
+**Renewal**: regenerate the token on the same page (or create a new one with the same settings) and run the same
+`gh secret set`. An expired or revoked token makes the promotion job fail at `git push` or `gh pr create` with an
+authentication error; the images are already pushed, so re-run just that job once the secret is updated. The
+"Protect release tags" ruleset blocks only deleting, moving and force-pushing `v*` tags, not creating them, so the
+token needs no bypass (git-workflow.md, "Tags").
 
 ## Temporary copy (release gate)
 
-Before CI pushes any image (`main` pushes, release tags, dry runs; never pull requests), it starts a **temporary
+Before CI pushes any image (`main` pushes, release-candidate tags, dry runs; never pull requests), it starts a **temporary
 copy** of eShop from the images it has just built and pushes nothing unless the copy becomes healthy (ADR 0007). The
 copy is one Compose file, `scripts/gates/temporary-copy/compose.yaml`: eshop-web, eshop-api, eshop-node-api,
 PostgreSQL and thirdparty-mock behind a small gateway that routes like the cluster's HTTPRoutes (`/api`, `/images`,
@@ -421,7 +453,7 @@ Enterprise sync steps can't pass there.
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
-| `scripts/` | Repo tasks: `release.sh X.Y.Z` cuts a release (human-run); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
+| `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI; tests in `tests/`); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
 | `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`. See [Running the gates locally](#running-the-gates-locally) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
