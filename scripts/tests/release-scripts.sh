@@ -136,6 +136,68 @@ released_version_refused() {
 check "release.sh refuses a candidate for a released version" released_version_refused
 answer=n check "release.sh pushes nothing when not confirmed" refused 'aborted' 0.3.1-rc.1
 
+# The first candidate of a new minor (X.Y.0-rc.1) on an existing release/N.x must carry main's work: release.sh
+# merges origin/main in first (a merge commit whose tree is main's), as v0.2.0 was made by hand (f613dcb).
+commit_file() { # commit_file <file> <subject>: a commit in $clone changing <file>
+  echo "$2" >>"$clone/$1"; git -C "$clone" add "$1"; git -C "$clone" commit -qm "$2"
+}
+clone=$(fresh new-minor)
+git -C "$clone" push -q origin HEAD:refs/heads/release/0.x
+git -C "$clone" checkout -q -b rel origin/release/0.x
+commit_file old-fix.txt "old fix, on release/0.x only"          # superseded by the next merge from main, like #39
+git -C "$clone" push -q origin HEAD:refs/heads/release/0.x
+git -C "$clone" checkout -q main
+commit_file feature-a.txt "feature a"
+git -C "$clone" push -q origin HEAD:main
+git -C "$clone" checkout -q rel
+git -C "$clone" fetch -q origin
+merge=$(git -C "$clone" commit-tree 'origin/main^{tree}' -p HEAD -p origin/main -m "Merge main into release/0.x for v0.2.0")
+git -C "$clone" reset -q --hard "$merge"
+git -C "$clone" tag -a v0.2.0 -m "Release 0.2.0"
+commit_file fix.txt "fix on release/0.x and main"
+git -C "$clone" push -q origin HEAD:refs/heads/release/0.x refs/tags/v0.2.0
+git -C "$clone" checkout -q main
+git -C "$clone" cherry-pick -x rel >/dev/null
+commit_file feature-b.txt "feature b"
+git -C "$clone" push -q origin HEAD:main
+answer=n check "release.sh X.Y.0-rc.1 on an existing release/N.x pushes nothing when not confirmed" \
+  refused 'aborted' 0.3.0-rc.1
+new_minor_merges_main() {
+  local old_head
+  old_head=$(origin rev-parse refs/heads/release/0.x)
+  release 0.3.0-rc.1 || return 1
+  local tagged
+  tagged=$(origin rev-parse 'refs/tags/v0.3.0-rc.1^{commit}')
+  [ "$tagged" = "$(origin rev-parse refs/heads/release/0.x)" ] \
+    && [ "$(origin rev-parse "$tagged^1")" = "$old_head" ] \
+    && [ "$(origin rev-parse "$tagged^2")" = "$(origin rev-parse refs/heads/main)" ] \
+    && [ "$(origin rev-parse "$tagged^{tree}")" = "$(origin rev-parse 'refs/heads/main^{tree}')" ] \
+    && [ "$(origin log -1 --format=%s "$tagged")" = "Merge main into release/0.x for v0.3.0-rc.1" ] \
+    && grep -qF 'merge origin/main into release/0.x' "$work/out"
+}
+check "release.sh X.Y.0-rc.1 on an existing release/N.x merges origin/main in (main's tree) and tags the merge" \
+  new_minor_merges_main
+patch_rc_tags_head() {
+  release 0.2.1-rc.1 \
+    && [ "$(origin rev-parse 'refs/tags/v0.2.1-rc.1^{commit}')" = "$(origin rev-parse refs/heads/release/0.x)" ] \
+    && [ "$(origin rev-parse 'refs/tags/v0.2.1-rc.1^{commit}')" = "$(origin rev-parse 'refs/tags/v0.3.0-rc.1^{commit}')" ]
+}
+check "release.sh X.Y.Z-rc.1 with Z > 0 tags the branch head (merges nothing)" patch_rc_tags_head
+
+clone=$(fresh new-minor-unmerged-fix)
+git -C "$clone" push -q origin HEAD:refs/heads/release/0.x
+git -C "$clone" checkout -q -b rel origin/release/0.x
+commit_file fix.txt "fix only on release/0.x"
+git -C "$clone" push -q origin HEAD:refs/heads/release/0.x
+git -C "$clone" checkout -q main
+commit_file feature.txt "feature"
+git -C "$clone" push -q origin HEAD:main
+unmerged_fix_refused() {
+  refused 'not on main' 0.3.0-rc.1 && grep -qF 'fix only on release/0.x' "$work/out"
+}
+check "release.sh X.Y.0-rc.1 refuses while release/N.x has a commit that is not on main (git cherry)" \
+  unmerged_fix_refused
+
 clone=$(fresh skip-ci)
 git -C "$clone" commit -q --allow-empty -m "eshop-dev: update images [skip ci]"
 git -C "$clone" push -q origin HEAD:main
