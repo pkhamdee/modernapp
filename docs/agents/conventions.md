@@ -263,7 +263,7 @@ Agents are denied these; ask the user, giving the exact command:
   (`gh secret set <NAME> --env release`; `docs/setup.md`, "Release secrets"), not repo secrets;
 - applying `scripts/protect-main.sh` (main's ruleset, the `v*` tag rulesets and the `release` environment) or changing any repo setting;
   give the user `scripts/protect-main.sh --dry-run` first. Test `scripts/release.sh`, `scripts/check-release-tag.sh`,
-  `scripts/promotion-pr.sh`, `scripts/sign-off.sh` and `scripts/protect-main.sh` with
+  `scripts/pin-release.sh`, `scripts/promotion-pr.sh`, `scripts/sign-off.sh`, `scripts/check-new-images.sh` and `scripts/protect-main.sh` with
   `scripts/tests/release-scripts.sh` (throwaway local repos, fake `gh`), never against GitHub.
 
 `main` is protected (`docs/git-workflow.md`, "Protecting main"): agents never push to it; every change is a PR whose
