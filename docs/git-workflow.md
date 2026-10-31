@@ -128,32 +128,52 @@ Defined in `.github/workflows/ci-release.yml`:
 - Pushing a `v*` tag lints and tests, validates the tag (must be `vX.Y.Z`, annotated, and on a `release/N.x` branch), builds **every** service in `.github/services.json` for arm64, scans each with Trivy (fails on critical), pushes `docker.io/pkhamdee/<service>:X.Y.Z`, and only then publishes the GitHub Release with generated notes.
 - If the build system can't trigger on tags, this workflow doesn't fit; switch to the branch-based workflow (Workflow A in the source article).
 
-### How a tag reaches `eshop-prod`
+### How a release reaches `eshop-prod`
 
-`eshop-prod` runs exactly one release: the manifests in `deploy/apps/prod` (and `deploy/apps/base`) **as they are in tag `vX.Y.Z`**, with the `X.Y.Z` images built from that same tag. Nothing is committed to a release branch or tag, and changes on `main` never reach prod until they are released.
+`eshop-prod` runs exactly one release, **pinned in Git**: the manifests in `deploy/apps/prod` (and `deploy/apps/base`) **as they are in tag `vX.Y.Z`**, with the `X.Y.Z` images built from that same tag. Pushing a tag does **not** change prod; nothing follows tags automatically. Prod moves only when a **promotion PR** that changes the pin is merged into `main`, and merging it is the production approval. Nothing is committed to a release branch or tag, and changes on `main` never reach prod until they are released and promoted.
+
+The pin is the lines ending in `# release-pin: prod` in `clusters/local/prod-release.yaml`, which always hold the same exact version:
+
+| Line | Object | Means |
+|---|---|---|
+| `semver: "X.Y.Z" # release-pin: prod` | GitRepository `eshop-release`, `spec.ref` | the source at tag `vX.Y.Z` (an exact version selects exactly that tag) |
+| `newTag: "X.Y.Z" # release-pin: prod` (one per service) | Kustomization `apps-prod`, `spec.images` | the `X.Y.Z` images |
 
 ```
-git push origin vX.Y.Z
-  └─ CI: test → validate tag → build + scan + push docker.io/pkhamdee/<service>:X.Y.Z (every service) → GitHub Release
-       └─ Flux (clusters/local/prod-release.yaml):
-            ImageRepository scans GHCR every minute → ImagePolicy eshop-release picks the newest plain X.Y.Z
-            (never main-<sha>, never a 0.0.0-test.N dry run)
-            → ImageUpdateAutomation eshop-prod commits ONE change to clusters/local on main
-              ("eshop-prod: follow the newest release"):
-                GitRepository eshop-release  ref.semver → X.Y.Z   (checks out tag vX.Y.Z)
-                Kustomization apps-prod       images     → X.Y.Z
-            → apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images (https://prod.eshop.localhost)
+promotion PR (scripts/pin-release.sh prod X.Y.Z) ── merged into main
+  └─ Flux Kustomization flux-system applies clusters/local:
+       GitRepository eshop-release checks out tag vX.Y.Z; apps-prod's images → X.Y.Z
+       └─ apps-prod applies deploy/apps/prod from tag vX.Y.Z with the X.Y.Z images (https://prod.eshop.localhost)
 ```
 
-Prod moves to a tag only once its images exist, so it never runs one release's manifests with another release's images. Expect a few minutes from tag push to rollout. To check:
+To check what prod runs:
 
 ```bash
-gh run list --workflow ci-release.yml --branch vX.Y.Z      # CI for the tag
-flux get images policy eshop-release                      # latest image = X.Y.Z
-flux get kustomization apps-prod                           # Applied revision: vX.Y.Z@sha1:...
-kubectl -n eshop-prod get deploy -o wide                  # images :X.Y.Z
+scripts/pin-release.sh prod                                 # the pinned release, from Git
+flux get kustomization apps-prod                            # Applied revision: vX.Y.Z@sha1:...
+kubectl -n eshop-prod get deploy -o wide                    # images :X.Y.Z
 curl -k https://prod.eshop.localhost/api/product-categories
 ```
+
+### Promotion and rollback
+
+A promotion PR changes **only the pin**. The edit is mechanical, and the same for a person or for CI:
+
+```bash
+git checkout -b promote/prod-X.Y.Z origin/main
+scripts/pin-release.sh prod X.Y.Z           # rewrites every `# release-pin: prod` line to "X.Y.Z"
+git commit -am "eshop-prod: promote vX.Y.Z" # then push and open a PR into main
+```
+
+`scripts/pin-release.sh <env> <version>` accepts only an exact `X.Y.Z` or `X.Y.Z-rc.N` (never a range, never a `0.0.0-test.N` dry run), rewrites the value on every line ending in `# release-pin: <env>` in `clusters/local/*.yaml` and prints the new pin; without a version it prints the current pin and fails if the lines are missing, disagree or hold anything but an exact version. CI's `repo rules` job runs it for every pinned environment (`scripts/validate-manifests.sh`), so a hand edit that misses a line fails the PR. Without the script, the edit is the same: replace the quoted version on each of those lines, nothing else.
+
+Before opening the PR, check that the release exists: tag `vX.Y.Z` is pushed and every service's `X.Y.Z` image is on Docker Hub (`docker manifest inspect docker.io/pkhamdee/<service>:X.Y.Z`). A pin to a missing tag leaves `eshop-release` not Ready and prod on its previous release; a missing image leaves that one Deployment's new pod in `ImagePullBackOff` while the old pod keeps serving. Either way, fix it with another promotion PR.
+
+Once merged, Flux applies it within a minute or two; `flux reconcile kustomization flux-system --with-source` hurries it.
+
+**Rollback** is a promotion PR back to an earlier release (`scripts/pin-release.sh prod <earlier X.Y.Z>`), reviewed and merged the same way. It moves the manifests and images back but **never the data**: eshop-api migrates the database forwards on start-up and nothing migrates it backwards. A rollback is therefore safe **only when the schema is compatible**: the earlier release must work with the database as the later one left it. In practice that means no migration between the two releases removed, renamed or retyped anything the earlier release reads or writes (`git diff vEARLIER..vLATER -- services/eshop-api/src/Eshop.Data/Migrations`). If it did, roll forward instead: fix on the release branch, tag the next patch and promote that.
+
+A release tag also carries **its own overlay**: the environment's manifests come from `deploy/apps/<env>` as it is in that tag, not from `main`. So an environment can be pinned (or rolled back) only to a release whose tag already contains that environment's overlay and the settings it needs: for prod, `v0.2.0` or later. Releases before `v0.2.0` used the old names and can never be rolled back to (docs/setup.md, "Moving to eShop"). Likewise, a fix to an overlay reaches the environment only with the next release that contains it.
 
 ### Releasing
 
@@ -164,16 +184,16 @@ Releasing is a **human step**: agents are not allowed to push release tags, so a
 
 It refuses when the commit to tag carries a GitHub skip-ci marker (`[skip ci]`, `[ci skip]`, …). GitHub skips every push workflow on such a commit, and a tag push counts. The tag would then never build and, being immutable, could only be replaced by the next version. That is what happened to `v0.1.0`, so the first release is `v0.1.1`. For the same reason, Flux's commit templates carry no skip-ci marker: CI ignores pushes that only touch `deploy/**` or `clusters/**` instead, and CI's `repo rules` job fails if a marker comes back. Keep markers out of your own commit messages too, even quoted, unless you mean them.
 
-Before the first release there is nothing for prod to run: the GitRepository `eshop-release` points at `v0.0.0` (which never exists), so it, the ImagePolicy `eshop-release` and `apps-prod` show not Ready (`no match found for semver: 0.0.0`). That is expected; they turn Ready a few minutes after the first release tag is pushed.
+A release tag does not deploy anything: once its CI run has pushed the images, promote it to prod with a promotion PR ([Promotion and rollback](#promotion-and-rollback)).
 
 Things to know:
 
-- **Newest wins.** The ImagePolicy selects the highest semver release across all series, so a patch on an older series (`v1.0.5` while `v2.0.0` is out) is built and released but does not replace the newer version in `eshop-prod`.
-- **Prod-only changes** (e.g. a prod patch in `deploy/apps/prod`) are released like code: land them on `main` (and the release branch, if it should ship as a patch), then tag.
-- **Services finish building at different times.** The release is detected from `eshop-api`'s `X.Y.Z` tag; a service whose image is pushed a minute later just retries its image pull until it exists.
-- **Rollback** = ship the next patch (tags are immutable). In an emergency, suspend the automation (`flux suspend image update eshop-prod`) and set `ref.semver` of `eshop-release` and the `images` of `apps-prod` in `clusters/local/` to an earlier release in a PR; resume afterwards. Releases before `v0.2.0` used the old names and can no longer be rolled back to (docs/setup.md, "Moving to eShop").
+- **Any release can be promoted**, in any order: the pin names one exact version, so a patch on an older series (`v1.0.5` while `v2.0.0` is out) reaches prod only if someone promotes it.
+- **Prod-only changes** (e.g. a prod patch in `deploy/apps/prod`) are released like code: land them on `main` (and the release branch, if it should ship as a patch), tag, then promote.
+- **Wait for every image.** Services finish building at different times; promote once the tag's CI run has finished (`gh run list --workflow ci-release.yml --branch vX.Y.Z`).
+- **A bad release** is fixed by the next patch (tags are immutable) and a promotion PR, or by a rollback PR when the schema allows ([Promotion and rollback](#promotion-and-rollback)).
 - **Release dry run** without a tag: Actions → CI / Release → Run workflow with `version` = `0.0.0-test.N` (any branch). It builds, scans and pushes every service as that pre-release tag and publishes no Release. It is never deployed.
-- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry (with the `flux-system:eshop-release` marker) to `apps-prod` in `clusters/local/apps.yaml`; its HTTPRoutes are moved to `prod.eshop.localhost` automatically.
+- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry to `apps-prod` in `clusters/local/prod-release.yaml` whose `newTag` line ends in `# release-pin: prod` (holding the current pin); its HTTPRoutes are moved to `prod.eshop.localhost` automatically. The entry can land before a release with the service is promoted: an `images:` entry that matches no Deployment in the pinned release changes nothing.
 
 ## Why tags rather than branches
 

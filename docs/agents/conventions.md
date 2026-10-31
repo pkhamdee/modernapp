@@ -196,10 +196,14 @@ eshop-sync-master:
 - **Adding a service**: base folder `deploy/apps/base/<svc>/` (Deployment, Service, an HTTPRoute if the Gateway routes it, `network-policy.yaml`),
   an entry in `.github/services.json`, a lint/test job in `ci-release.yml` listed in `plan.needs`. Dev: see the
   header of `deploy/apps/dev/image-automation.yaml`. Prod: see the header of `deploy/apps/prod/kustomization.yaml`
-  and `docs/git-workflow.md` ("Adding a service"). Prod has no image automation of its own; it follows the newest
-  release tag via `clusters/local/prod-release.yaml`.
+  and `docs/git-workflow.md` ("Adding a service"). Prod has no image automation: it is pinned to one release in
+  `clusters/local/prod-release.yaml` and moves only by a promotion PR (`scripts/pin-release.sh prod X.Y.Z`).
+  Never rename `eshop-release` or `apps-prod`: Flux would delete and recreate them, and deleting `apps-prod`
+  prunes everything it applied, prod's PostgreSQL Cluster (its data) included.
 - Base Deployments use untagged `docker.io/pkhamdee/<svc>`; tags are set only by the setter markers
-  (`# {"$imagepolicy": "<ns>:<policy>:tag"}`) that Flux rewrites. Leave the tag values to Flux.
+  (`# {"$imagepolicy": "<ns>:<policy>:tag"}`) that Flux rewrites (dev, thirdparty), or by the release pin
+  (`# release-pin: <env>` lines, changed only with `scripts/pin-release.sh`). Leave the tag values to Flux and the
+  script.
 - Flux image-automation commits touch only `deploy/**` and `clusters/**`, which CI ignores (`paths-ignore`); a commit
   mixing code with those paths still runs CI.
 - Base HTTPRoutes are dev-shaped (`eshop.localhost`, `sectionName: https`, one parentRef); the prod overlay patches
