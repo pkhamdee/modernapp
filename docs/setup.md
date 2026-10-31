@@ -422,7 +422,7 @@ Enterprise sync steps can't pass there.
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
 | `scripts/` | Repo tasks: `release.sh X.Y.Z` cuts a release (human-run); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
-| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`. See [Running the gates locally](#running-the-gates-locally) | – |
+| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `perf.sh` (Locust; load, thresholds and locustfile in `perf/`). See [Running the gates locally](#running-the-gates-locally) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
@@ -488,8 +488,26 @@ scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulne
   fixed or not, as in the image scan.
 - **Temporary copy** (`temporary-copy.sh`, the copy the image gates run against): see
   [Temporary copy](#temporary-copy-release-gate).
-- To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, or a lockfile
-  entry such as lodash 4.17.4), run the gate, see it fail, and revert. Never commit the plant.
+- **Performance** (`perf.sh`, CI: the `gate` job, artifact `perf-report`) runs Locust headless from its pinned image
+  against a running temporary copy, on the copy's Compose network: about 50 Customers for 60 s over the catalog,
+  Products, sign-in by SMS code (each user with its own mobile number), and the Auction and its Lots. It fails when
+  the p95 of all requests is over 500 ms or more than 1% of them failed. Staff sign-in is left out on purpose: its
+  password check is deliberately slow. The load and the thresholds are in `scripts/gates/perf/locust.conf`; the
+  flows in `locustfile.py` beside it. `reports/perf/summary.txt` gives the verdict and the slowest endpoints;
+  `locust.html` and `locust_*.csv` the per-endpoint numbers.
+
+  ```sh
+  scripts/gates/temporary-copy.sh build && scripts/gates/temporary-copy.sh up
+  scripts/gates/perf.sh                              # ~70 s
+  LOCUST_RUN_TIME=15s LOCUST_USERS=10 scripts/gates/perf.sh   # any locust.conf value, for one run
+  scripts/gates/temporary-copy.sh down
+  ```
+
+  With a copy started under another project name (`TEMPORARY_COPY_PROJECT`), run `perf.sh` with the same variable
+  so it joins that copy's network; `PERF_NETWORK` and `PERF_HOST` point it anywhere else.
+- To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, a lockfile
+  entry such as lodash 4.17.4, or an `await Task.Delay(800)` in a catalog endpoint, then rebuild that image and
+  restart the copy), run the gate, see it fail, and revert. Never commit the plant.
 
 ## Troubleshooting
 

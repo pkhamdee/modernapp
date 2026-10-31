@@ -366,6 +366,17 @@ jobs:
       # - #71 ZAP baseline and API scans, signed out
       # - #72 ZAP API scan signed in as a Customer and as Staff
 
+      # Locust: ~50 Customers for 60 s; fails on p95 > 500 ms or > 1% errors (scripts/gates/perf/locust.conf).
+      - name: Performance gate (Locust)
+        run: scripts/gates/perf.sh
+      - name: Keep the performance report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-report
+          path: reports/perf/
+          if-no-files-found: ignore
+
       - name: Stop the temporary copy
         if: always()
         run: scripts/gates/temporary-copy.sh down
