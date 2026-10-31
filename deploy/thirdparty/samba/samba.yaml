@@ -1,4 +1,5 @@
-# Mock Windows file share for images: one Samba server, one share per environment (eshop-dev, eshop-prod),
+# Mock Windows file share for images: one Samba server, one share per environment (eshop-dev, eshop-qa,
+# eshop-prod),
 # each with a `public` and a `private` area (folders eshop-node-api creates). Each environment has its own
 # SMB account that can open only its own share; passwords live in samba-accounts.sops.yaml and must match
 # the eshop-node-api-smb secret of that environment.
@@ -42,9 +43,10 @@ spec:
             - -c
             - |
               set -e
-              mkdir -p /shares/eshop-dev /shares/eshop-prod
+              mkdir -p /shares/eshop-dev /shares/eshop-qa /shares/eshop-prod
               chown 1003:1003 /shares/eshop-dev && chmod 0700 /shares/eshop-dev
               chown 1004:1004 /shares/eshop-prod && chmod 0700 /shares/eshop-prod
+              chown 1005:1005 /shares/eshop-qa && chmod 0700 /shares/eshop-qa
           volumeMounts:
             - name: shares
               mountPath: /shares
@@ -76,10 +78,19 @@ spec:
                   key: eshopprod
             - name: UID_eshopprod
               value: "1004"
+            - name: ACCOUNT_eshopqa
+              valueFrom:
+                secretKeyRef:
+                  name: samba-accounts
+                  key: eshopqa
+            - name: UID_eshopqa
+              value: "1005"
             - name: SAMBA_VOLUME_CONFIG_eshopdev
               value: "[eshop-dev]; path = /shares/eshop-dev; valid users = eshopdev; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
             - name: SAMBA_VOLUME_CONFIG_eshopprod
               value: "[eshop-prod]; path = /shares/eshop-prod; valid users = eshopprod; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
+            - name: SAMBA_VOLUME_CONFIG_eshopqa
+              value: "[eshop-qa]; path = /shares/eshop-qa; valid users = eshopqa; guest ok = no; read only = no; browseable = yes; create mask = 0600; directory mask = 0700"
           ports:
             - name: smb
               containerPort: 445

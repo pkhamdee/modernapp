@@ -1,11 +1,11 @@
 # Local setup
 
-Takes a fresh Mac (Apple Silicon) to a Rancher Desktop k3s cluster that Flux manages from this repo, serving `https://eshop.localhost` (`eshop-dev`) and `https://prod.eshop.localhost` (`eshop-prod`).
+Takes a fresh Mac (Apple Silicon) to a Rancher Desktop k3s cluster that Flux manages from this repo, serving `https://eshop.localhost` (`eshop-dev`), `https://qa.eshop.localhost` (`eshop-qa`) and `https://prod.eshop.localhost` (`eshop-prod`).
 
 ## 1. Rancher Desktop
 
 1. Install [Rancher Desktop](https://rancherdesktop.io/) (`brew install --cask rancher`).
-2. **Preferences → Virtual Machine**: memory **12 GB** (SQL Server under Rosetta needs about 2 GB; both app namespaces and the shared mocks need the rest), 4+ CPUs.
+2. **Preferences → Virtual Machine**: memory **12 GB** (SQL Server under Rosetta needs about 2 GB; the app namespaces and the shared mocks need the rest; once QA runs, a third copy of the apps and PostgreSQL may call for more), 4+ CPUs.
 3. **Preferences → Virtual Machine → Emulation**: VZ with **Rosetta** enabled, so `linux/amd64` images (SQL Server) run.
 4. **Preferences → Kubernetes**: **enabled**, Traefik **enabled** (it is the Gateway API implementation, ADR-0002).
 5. **Preferences → Container Engine**: either works; `dockerd (moby)` is assumed by the commands in this repo.
@@ -17,18 +17,19 @@ kubectl config use-context rancher-desktop
 kubectl get nodes
 ```
 
-Rancher Desktop forwards host ports 80 and 443 to Traefik, and macOS resolves every `*.localhost` name to `127.0.0.1`, so `https://eshop.localhost` and `https://prod.eshop.localhost` reach the cluster without editing `/etc/hosts`.
+Rancher Desktop forwards host ports 80 and 443 to Traefik, and macOS resolves every `*.localhost` name to `127.0.0.1`, so `https://eshop.localhost`, `https://qa.eshop.localhost` and `https://prod.eshop.localhost` reach the cluster without editing `/etc/hosts`.
 
 ### Environments and hostnames
 
-Both environments share the one `eshop` Gateway on port 443 and run the same apps with the same paths (`/`, `/api`, `/images`); they are told apart by hostname, so neither ever shadows the other's routes:
+The environments share the one `eshop` Gateway on port 443 and run the same apps with the same paths (`/`, `/api`, `/images`); they are told apart by hostname, so none ever shadows another's routes:
 
 | Environment | Namespace | Follows | URL | Gateway listener |
 | --- | --- | --- | --- | --- |
 | dev | `eshop-dev` | `main` (`main-<sha>` images) | `https://eshop.localhost` | `https` |
+| qa | `eshop-qa` | the release candidate pinned in `clusters/local/qa-release.yaml`: tag `vX.Y.Z-rc.N`'s manifests and its `X.Y.Z-rc.N` images, moved only by a QA promotion PR (docs/git-workflow.md). **Nothing until the first release candidate is promoted** (below) | `https://qa.eshop.localhost` | `https-qa` (accepts routes from `eshop-qa` only) |
 | prod | `eshop-prod` | the release pinned in `clusters/local/prod-release.yaml`: tag `vX.Y.Z`'s manifests and its `X.Y.Z` images, moved only by a promotion PR (docs/git-workflow.md) | `https://prod.eshop.localhost` | `https-prod` (accepts routes from `eshop-prod` only) |
 
-Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/eshop-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials.
+Base HTTPRoutes are written for dev; `deploy/apps/qa/kustomization.yaml` and `deploy/apps/prod/kustomization.yaml` patch every HTTPRoute to their hostname and listener. The one certificate `gateway/eshop-localhost-tls` carries all three names, and plain HTTP on any of them redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials, its own Staff account, its own share on the mock Samba and its own Enterprise database (`enterprise_<env>`) on the mock SQL Server.
 
 ### DOCKER_HOST gotcha
 
@@ -83,17 +84,21 @@ Bootstrap installs Flux, commits `clusters/local/flux-system/` to `main` if it c
 
 ```sh
 flux get kustomizations          # flux-system, infra-controllers, infra-configs, thirdparty, apps-dev, apps-prod: Ready
+                                 # apps-qa: SUSPENDED True until the first release candidate is promoted to QA
 kubectl get gateway -n gateway   # eshop, PROGRAMMED True
 curl -k https://eshop.localhost/api/product-categories   # catalog JSON from eshop-api
 curl -k https://eshop.localhost                          # eshop-web
 curl -kI https://eshop.localhost/images/public/demo-iphone-17.svg   # a Product photo from eshop-node-api
 curl -I http://eshop.localhost  # 301 to https
 curl -k https://prod.eshop.localhost/api/product-categories   # eshop-prod (the pinned release; own database)
+curl -k https://qa.eshop.localhost/api/product-categories     # eshop-qa (the pinned release candidate), once QA runs one
 open https://eshop.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-in codes for any mobile number
 open https://eshop.localhost/thirdparty-mock/enterprise/ # mock Enterprise System: pushed Contracts, simulate Payment, cancel
 ```
 
 **`eshop-prod` runs the pinned release.** Prod runs only the release pinned in `clusters/local/prod-release.yaml` (`scripts/pin-release.sh prod` prints it; docs/git-workflow.md, "How a release reaches `eshop-prod`"). On a fresh cluster Flux deploys that release, starting from an empty prod database. If the pinned tag or its images were missing, the GitRepository `eshop-release` or `apps-prod` would stay not Ready and `https://prod.eshop.localhost` would serve nothing.
+
+**`eshop-qa` runs the pinned release candidate, from the first one on.** QA is pinned the same way, in `clusters/local/qa-release.yaml` (`scripts/pin-release.sh qa`), and its PostgreSQL keeps its data from one release candidate to the next. A release tag carries its own overlay, and no tag before the first release candidate cut after #74 contains `deploy/apps/qa`, so QA cannot run `v0.2.0`. Until a release candidate is promoted, `apps-qa` is therefore **suspended** (`suspend: true # release-pin-until: qa`) and its pin holds `0.2.0` only as a placeholder; `scripts/pin-release.sh qa` says so. Everything else QA needs is already applied from `main`: namespace `eshop-qa`, the Gateway listeners `https-qa`/`http-qa`, `qa.eshop.localhost` in the certificate (reissued by cert-manager from the same local CA, so nothing new to trust), the thirdparty NetworkPolicies, the `eshopqa` Samba share and the `enterprise_qa` database with login `eshop_sync_qa`. Until then `https://qa.eshop.localhost` answers 404. The first QA promotion PR (`scripts/pin-release.sh qa X.Y.Z-rc.N`) pins the candidate and deletes the suspend line in the same edit; once merged, Flux deploys QA for the first time, starting from an empty database (docs/git-workflow.md, "QA").
 
 **A cluster that ran the old names** (before #49 and #50) needs a few human steps: see [Moving to eShop](#moving-to-eshop-49-50) below.
 
@@ -219,12 +224,12 @@ renamed CI jobs.
 
 ## Staff back office (demo account)
 
-The back office is at `https://eshop.localhost/staff` (prod: `https://prod.eshop.localhost/staff`). Each environment has
+The back office is at `https://eshop.localhost/staff` (QA: `https://qa.eshop.localhost/staff`, prod: `https://prod.eshop.localhost/staff`). Each environment has
 one demo Staff account; its username and password live **only** in the SOPS-encrypted Secret
 `deploy/apps/<env>/eshop-api-staff.sops.yaml` (never in plain text in git). Read them with:
 
 ```sh
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/eshop-api-staff.sops.yaml   # or prod
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/eshop-api-staff.sops.yaml   # or qa, prod
 ```
 
 eshop-api provisions the account at startup from `Staff__Accounts__0__Username|Password|DisplayName` (stored as a salted
@@ -248,15 +253,15 @@ starting price, then at least ฿100 above the current highest; Bids before open
 ## Mock Enterprise System (SQL Server)
 
 The Enterprise System is a real SQL Server 2022 (`mcr.microsoft.com/mssql/server`, amd64 only, so it runs under Rosetta;
-about 2 GB of memory and a slow first start) in the `thirdparty` namespace, shared by both environments:
-databases `enterprise_dev` and `enterprise_prod`, fake schema `hp.contract` / `hp.payment`
+about 2 GB of memory and a slow first start) in the `thirdparty` namespace, shared by every environment:
+databases `enterprise_dev`, `enterprise_qa` and `enterprise_prod`, fake schema `hp.contract` / `hp.payment`
 (`deploy/thirdparty/mssql/enterprise-schema.sql`). The pod's `schema` container creates the databases, applies the
 schema and (re)sets the logins on every start. Passwords are in the SOPS Secret
 `deploy/thirdparty/mssql/mssql-credentials.sops.yaml` (`sa`, `enterprise_admin` for the admin tool, `eshop_sync_dev` /
-`eshop_sync_prod` for eshop-sync-master). Each environment's copy of its sync login is in
+`eshop_sync_qa` / `eshop_sync_prod` for eshop-sync-master). Each environment's copy of its sync login is in
 `deploy/apps/<env>/eshop-sync-master-enterprise.sops.yaml` and must match.
 
-**Admin tool** (story 62): `https://eshop.localhost/thirdparty-mock/enterprise/` → `dev/` or `prod/` lists the Contracts
+**Admin tool** (story 62): `https://eshop.localhost/thirdparty-mock/enterprise/` → `dev/`, `qa/` or `prod/` lists the Contracts
 eshop-sync-master pushed (newest first) with their Payments, and per Contract: **Simulate Payment** (one Installment by
 default; the last one makes it `PAID_OFF`), **Mark overdue / Mark active**, **Cancel Contract**. The same as JSON for
 scripts:
@@ -317,14 +322,15 @@ cd e2e
 npm ci && npx playwright install chromium            # once
 npm run e2e                                          # eshop-dev: https://eshop.localhost
 E2E_BASE_URL=https://prod.eshop.localhost npm run e2e   # eshop-prod (same as npm run e2e:prod)
+npm run e2e:qa                                       # eshop-qa: https://qa.eshop.localhost (once QA runs a release candidate)
 npm run report                                       # HTML report of the last run (traces of failures)
 ```
 
 - **Staff credentials** come from the environment's SOPS Secret (`deploy/apps/<env>/eshop-api-staff.sops.yaml`),
   decrypted at run time by `global-setup.ts` with `sops` and the age key (`SOPS_AGE_KEY_FILE`, default
   `~/.config/sops/age/keys.txt`) into the test process's environment only; it is never printed or written to the
-  report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|prod` overrides the environment name
-  derived from the host (it picks the Enterprise database in the admin tool and the Secret).
+  report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|qa|prod` overrides the environment name
+  derived from the host (`qa.` → qa, `prod.` → prod, otherwise dev); it picks the Enterprise database in the admin tool and the Secret.
 - The certificate is self-signed; the test accepts it.
 - **GitHub Actions**: `e2e/run-on-actions.sh [base_url]` (default `https://prod.eshop.localhost`) runs
   `.github/workflows/e2e.yml` on GitHub Actions with the job on this machine, which GitHub-hosted runners can't
@@ -367,12 +373,14 @@ A fix after the release goes to `release/0.x` **and** `main`, then the next patc
 | --- | --- | --- |
 | `clusters/local/` | Cluster entry point: `flux-system/` (generated by bootstrap) plus the Kustomizations below | `flux-system` |
 | `clusters/local/prod-release.yaml` | What `eshop-prod` runs, the **prod pin**: GitRepository `eshop-release` (one release tag) and Kustomization `apps-prod` with that release's `X.Y.Z` images; the `# release-pin: prod` lines change only in a promotion PR (`scripts/pin-release.sh`) | `flux-system` |
+| `clusters/local/qa-release.yaml` | What `eshop-qa` runs, the **QA pin**, same shape: GitRepository `eshop-qa` (one release-candidate tag) and Kustomization `apps-qa` with its `X.Y.Z-rc.N` images; the `# release-pin: qa` lines change only in a QA promotion PR. Suspended until the first one | `flux-system` |
 | `deploy/infrastructure/controllers/` | Namespaces, Traefik `HelmChartConfig` (Gateway API provider), cert-manager, CloudNativePG operator | `infra-controllers` |
 | `deploy/infrastructure/configs/` | Issuers, the `eshop` Gateway and its certificate, platform secrets | `infra-configs` (after controllers) |
 | `deploy/apps/base/` | One directory per app, environment-neutral | – |
 | `deploy/apps/dev/` | `eshop-dev` overlay, follows `main` | `apps-dev` (after configs) |
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
 | `deploy/apps/prod/` | `eshop-prod` overlay, applied as it is in the pinned release tag, served at `prod.eshop.localhost` | `apps-prod` (after configs; source `eshop-release`) |
+| `deploy/apps/qa/` | `eshop-qa` overlay (a copy of prod's), applied as it is in the pinned release-candidate tag, served at `qa.eshop.localhost` | `apps-qa` (after configs; source `eshop-qa`) |
 | `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, `samba/`: image share with one share per environment, `mssql/`: mock Enterprise System, ...); thirdparty-mock follows `main` via its own image automation | `thirdparty` (after configs) |
 | `services/eshop-api/` | .NET solution: `src/Eshop.Domain`, `src/Eshop.Data` (EF Core, migrations), `src/Eshop.Api`, `src/Eshop.SyncMaster` (eshop-sync-master), `tests/Eshop.Api.Tests` (Seam 1), `tests/Eshop.SyncMaster.Tests` (Seam 2) | – |
 | `services/eshop-web/` | React + Vite + TypeScript, served by Caddy | – |

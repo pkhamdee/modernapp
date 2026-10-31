@@ -1,5 +1,5 @@
-# Mock Enterprise System (ADR-0003): the real SQL Server, shared by both environments through separate databases
-# enterprise_dev and enterprise_prod (fake schema in enterprise-schema.sql, logins in logins.sql, applied by the
+# Mock Enterprise System (ADR-0003): the real SQL Server, shared by every environment through separate databases
+# enterprise_dev, enterprise_qa and enterprise_prod (fake schema in enterprise-schema.sql, logins in logins.sql, applied by the
 # `schema` container on every start). In-cluster: mssql.thirdparty.svc.cluster.local:1433.
 # The image is linux/amd64 only. The node is arm64: Rancher Desktop runs it under Rosetta (its manifest is
 # single-platform, so the arm64 node pulls it as is). No arch nodeSelector, since there is no amd64 node; it
@@ -114,6 +114,11 @@ spec:
                 secretKeyRef:
                   name: mssql-credentials
                   key: sync-dev-password
+            - name: SYNC_QA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mssql-credentials
+                  key: sync-qa-password
             - name: SYNC_PROD_PASSWORD
               valueFrom:
                 secretKeyRef:

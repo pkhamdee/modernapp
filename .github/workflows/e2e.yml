@@ -1,8 +1,9 @@
 # Seam 4: the definition-of-done demo as one Playwright browser test against a DEPLOYED environment.
 # A post-release smoke test, run by hand (Actions -> E2E smoke test -> Run workflow): never on push or PR.
 #
-# The environments live on a local cluster (https://eshop.localhost, https://prod.eshop.localhost), which
-# GitHub-hosted runners cannot reach. The job runs on an on-demand runner on the machine that hosts the cluster:
+# The environments live on a local cluster (https://eshop.localhost, https://qa.eshop.localhost,
+# https://prod.eshop.localhost), which GitHub-hosted runners cannot reach. The job runs on an on-demand runner on
+# the machine that hosts the cluster:
 # `e2e/run-on-actions.sh [base_url]` registers an ephemeral runner labelled `eshop-e2e`, dispatches this
 # workflow to it and unregisters it afterwards (the repository is public, so no runner stays registered).
 # Dispatching from the Actions tab only works while such a runner is online. Or simply run `npm run e2e` there
@@ -16,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       base_url:
-        description: "Environment to test: https://prod.eshop.localhost (eshop-prod) or https://eshop.localhost (eshop-dev)"
+        description: "Environment to test: https://prod.eshop.localhost (eshop-prod), https://qa.eshop.localhost (eshop-qa) or https://eshop.localhost (eshop-dev)"
         required: true
         default: "https://prod.eshop.localhost"
       runner:

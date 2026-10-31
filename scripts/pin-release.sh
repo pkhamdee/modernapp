@@ -9,6 +9,10 @@
 # GitRepository `ref.semver` (the source at tag vX.Y.Z) and each `newTag` of its Kustomization's images (the
 # X.Y.Z images). They always hold the same exact version, so the release's manifests and images never diverge.
 # Reading fails if the lines are missing, disagree, or hold anything but an exact X.Y.Z or X.Y.Z-rc.N.
+#
+# An environment with no release yet (QA before its first release candidate) also has a `suspend: true` line
+# ending in `# release-pin-until: <env>`: its pin is only a placeholder and Flux deploys nothing. Reading says so
+# on stderr; pinning a version deletes that line, so the first promotion also starts the environment.
 # PIN_DIR overrides the folder (tests).
 set -euo pipefail
 
@@ -20,13 +24,14 @@ exact='^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$'
 
 dir=${PIN_DIR:-"$(git rev-parse --show-toplevel)/clusters/local"}
 marker="# release-pin: $env"
+until="# release-pin-until: $env"
 files=$(grep -l -- "$marker\$" "$dir"/*.yaml || true)
 [ -n "$files" ] || { echo "no '$marker' lines in $dir" >&2; exit 1; }
 
 if [ -n "$version" ]; then
   [[ "$version" =~ $exact ]] || usage
   for f in $files; do
-    sed -E "s|: \"?[^\" #]*\"? +$marker\$|: \"$version\" $marker|" "$f" >"$f.pin"
+    sed -E -e "s|: \"?[^\" #]*\"? +$marker\$|: \"$version\" $marker|" -e "/ $until\$/d" "$f" >"$f.pin"
     mv "$f.pin" "$f"
   done
 fi
@@ -37,5 +42,9 @@ if [ "$(wc -l <<<"$values")" -ne 1 ] || ! [[ "$values" =~ $exact ]]; then
   echo "$env is not pinned to one exact release; '$marker' lines hold:" >&2
   echo "$values" >&2
   exit 1
+fi
+# shellcheck disable=SC2086 # $files is a list of paths without spaces
+if grep -q -- " $until\$" $files; then
+  echo "$env has no release yet: its Kustomization is suspended and $values is a placeholder (not deployed)" >&2
 fi
 echo "$values"
