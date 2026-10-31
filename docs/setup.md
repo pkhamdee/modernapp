@@ -332,7 +332,7 @@ npm run report                                       # HTML report of the last r
   report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|qa|prod` overrides the environment name
   derived from the host (`qa.` → qa, `prod.` → prod, otherwise dev); it picks the Enterprise database in the admin tool and the Secret.
 - The certificate is self-signed; the test accepts it.
-- **GitHub Actions**: `e2e/run-on-actions.sh [base_url]` (default `https://prod.eshop.localhost`) runs
+- **GitHub Actions**: `e2e/run-on-actions.sh [prod|qa|dev] [version]` (default `prod`, no version) runs
   `.github/workflows/e2e.yml` on GitHub Actions with the job on this machine, which GitHub-hosted runners can't
   reach. The repository is public, so no runner stays registered: the script registers an ephemeral runner
   (label `eshop-e2e` only), dispatches the workflow to it, follows the run (the Playwright report is a run
@@ -340,6 +340,17 @@ npm run report                                       # HTML report of the last r
   age key: the job decrypts the Staff account itself, so no Staff secrets are stored in GitHub. Workflow runs
   from outside contributors' pull requests always wait for approval (repo setting), so nobody else's workflow
   can reach a runner here unreviewed.
+- **QA's test of a release candidate** is `e2e/run-on-actions.sh qa X.Y.Z-rc.N`: only such a run counts for
+  sign-off (git-workflow.md, "QA test run"). Given a version (required for `qa`, optional `X.Y.Z` for `prod`, none
+  for `dev`), the run refuses unless the environment is actually serving it, checked against the cluster by
+  `e2e/check-serving.sh <env> <version>` (Flux applied tag `v<version>` to `apps-<env>`, and every Deployment in
+  `eshop-<env>` finished rolling out with the `<version>` images), before and again after the test. The script makes
+  the check here first, so `e2e/run-on-actions.sh qa 0.3.0-rc.1` while QA serves something else stops at once:
+  `eshop-qa is not serving 0.3.0-rc.1: apps-qa applied v0.3.0-rc.2@sha1:...` (while QA has no release yet:
+  `... apps-qa is suspended ...`). The run is named `E2E <environment>[ <version>]` (`E2E qa 0.3.0-rc.1`) and its
+  summary lists the version, the applied revision and the images. The job uses this machine's `kubectl` and `jq`
+  (the runner inherits the shell's `PATH` and `~/.kube/config`, current context the Rancher Desktop cluster).
+  Tests for the check, with a fake kubectl: `e2e/check-serving.test.sh` (run in CI's `repo rules` job).
 
 ## Releasing
 
@@ -359,9 +370,14 @@ gh pr list --head promote/qa-0.3.0-rc.1
 flux get kustomization apps-qa                        # Applied revision: v0.3.0-rc.1@…
 kubectl -n eshop-qa get deploy -o wide               # images :0.3.0-rc.1, all READY
 
-# 4. QA's Playwright run against https://qa.eshop.localhost, then the "Sign off release candidate" workflow: it tags
-#    v0.3.0, copies the images to 0.3.0, publishes the GitHub Release and opens the prod promotion PR; merging that
-#    is the production approval
+# 4. QA's Playwright run against https://qa.eshop.localhost, recorded as "E2E qa 0.3.0-rc.1"
+e2e/run-on-actions.sh qa 0.3.0-rc.1
+
+# 5. The "Sign off release candidate" workflow: it tags v0.3.0, copies the images to 0.3.0, publishes the GitHub
+#    Release and opens the prod promotion PR; merging that is the production approval
+
+# 6. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
+cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh prod 0.3.0
 ```
 
 A fix found in QA goes to `release/0.x` **and** `main`, then the next candidate (`scripts/release.sh 0.3.0-rc.2`); a
@@ -454,8 +470,8 @@ Enterprise sync steps can't pass there.
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
 | `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI; tests in `tests/`); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
-| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`. See [Running the gates locally](#running-the-gates-locally) | – |
-| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
+| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `perf.sh` (Locust; load, thresholds and locustfile in `perf/`). See [Running the gates locally](#running-the-gates-locally) | – |
+| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release-candidate tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
 
@@ -520,8 +536,26 @@ scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulne
   fixed or not, as in the image scan.
 - **Temporary copy** (`temporary-copy.sh`, the copy the image gates run against): see
   [Temporary copy](#temporary-copy-release-gate).
-- To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, or a lockfile
-  entry such as lodash 4.17.4), run the gate, see it fail, and revert. Never commit the plant.
+- **Performance** (`perf.sh`, CI: the `gate` job, artifact `perf-report`) runs Locust headless from its pinned image
+  against a running temporary copy, on the copy's Compose network: about 50 Customers for 60 s over the catalog,
+  Products, sign-in by SMS code (each user with its own mobile number), and the Auction and its Lots. It fails when
+  the p95 of all requests is over 500 ms or more than 1% of them failed. Staff sign-in is left out on purpose: its
+  password check is deliberately slow. The load and the thresholds are in `scripts/gates/perf/locust.conf`; the
+  flows in `locustfile.py` beside it. `reports/perf/summary.txt` gives the verdict and the slowest endpoints;
+  `locust.html` and `locust_*.csv` the per-endpoint numbers.
+
+  ```sh
+  scripts/gates/temporary-copy.sh build && scripts/gates/temporary-copy.sh up
+  scripts/gates/perf.sh                              # ~70 s
+  LOCUST_RUN_TIME=15s LOCUST_USERS=10 scripts/gates/perf.sh   # any locust.conf value, for one run
+  scripts/gates/temporary-copy.sh down
+  ```
+
+  With a copy started under another project name (`TEMPORARY_COPY_PROJECT`), run `perf.sh` with the same variable
+  so it joins that copy's network; `PERF_NETWORK` and `PERF_HOST` point it anywhere else.
+- To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, a lockfile
+  entry such as lodash 4.17.4, or an `await Task.Delay(800)` in a catalog endpoint, then rebuild that image and
+  restart the copy), run the gate, see it fail, and revert. Never commit the plant.
 
 ## Troubleshooting
 

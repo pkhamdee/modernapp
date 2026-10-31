@@ -169,7 +169,32 @@ curl -k https://prod.eshop.localhost/api/product-categories
 
 **No release yet.** A tag carries its own overlay (below), and `deploy/apps/qa` first appears in the first release candidate cut after #74 landed, so QA cannot run `v0.2.0` or any earlier tag. Until the first QA promotion, `apps-qa` is suspended by a line ending in `# release-pin-until: qa`, and the pin holds `0.2.0` only as a placeholder (`scripts/pin-release.sh qa` prints it and says QA is not deployed). The first QA promotion is the same one-command edit as any other: `scripts/pin-release.sh qa X.Y.Z-rc.N` sets the pin **and deletes the suspend line**, so merging it deploys QA for the first time. Everything else QA needs (namespace, Gateway listener, certificate name, thirdparty accounts, NetworkPolicies) is shared infrastructure that follows `main`, already in place.
 
-To check what QA runs: `scripts/pin-release.sh qa`, `flux get kustomization apps-qa` (`Applied revision: vX.Y.Z-rc.N@sha1:...`), `kubectl -n eshop-qa get deploy -o wide`.
+To check what QA runs: `scripts/pin-release.sh qa` (what Git asks for), `e2e/check-serving.sh qa X.Y.Z-rc.N` (whether the cluster actually serves it), `flux get kustomization apps-qa` (`Applied revision: vX.Y.Z-rc.N@sha1:...`), `kubectl -n eshop-qa get deploy -o wide`.
+
+### QA test run
+
+Once QA serves a release candidate, QA tests it by running the Playwright UI suite against `https://qa.eshop.localhost` **through CI**, so the run is recorded against that candidate. From this Mac (the cluster is local, so the job runs on an on-demand runner here):
+
+```bash
+e2e/run-on-actions.sh qa X.Y.Z-rc.N      # E2E smoke test workflow, environment qa, version X.Y.Z-rc.N
+```
+
+or Actions → **E2E smoke test** → Run workflow (environment `qa`, version `X.Y.Z-rc.N`) while a runner labelled `eshop-e2e` is online. The run:
+
+- **refuses unless QA is serving exactly that candidate**, asked of the cluster rather than Git (`e2e/check-serving.sh`): `apps-qa` not suspended, Ready, its latest spec applied, last applied revision `vX.Y.Z-rc.N@sha1:...` and every image it sets `X.Y.Z-rc.N`; every Deployment in `eshop-qa` rolled out with its `docker.io/pkhamdee/*` images at `X.Y.Z-rc.N`. `run-on-actions.sh` makes the same check before registering a runner. A merged pin that Flux hasn't applied yet, a suspended QA or a half-finished rollout all refuse; wait until Flux is Ready and run it again;
+- checks the same again **after** the test, and fails if QA moved or was redeployed meanwhile;
+- is named **`E2E qa X.Y.Z-rc.N`**, and its job summary records the environment, the version, the applied revision and every image, and the commit of the test code.
+
+Sign-off looks for **the latest completed QA run of that candidate** by its name, on `main` only (a run dispatched from another branch runs that branch's copy of the workflow, which might skip the check), and requires it to have passed:
+
+```bash
+gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch \
+  --status completed --limit 100 --json databaseId,displayTitle,conclusion,url \
+  --jq '[.[] | select(.displayTitle == "E2E qa X.Y.Z-rc.N")] | first'
+# -> {"conclusion":"success", "databaseId":..., "url":"https://github.com/.../actions/runs/..."}; no run gives null
+```
+
+The same environment-and-version check applies to prod: `e2e/run-on-actions.sh prod X.Y.Z` (run named `E2E prod X.Y.Z`); without a version (`e2e/run-on-actions.sh`, `E2E prod`) it is the plain post-release smoke test, as is `e2e/run-on-actions.sh dev` (`E2E dev`; dev follows `main` and has no version).
 
 ### Promotion and rollback
 

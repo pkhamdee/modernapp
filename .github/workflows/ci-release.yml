@@ -197,6 +197,9 @@ jobs:
       # release.sh, check-release-tag.sh and promotion-pr.sh against throwaway local repos (no GitHub).
       - name: Release scripts
         run: scripts/tests/release-scripts.sh
+      # The served-version check e2e.yml (and so sign-off) relies on, against a fake kubectl.
+      - name: e2e/check-serving.sh tests
+        run: e2e/check-serving.test.sh
 
   # Decides what to build, after every service's lint/test and the SAST and dependency-scan gates passed:
   #   - tag vX.Y.Z-rc.N: validate the tag (scripts/check-release-tag.sh: annotated, on a release/N.x branch); build
@@ -373,6 +376,17 @@ jobs:
       # - #70 Locust performance gate against http://localhost:8090 (or gateway:8080 on the copy's network)
       # - #71 ZAP baseline and API scans, signed out
       # - #72 ZAP API scan signed in as a Customer and as Staff
+
+      # Locust: ~50 Customers for 60 s; fails on p95 > 500 ms or > 1% errors (scripts/gates/perf/locust.conf).
+      - name: Performance gate (Locust)
+        run: scripts/gates/perf.sh
+      - name: Keep the performance report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-report
+          path: reports/perf/
+          if-no-files-found: ignore
 
       - name: Stop the temporary copy
         if: always()
