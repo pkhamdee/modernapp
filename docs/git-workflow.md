@@ -126,7 +126,7 @@ Defined in `.github/workflows/ci-release.yml`:
 - Every push, PR and tag also runs the SAST gate (Semgrep, fails on ERROR) and the dependency-scan gate (Trivy over the lockfiles, fails on critical) from `scripts/gates/`, keeping their reports as artifacts (`docs/setup.md`, "Running the gates locally").
 - Pushes to `main` also build the changed services' images as `main-<sha>`; Flux deploys them to `eshop-dev` (`https://eshop.localhost`).
 - Pushing a **release-candidate** tag `vX.Y.Z-rc.N` lints and tests, validates the tag (annotated, and on a `release/N.x` branch; `scripts/check-release-tag.sh`), builds **every** service in `.github/services.json` for arm64, gates and scans them (below), pushes `docker.io/pkhamdee/<service>:X.Y.Z-rc.N`, and only then opens the **QA promotion PR** ([Releasing](#releasing)).
-- Pushing a plain **release** tag `vX.Y.Z` only lints and tests: `plan` skips it with a notice, because sign-off made it and copies the candidate's images instead of rebuilding them. Any other `v*` tag (lightweight, on no release branch, or not `vX.Y.Z[-rc.N]`) fails `plan`.
+- Pushing a plain **release** tag `vX.Y.Z` only lints and tests: `plan` skips it with a notice, because sign-off made it and copies the candidate's images instead of rebuilding them. Sign-off itself is `.github/workflows/sign-off.yml`, started by hand ([Releasing](#releasing)). Any other `v*` tag (lightweight, on no release branch, or not `vX.Y.Z[-rc.N]`) fails `plan`.
 - `eshop-dev` never runs release-candidate images: its image policies (`deploy/apps/dev/image-automation.yaml`) take only `main-<sha>-<ts>` tags.
 - **Release gates before any push** (ADR 0007), on `main` pushes, release-candidate tags and release dry runs, never on pull requests:
   `build` (one arm64 job per image, handed on as an artifact) → `gate`: the **temporary copy** of eShop started from
@@ -239,7 +239,28 @@ It refuses plain `X.Y.Z` (sign-off tags releases), a candidate whose tag exists,
 
 **The QA promotion PR.** When every gate passed and the candidate's images are pushed, CI's `promote-qa` job runs `scripts/promotion-pr.sh qa X.Y.Z-rc.N`: a branch `promote/qa-X.Y.Z-rc.N` from `main` whose only commit is the pin edit (`scripts/pin-release.sh qa X.Y.Z-rc.N`), and a PR into `main` titled `eshop-qa: deploy vX.Y.Z-rc.N`. Its description lists the candidate's commit, its images with their digests, each gate's result and a link to the CI run (the gate reports are that run's artifacts). Merging it is QA's approval; nothing reaches QA otherwise. The job uses the repo secret `PROMOTION_TOKEN` (docs/setup.md, "Promotion token"), because a PR opened with the workflow's own token would run no checks; without the secret it fails saying so, and the PR can be opened by hand with the same script. The first QA promotion also starts `eshop-qa` ([QA](#qa-eshop-qa)). A newer candidate's PR simply supersedes an unmerged older one: close the old one.
 
-**Sign-off** (the "Sign off release candidate" workflow, #77) makes the release from the candidate QA tested: tag `vX.Y.Z` on the candidate's commit, the candidate's images copied to `X.Y.Z` by digest (never rebuilt), the GitHub Release, and the prod promotion PR. CI builds nothing for a plain `vX.Y.Z` tag.
+**Sign-off** makes the release from the candidate QA tested. QA starts it once the candidate's QA test run passed:
+
+```bash
+gh workflow run sign-off.yml --repo pkhamdee/modernapp --ref main -f version=X.Y.Z-rc.N
+```
+
+or Actions → **Sign off release candidate** → Run workflow (branch `main`, version `X.Y.Z-rc.N`). The workflow (`.github/workflows/sign-off.yml`) only supplies tokens and tools; the decisions are `scripts/sign-off.sh`, tested by `scripts/tests/release-scripts.sh`. It **refuses, changing nothing**, unless:
+
+- it runs from `main`, and the person who started it is a **maintainer** (repo role admin or maintain);
+- `vX.Y.Z-rc.N` is on GitHub, and **`main` pins `eshop-qa` to exactly that candidate** (`scripts/pin-release.sh qa`), with `apps-qa` not suspended;
+- **the latest completed QA run of it on `main` passed** (the query in [QA test run](#qa-test-run)): no run, or a newer failed or cancelled one, refuses. That run asked the cluster that QA served the candidate before and after the test; the hosted runner sign-off runs on can't reach the cluster, so the passing run is the evidence that QA ran it;
+- every candidate image `docker.io/pkhamdee/<service>:X.Y.Z-rc.N` (`.github/services.json`) exists, and no `X.Y.Z` image exists with another digest;
+- `vX.Y.Z` doesn't exist yet, unless an earlier sign-off of this same candidate made it (same commit; the tag message says `Signed off from vX.Y.Z-rc.N by @<who>`). A version released otherwise is final: cut the next one.
+
+Then, in this order:
+
+1. copies each candidate image to `docker.io/pkhamdee/<service>:X.Y.Z` **by digest** (`crane copy <image>@sha256:…`, never rebuilt) and checks the copy has the candidate's digest;
+2. tags **`vX.Y.Z`** (annotated) on the candidate's own commit and pushes it with `PROMOTION_TOKEN`; after the images, so a release tag never names images that don't exist. CI runs for the tag, but `plan` skips a plain `vX.Y.Z` and builds nothing;
+3. publishes the **GitHub Release** `vX.Y.Z`: its images with digests, the candidate and commit, the QA run, who signed off and the sign-off run;
+4. opens the **prod promotion PR** `eshop-prod: deploy vX.Y.Z` (`scripts/promotion-pr.sh prod X.Y.Z`), stating the same. Merging it is the production approval.
+
+Each step is skipped or updated when it is already done (an image with the same digest, the tag on the same commit, an existing Release or PR is updated), so **a sign-off that failed half-way is finished by running it again** with the same version. Sign-off never deploys anything: prod moves only when the prod promotion PR is merged.
 
 `scripts/release.sh` refuses when the commit to tag carries a GitHub skip-ci marker (`[skip ci]`, `[ci skip]`, …). GitHub skips every push workflow on such a commit, and a tag push counts. The tag would then never build and, being immutable, could only be replaced by the next version. That is what happened to `v0.1.0`, so the first release is `v0.1.1`. For the same reason, Flux's commit templates carry no skip-ci marker: CI ignores pushes that only touch `deploy/**` or `clusters/**` instead, and CI's `repo rules` job fails if a marker comes back. Keep markers out of your own commit messages too, even quoted, unless you mean them.
 

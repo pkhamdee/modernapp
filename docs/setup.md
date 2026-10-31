@@ -373,8 +373,12 @@ kubectl -n eshop-qa get deploy -o wide               # images :0.3.0-rc.1, all R
 # 4. QA's Playwright run against https://qa.eshop.localhost, recorded as "E2E qa 0.3.0-rc.1"
 e2e/run-on-actions.sh qa 0.3.0-rc.1
 
-# 5. The "Sign off release candidate" workflow: it tags v0.3.0, copies the images to 0.3.0, publishes the GitHub
-#    Release and opens the prod promotion PR; merging that is the production approval
+# 5. Sign-off (a maintainer, from main): refuses unless main pins QA to 0.3.0-rc.1 and its latest QA run passed;
+#    copies the images to 0.3.0 by digest, tags v0.3.0 on the candidate's commit, publishes the GitHub Release and
+#    opens the prod promotion PR "eshop-prod: deploy v0.3.0"; merging that is the production approval
+gh workflow run sign-off.yml --ref main -f version=0.3.0-rc.1
+gh run watch "$(gh run list --workflow sign-off.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh pr list --head promote/prod-0.3.0
 
 # 6. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
 cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh prod 0.3.0
@@ -387,6 +391,12 @@ fix after the release, the next patch's candidate (`scripts/release.sh 0.3.1-rc.
 If the promotion token is missing, CI's `open the QA promotion PR` job fails after the images are pushed and names
 the secret; set it and re-run that job, or open the PR yourself with `scripts/promotion-pr.sh qa 0.3.0-rc.1`
 (`PROMOTION_PUSH=0` first shows the commit and description without pushing).
+
+Sign-off's refusals say what is missing (QA pinned to another candidate or suspended, no passing QA run, a missing
+image, `v0.3.0` already released). If it fails half-way (a registry or GitHub error), run it again with the same
+version: it skips what is done and finishes. It needs `PROMOTION_TOKEN` and the same Docker Hub credentials as CI's
+push job (variable `DOCKERHUB_USERNAME`, secret `DOCKERHUB_TOKEN`, Read & Write), and only maintainers (repo role
+admin or maintain) may run it (git-workflow.md, "Releasing").
 
 ### Promotion token
 
