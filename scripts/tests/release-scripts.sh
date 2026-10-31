@@ -310,6 +310,11 @@ missing_tag_refused() { ! PROMOTION_PUSH=0 promote qa 0.3.0-rc.9 && grep -qF 'v0
 check "promotion-pr.sh refuses a version with no tag" missing_tag_refused
 dry_run_refused() { ! PROMOTION_PUSH=0 promote qa 0.0.0-test.1 && grep -qF 'usage: scripts/promotion-pr.sh' "$work/out"; }
 check "promotion-pr.sh refuses a dry-run version" dry_run_refused
+wrong_env_refused() {
+  ! PROMOTION_PUSH=0 promote prod 0.3.0-rc.1 && grep -qF 'eshop-prod takes a release X.Y.Z' "$work/out" \
+    && ! PROMOTION_PUSH=0 promote qa 0.3.0 && grep -qF 'eshop-qa takes a release candidate X.Y.Z-rc.N' "$work/out"
+}
+check "promotion-pr.sh refuses a candidate for prod and a release for QA (scripts/lib/versions.sh)" wrong_env_refused
 
 # --- scripts/sign-off.sh (the "Sign off release candidate" workflow) ---
 
