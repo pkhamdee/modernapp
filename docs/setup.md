@@ -542,7 +542,7 @@ Enterprise sync steps can't pass there.
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
 | `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI); `sign-off.sh` signs off a candidate (the sign-off workflow); `protect-main.sh` sets `main`'s ruleset and the `release` environment (admin-run); tests of all of them in `tests/release-scripts.sh`; `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
-| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `perf.sh` (Locust; load, thresholds and locustfile in `perf/`), `dast.sh` (OWASP ZAP against the copy, signed out and as a Customer and Staff via `dast-session.mjs`; accepted alerts in `dast-rules.conf`). See [Running the gates locally](#running-the-gates-locally) | – |
+| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `image-scan.sh` (Trivy on built images), `perf.sh` (Locust; load, thresholds and locustfile in `perf/`), `dast.sh` (OWASP ZAP against the copy, signed out and as a Customer and Staff via `dast-session.mjs`; accepted alerts in `dast-rules.conf`). See [Running the gates locally](#running-the-gates-locally) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release-candidate tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
@@ -606,6 +606,14 @@ scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulne
   changing a package in `Directory.Packages.props`, run `dotnet restore` and commit the updated lock files (CI
   restores with `--locked-mode` and fails on a stale one). Every severity is in the report; only CRITICAL fails,
   fixed or not, as in the image scan.
+- **Image scan** (`image-scan.sh`, CI: the `scan` job, one per image, artifact `image-scan-report-<service>`) runs
+  Trivy on built images from their docker archives, before any is pushed; fails on a CRITICAL finding, fixed or
+  not. Reports: `reports/image-scan/<name>.txt` and `.json`.
+
+  ```sh
+  scripts/gates/temporary-copy.sh build
+  docker save temporary-copy/eshop-api:local -o /tmp/eshop-api.tar && scripts/gates/image-scan.sh /tmp/eshop-api.tar
+  ```
 - **Temporary copy** (`temporary-copy.sh`, the copy the image gates run against): see
   [Temporary copy](#temporary-copy-release-gate).
 - **Performance** (`perf.sh`, CI: the `gate` job, artifact `perf-report`) runs Locust headless from its pinned image

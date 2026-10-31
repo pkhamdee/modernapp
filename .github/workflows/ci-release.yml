@@ -426,7 +426,7 @@ jobs:
           path: reports/temporary-copy/
           if-no-files-found: ignore
 
-  # Trivy on every image built, after the gates against the copy passed.
+  # Trivy on every image built (scripts/gates/image-scan.sh, from its archive), after the gates against the copy passed.
   scan:
     name: scan ${{ matrix.service }}
     needs: [plan, gate]
@@ -438,16 +438,21 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           name: image-${{ matrix.service }}
-          path: ${{ runner.temp }}/image
+          path: ${{ runner.temp }}/image-${{ matrix.service }}
       - name: Scan (fail on critical)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: scripts/gates/image-scan.sh "$RUNNER_TEMP/image-$SERVICE/image.tar"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
         with:
-          input: ${{ runner.temp }}/image/image.tar
-          severity: CRITICAL
-          exit-code: "1"
+          name: image-scan-report-${{ matrix.service }}
+          path: reports/image-scan/
+          if-no-files-found: ignore
 
   # Pushes every image only when every build, the temporary copy (and its gates) and every scan passed, and, for a
   # version, only when none of its images exists yet (scripts/check-new-images.sh).
