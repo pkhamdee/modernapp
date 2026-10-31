@@ -22,7 +22,7 @@ TARGETS=(services e2e scripts .github deploy clusters)
 # shellcheck source=lib.sh
 . "$(dirname "$0")/lib.sh"
 report_dir=$(gate_report_dir sast)
-cache=$(gate_cache)
+cache=$(gate_cache "") # the cache itself: the rules are one folder per commit in it
 repo=$GATES_ROOT
 cd "$repo"
 rules="$cache/semgrep-rules-$RULES_COMMIT"

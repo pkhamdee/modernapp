@@ -199,7 +199,7 @@ jobs:
             exit 1
           fi
       - name: ShellCheck
-        run: shellcheck scripts/*.sh scripts/gates/*.sh scripts/tests/*.sh e2e/*.sh
+        run: shellcheck scripts/*.sh scripts/lib/*.sh scripts/gates/*.sh scripts/tests/*.sh e2e/*.sh
       # The release scripts (release, tag check, promotion PR, sign-off, image check, protection) against throwaway
       # local repos and fake gh and crane (no GitHub, no registry).
       - name: Release scripts
@@ -291,7 +291,7 @@ jobs:
           echo "Version: ${version:-main-<sha>}; services to build: $(jq -r 'map(.service) | join(", ")' <<<"$matrix")"
 
   # Release gates (ADR 0007): nothing is pushed until every image is built, the temporary copy made from them is
-  # healthy (and Locust and ZAP pass against it, #70-#72), and Trivy finds no critical vulnerability in any image.
+  # healthy and Locust and ZAP pass against it, and Trivy finds no critical vulnerability in any image.
   #   build (matrix) -> gate -> scan (matrix) -> push -> promote-qa (release candidates only)
   # Images travel between these jobs as artifacts (docker archives), never through the registry. Pull requests
   # never get here (plan doesn't run for them).
@@ -387,10 +387,8 @@ jobs:
       - name: Start the temporary copy (healthy, seeded)
         run: scripts/gates/temporary-copy.sh up
 
-      # Gates against the copy go here, in this order, each failing the job (so nothing is pushed):
-      # - #70 Locust performance gate against http://localhost:8090 (or gateway:8080 on the copy's network)
-      # - #71 ZAP baseline and API scans, signed out
-      # - #72 ZAP API scan signed in as a Customer and as Staff
+      # The gates against the copy, each a script in scripts/gates/ run on the copy's Compose network (gateway:8080),
+      # each failing the job (so nothing is pushed): Locust, then ZAP. A new gate is one more step here.
 
       # Locust: ~50 Customers for 60 s; fails on p95 > 500 ms or > 1% errors (scripts/gates/perf/locust.conf).
       - name: Performance gate (Locust)
