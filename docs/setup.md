@@ -332,7 +332,7 @@ npm run report                                       # HTML report of the last r
   report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|qa|prod` overrides the environment name
   derived from the host (`qa.` → qa, `prod.` → prod, otherwise dev); it picks the Enterprise database in the admin tool and the Secret.
 - The certificate is self-signed; the test accepts it.
-- **GitHub Actions**: `e2e/run-on-actions.sh [base_url]` (default `https://prod.eshop.localhost`) runs
+- **GitHub Actions**: `e2e/run-on-actions.sh [prod|qa|dev] [version]` (default `prod`, no version) runs
   `.github/workflows/e2e.yml` on GitHub Actions with the job on this machine, which GitHub-hosted runners can't
   reach. The repository is public, so no runner stays registered: the script registers an ephemeral runner
   (label `eshop-e2e` only), dispatches the workflow to it, follows the run (the Playwright report is a run
@@ -340,6 +340,17 @@ npm run report                                       # HTML report of the last r
   age key: the job decrypts the Staff account itself, so no Staff secrets are stored in GitHub. Workflow runs
   from outside contributors' pull requests always wait for approval (repo setting), so nobody else's workflow
   can reach a runner here unreviewed.
+- **QA's test of a release candidate** is `e2e/run-on-actions.sh qa X.Y.Z-rc.N`: only such a run counts for
+  sign-off (git-workflow.md, "QA test run"). Given a version (required for `qa`, optional `X.Y.Z` for `prod`, none
+  for `dev`), the run refuses unless the environment is actually serving it, checked against the cluster by
+  `e2e/check-serving.sh <env> <version>` (Flux applied tag `v<version>` to `apps-<env>`, and every Deployment in
+  `eshop-<env>` finished rolling out with the `<version>` images), before and again after the test. The script makes
+  the check here first, so `e2e/run-on-actions.sh qa 0.3.0-rc.1` while QA serves something else stops at once:
+  `eshop-qa is not serving 0.3.0-rc.1: apps-qa applied v0.3.0-rc.2@sha1:...` (while QA has no release yet:
+  `... apps-qa is suspended ...`). The run is named `E2E <environment>[ <version>]` (`E2E qa 0.3.0-rc.1`) and its
+  summary lists the version, the applied revision and the images. The job uses this machine's `kubectl` and `jq`
+  (the runner inherits the shell's `PATH` and `~/.kube/config`, current context the Rancher Desktop cluster).
+  Tests for the check, with a fake kubectl: `e2e/check-serving.test.sh` (run in CI's `repo rules` job).
 
 ## Releasing
 
@@ -362,7 +373,7 @@ kubectl -n eshop-prod get deploy -o wide             # images :0.2.0, all READY
 curl -k https://prod.eshop.localhost/api/product-categories
 
 # 4. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
-cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh
+cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh prod 0.2.0
 ```
 
 A fix after the release goes to `release/0.x` **and** `main`, then the next patch, e.g. `scripts/release.sh 0.1.2` (git-workflow.md, "Patch release").
