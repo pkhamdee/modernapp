@@ -199,7 +199,8 @@ jobs:
           fi
       - name: ShellCheck
         run: shellcheck scripts/*.sh scripts/gates/*.sh scripts/tests/*.sh e2e/*.sh
-      # release.sh, check-release-tag.sh and promotion-pr.sh against throwaway local repos (no GitHub).
+      # The release scripts (release, tag check, promotion PR, sign-off, image check, protection) against throwaway
+      # local repos and fake gh and crane (no GitHub, no registry).
       - name: Release scripts
         run: scripts/tests/release-scripts.sh
       # The served-version check e2e.yml (and so sign-off) relies on, against a fake kubectl.
@@ -440,7 +441,8 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
 
-  # Pushes every image only when every build, the temporary copy (and its gates) and every scan passed.
+  # Pushes every image only when every build, the temporary copy (and its gates) and every scan passed, and, for a
+  # version, only when none of its images exists yet (scripts/check-new-images.sh).
   # Environment `release` (scripts/protect-main.sh) deploys only from main and v* tags, so its DOCKERHUB_TOKEN is out
   # of reach of a run from any other branch, where a modified copy of this workflow could misuse it.
   push:
@@ -467,6 +469,19 @@ jobs:
           registry: docker.io
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # A version (X.Y.Z-rc.N, 0.0.0-test.N) is pushed once: never overwrite a candidate QA may have tested.
+      # main-<sha>-<ts> tags are unique per commit and need no check.
+      - uses: actions/checkout@v7
+        if: needs.plan.outputs.version != ''
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
+        if: needs.plan.outputs.version != ''
+        with:
+          version: v0.22.1
+      - name: Refuse to overwrite ${{ needs.plan.outputs.version }}
+        if: needs.plan.outputs.version != ''
+        run: |
+          # shellcheck disable=SC2046 # one image per line, no spaces
+          scripts/check-new-images.sh $(cat "$RUNNER_TEMP"/images/image-*/tags.txt)
       - name: Push
         id: push
         run: |

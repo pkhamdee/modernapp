@@ -4,6 +4,8 @@
 #   scripts/check-release-tag.sh   CI's decision on a pushed v* tag
 #   scripts/promotion-pr.sh        the promotion PR's branch, pin commit and body
 #   scripts/sign-off.sh            the "Sign off release candidate" workflow: its refusals, the release, re-runs
+#   scripts/check-new-images.sh    CI's push job: a version's images are never overwritten
+#   scripts/protect-main.sh        main's ruleset, the tag rulesets and the release environment (dry run and apply)
 # `gh` and `crane` are fakes on PATH that record their arguments and keep GitHub's and the registry's state in files.
 # Run from anywhere: scripts/tests/release-scripts.sh
 set -euo pipefail
@@ -54,7 +56,8 @@ esac
 GH
 
 # Fake crane: a registry kept as files, $REGISTRY/<repository>/<tag> holding the digest; logs every call.
-# FAKE_CRANE_FAIL_COPY=<repository> makes copying into that repository fail (a sign-off interrupted half-way).
+# FAKE_CRANE_FAIL_COPY=<repository> makes copying into that repository fail (a sign-off interrupted half-way);
+# FAKE_CRANE_LS_ERROR=1 makes listing tags fail as a registry error would.
 cat >"$work/bin/crane" <<'CRANE'
 #!/usr/bin/env bash
 echo "crane $*" >>"$CRANE_LOG"
@@ -68,7 +71,8 @@ resolve() { # resolve <repo:tag | repo@digest>: prints the digest, or fails as f
 }
 case "$1" in
   digest) resolve "$2" ;;
-  ls) [ -d "$REGISTRY/$2" ] || { echo "NAME_UNKNOWN: $2" >&2; exit 1; }; ls "$REGISTRY/$2" ;;
+  ls) [ -z "${FAKE_CRANE_LS_ERROR:-}" ] || { echo "GET https://index.docker.io/v2/: TOOMANYREQUESTS" >&2; exit 1; }
+    [ -d "$REGISTRY/$2" ] || { echo "NAME_UNKNOWN: $2" >&2; exit 1; }; ls "$REGISTRY/$2" ;;
   copy) digest=$(resolve "$2") || exit 1
     [ "${3%:*}" != "${FAKE_CRANE_FAIL_COPY:-}" ] || { echo "copy to $3 failed" >&2; exit 1; }
     mkdir -p "$REGISTRY/${3%:*}" && echo "$digest" >"$REGISTRY/${3%:*}/${3##*:}" ;;
@@ -442,6 +446,32 @@ finishes_interrupted_sign_off() {
     && [ -e "$GH_STATE/release-v0.3.0" ] && [ -e "$GH_STATE/pr-promote_prod-0.3.0" ]
 }
 check "sign-off.sh interrupted half-way is finished by running it again" finishes_interrupted_sign_off
+
+# --- scripts/check-new-images.sh (CI's push job, before pushing a version's images) ---
+
+export REGISTRY="$work/new-images/registry"
+mkdir -p "$REGISTRY/docker.io/pkhamdee/eshop-api" "$REGISTRY/docker.io/pkhamdee/eshop-web"
+echo sha256:aaaa >"$REGISTRY/docker.io/pkhamdee/eshop-api/0.3.0-rc.1"
+echo sha256:bbbb >"$REGISTRY/docker.io/pkhamdee/eshop-web/0.2.0"
+new_images() { (cd "$root" && scripts/check-new-images.sh "$@") >"$work/out" 2>&1; }
+
+all_new_passes() { # eshop-web has other tags only; eshop-new has no repository yet
+  new_images docker.io/pkhamdee/eshop-web:0.3.0-rc.1 docker.io/pkhamdee/eshop-new:0.3.0-rc.1
+}
+check "check-new-images.sh passes when no image exists yet (also in a repository not created yet)" all_new_passes
+existing_refused() {
+  ! new_images docker.io/pkhamdee/eshop-web:0.3.0-rc.1 docker.io/pkhamdee/eshop-api:0.3.0-rc.1 \
+    && grep -qF 'docker.io/pkhamdee/eshop-api:0.3.0-rc.1' "$work/out" \
+    && ! grep -qF 'eshop-web:0.3.0-rc.1' "$work/out" && grep -qF 'never overwritten' "$work/out"
+}
+check "check-new-images.sh refuses a version image that already exists, naming it" existing_refused
+registry_error_fails() {
+  ! FAKE_CRANE_LS_ERROR=1 new_images docker.io/pkhamdee/eshop-web:0.3.0-rc.1 \
+    && grep -qF 'could not list the tags of docker.io/pkhamdee/eshop-web' "$work/out"
+}
+check "check-new-images.sh fails when it can't tell (a registry error is not \"absent\")" registry_error_fails
+usage_refused() { ! new_images && grep -qF 'usage: scripts/check-new-images.sh' "$work/out"; }
+check "check-new-images.sh needs at least one image" usage_refused
 
 # --- scripts/protect-main.sh (main's ruleset and the release environment; applied by a maintainer) ---
 
