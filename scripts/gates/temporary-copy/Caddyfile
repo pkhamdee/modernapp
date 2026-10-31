@@ -1,0 +1,36 @@
+# The temporary copy's stand-in for the Gateway: routes like the cluster's HTTPRoutes (deploy/apps/base/*/,
+# deploy/thirdparty/thirdparty-mock/), on plain HTTP. Probes (/healthz/...) are never routed, as in the cluster.
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	# The gateway's own probe (compose healthcheck); not an eShop path.
+	handle /gateway-healthz {
+		respond "ok" 200
+	}
+
+	# HTTPRoute eshop-api: PathPrefix /api.
+	@api path /api /api/*
+	handle @api {
+		reverse_proxy eshop-api:8080
+	}
+
+	# HTTPRoute eshop-node-api: PathPrefix /images (public photos).
+	@images path /images /images/*
+	handle @images {
+		reverse_proxy eshop-node-api:8080
+	}
+
+	# HTTPRoute thirdparty-mock: PathPrefix /thirdparty-mock, prefix replaced by / (ReplacePrefixMatch).
+	handle_path /thirdparty-mock/* {
+		reverse_proxy thirdparty-mock:8080
+	}
+	redir /thirdparty-mock /thirdparty-mock/
+
+	# HTTPRoute eshop-web: everything else.
+	handle {
+		reverse_proxy eshop-web:8080
+	}
+}

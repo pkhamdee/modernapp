@@ -125,7 +125,13 @@ Defined in `.github/workflows/ci-release.yml`:
 - Pushes and PRs to `main` and `release/*` lint and test every service. Pushes to `release/*` publish nothing.
 - Every push, PR and tag also runs the SAST gate (Semgrep, fails on ERROR) and the dependency-scan gate (Trivy over the lockfiles, fails on critical) from `scripts/gates/`, keeping their reports as artifacts (`docs/setup.md`, "Running the gates locally").
 - Pushes to `main` also build the changed services' images as `main-<sha>`; Flux deploys them to `eshop-dev` (`https://eshop.localhost`).
-- Pushing a `v*` tag lints and tests, validates the tag (must be `vX.Y.Z`, annotated, and on a `release/N.x` branch), builds **every** service in `.github/services.json` for arm64, scans each with Trivy (fails on critical), pushes `docker.io/pkhamdee/<service>:X.Y.Z`, and only then publishes the GitHub Release with generated notes.
+- Pushing a `v*` tag lints and tests, validates the tag (must be `vX.Y.Z`, annotated, and on a `release/N.x` branch), builds **every** service in `.github/services.json` for arm64, gates and scans them (below), pushes `docker.io/pkhamdee/<service>:X.Y.Z`, and only then publishes the GitHub Release with generated notes.
+- **Release gates before any push** (ADR 0007), on `main` pushes, release tags and release dry runs, never on pull requests:
+  `build` (one arm64 job per image, handed on as an artifact) → `gate`: the **temporary copy** of eShop started from
+  those images must become healthy and seeded (`scripts/gates/temporary-copy.sh up`; services a `main` push didn't
+  rebuild run their newest `main-<sha>-<ts>` build, as `eshop-dev` does), then the gates against it (Locust and ZAP,
+  #70–#72) → `scan`: Trivy on every image built (fails on critical) → `push`. If any step fails, no image is pushed,
+  so `eshop-dev` never runs it. The temporary copy runs the same way locally (`docs/setup.md`, "Temporary copy").
 - If the build system can't trigger on tags, this workflow doesn't fit; switch to the branch-based workflow (Workflow A in the source article).
 
 ### How a release reaches `eshop-prod`

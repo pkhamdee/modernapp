@@ -360,7 +360,7 @@ Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is yo
 # 1. Tag (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
 scripts/release.sh 0.2.0
 
-# 2. Watch CI: test → validate tag → build/scan/push docker.io/pkhamdee/<service>:0.2.0 → GitHub Release
+# 2. Watch CI: test → validate tag → build → temporary copy → scan → push docker.io/pkhamdee/<service>:0.2.0 → GitHub Release
 gh run watch "$(gh run list --workflow ci-release.yml --branch v0.2.0 --limit 1 --json databaseId --jq '.[0].databaseId')"
 
 # 3. Promote: a PR into main that changes only the pin (git-workflow.md, "Promotion and rollback"); merging it
@@ -377,6 +377,40 @@ cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.s
 ```
 
 A fix after the release goes to `release/0.x` **and** `main`, then the next patch, e.g. `scripts/release.sh 0.1.2` (git-workflow.md, "Patch release").
+
+## Temporary copy (release gate)
+
+Before CI pushes any image (`main` pushes, release tags, dry runs; never pull requests), it starts a **temporary
+copy** of eShop from the images it has just built and pushes nothing unless the copy becomes healthy (ADR 0007). The
+copy is one Compose file, `scripts/gates/temporary-copy/compose.yaml`: eshop-web, eshop-api, eshop-node-api,
+PostgreSQL and thirdparty-mock behind a small gateway that routes like the cluster's HTTPRoutes (`/api`, `/images`,
+`/thirdparty-mock/`, the rest to eshop-web), on plain HTTP. No sync master and no SQL Server, so the mock Enterprise
+admin tool and the Enterprise sync don't work in it. Its data lives only in the containers and goes with `down`.
+
+`up` waits until every part answers its probe, then checks through the gateway that the demo catalog and its photos
+are there, that a Customer signs in by SMS code (read from the mock's inbox) and that Staff sign in, and seeds an open
+Auction with a Lot (as dev has) through the Staff API (`temporary-copy/ready.mjs`). If anything fails it prints each
+part's status and last log lines, writes them to `reports/temporary-copy/`, removes the copy and exits 1.
+
+```sh
+export DOCKER_HOST=unix://$HOME/.rd/docker.sock
+scripts/gates/temporary-copy.sh build    # the four images from this checkout, as temporary-copy/<service>:local
+scripts/gates/temporary-copy.sh up       # ~10 s; then http://localhost:8090 (Staff: staff / temporary-copy-staff)
+scripts/gates/temporary-copy.sh down     # stop it and throw its data away
+
+# The images CI built or pushed instead of local ones, e.g. to reproduce a failed gate:
+ESHOP_API_IMAGE=docker.io/pkhamdee/eshop-api:main-93392bd scripts/gates/temporary-copy.sh up
+#   also ESHOP_WEB_IMAGE, ESHOP_NODE_API_IMAGE, THIRDPARTY_MOCK_IMAGE; the newest main build of one:
+scripts/gates/latest-main-image.sh docker.io/pkhamdee/eshop-web
+```
+
+Other settings (header of `scripts/gates/temporary-copy.sh`): `TEMPORARY_COPY_PORT` (default 8090),
+`TEMPORARY_COPY_TIMEOUT_SECONDS` (180), `TEMPORARY_COPY_KEEP=1` to leave a copy that failed running for a look. The
+SMS inbox is at `http://localhost:8090/thirdparty-mock/sms/inbox`. The Staff account, the database password and the
+token signing key are throwaway values that exist only in the copy. To run the Playwright demo against it, set
+`E2E_BASE_URL=http://localhost:8090 E2E_MOCK_URL=http://localhost:8090 E2E_ENV=dev STAFF_USERNAME=staff
+STAFF_PASSWORD=temporary-copy-staff`; its two
+Enterprise sync steps can't pass there.
 
 ## Repo layout
 
@@ -399,7 +433,7 @@ A fix after the release goes to `release/0.x` **and** `main`, then the next patc
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
 | `scripts/` | Repo tasks: `release.sh X.Y.Z` cuts a release (human-run); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
-| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles). See [Running the gates locally](#running-the-gates-locally) | – |
+| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`. See [Running the gates locally](#running-the-gates-locally) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
@@ -463,6 +497,8 @@ scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulne
   changing a package in `Directory.Packages.props`, run `dotnet restore` and commit the updated lock files (CI
   restores with `--locked-mode` and fails on a stale one). Every severity is in the report; only CRITICAL fails,
   fixed or not, as in the image scan.
+- **Temporary copy** (`temporary-copy.sh`, the copy the image gates run against): see
+  [Temporary copy](#temporary-copy-release-gate).
 - To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, or a lockfile
   entry such as lodash 4.17.4), run the gate, see it fail, and revert. Never commit the plant.
 
