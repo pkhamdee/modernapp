@@ -426,3 +426,14 @@ flux reconcile kustomization flux-system --with-source
 kubectl -n kube-system get job helm-install-traefik   # Traefik config re-applied by k3s
 kubectl describe gateway -n gateway eshop
 ```
+
+**Cluster clock behind after the Mac sleeps (#65).** The Rancher Desktop VM runs no time sync, so when the Mac sleeps
+(lid closed, or idle on battery) the VM's clock stays behind by the time it slept. The e2e suite sets Auction times
+from the Mac's clock, so it stops at the start with "The cluster's clock is N s behind this machine's". Check and fix:
+
+```sh
+date -u; rdctl shell date -u                # should agree to the second
+rdctl shutdown && rdctl start               # or quit and reopen Rancher Desktop: the VM boots with the Mac's time
+```
+
+Keep the Mac awake for a whole e2e run: lid open, or `caffeinate -dis npm run e2e`.
