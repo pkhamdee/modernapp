@@ -1,0 +1,26 @@
+# Demo Staff account for eshop-qa (back office at /staff). eshop-api creates or updates it at startup;
+# the password here is the source of truth. Read it: SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/qa/eshop-api-staff.sops.yaml
+# Change it: sops deploy/apps/qa/eshop-api-staff.sops.yaml (then restart eshop-api). Add accounts as Staff__Accounts__1__* env vars the same way.
+apiVersion: v1
+kind: Secret
+metadata:
+    name: eshop-api-staff
+type: Opaque
+stringData:
+    username: ENC[AES256_GCM,data:Sz4S4Fs=,iv:TZN/sZ0nG02dWxEkUVYVWN5LeKRxvtGskWsNX+J0t3w=,tag:lMZov4g580Rk8bSD0rHlAQ==,type:str]
+    password: ENC[AES256_GCM,data:Rg4tvnYMCTn+L45vpTgeo44WHuRX5z2/W7ziiUZNRZQ=,iv:TvH0B6d1npeZHlhCWQdF0J07u+oQ1C8zLuA0Sl4TdYM=,tag:YVbILEpoPZvrzTvqooL1Uw==,type:str]
+sops:
+    age:
+        - enc: |
+            -----BEGIN AGE ENCRYPTED FILE-----
+            YWdlLWVuY3J5cHRpb24ub3JnL3YxCi0+IFgyNTUxOSBsUVI3WlRoRFFFQVpCdVdq
+            eEFLNFc4czd2bFZORnhyTVVxOFd3OFZUQ3dvClgzWFZZbTQ3NDlqMXMrZXpOTjNI
+            MmNPSktZajhQSkxBNG9wcTVLOXI0ZFkKLS0tIGd3MVlTTGw4RlkvTHhzZW5wdkp4
+            Rmk4MXR2L1dqalFvaEoybXhhaGlDOXcKE3DzXFA/t8gA+QF615R+QUbFHXLoUKcg
+            NbiSi8DzceqQk4CCHCdlMCTBFmQFyrgyWwjGzA9jB4ohBSspKoYKAA==
+            -----END AGE ENCRYPTED FILE-----
+          recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
+    encrypted_regex: ^(data|stringData)$
+    lastmodified: "2026-10-31T14:36:37Z"
+    mac: ENC[AES256_GCM,data:FnIO8310KRsElANle81p3ZOduA5OCNsfI+wOMFdZjsajwKd1znysqZh6JL5QYAYifqdpRrEmKZfh9coAcB5GQRAuviDv7/O/6oGala5jzvh6zf48s7he2Oe3EQ/W0DFCnc8AqOm63J3lqb4uRJ32r8r7i5456da2LP+xOWknFnw=,iv:fVn+2u6mV1NqCZFvAwmLWboY4sJEAo1bngQWnZ4Hr4M=,tag:GdCWxY4QyqlRRsUzvHI5+w==,type:str]
+    version: 3.13.3

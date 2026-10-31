@@ -1,5 +1,5 @@
 # SMB account passwords of the mock Samba (deploy/thirdparty/samba/samba.yaml), one account per environment:
-# eshopdev / eshopprod must equal the password in deploy/apps/<env>/eshop-node-api-smb.sops.yaml.
+# eshopdev / eshopqa / eshopprod must equal the password in deploy/apps/<env>/eshop-node-api-smb.sops.yaml.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -8,6 +8,7 @@ type: Opaque
 stringData:
     eshopdev: ENC[AES256_GCM,data:/KJWpk8uSLo05y+cAsDwRelfz0IACsDaKcdquUv+lgiacnv/g7EOzeJF/7kTTzl7,iv:fommBZlMVXP70S7Jh2XdOQOMlE+JrfmjIDCdncMr1kw=,tag:vAYpnBNvX5qZzKr7j3qZdA==,type:str]
     eshopprod: ENC[AES256_GCM,data:czMSr2aeNMSK/3VUogbFGot52fOlWXG7Qhqtn01IYr6Kc8O4fRp+U/wFDav+9szU,iv:mJaloyaxOx6GTTh/qlazBDD1ci1sOdRCyLwuAlge1tE=,tag:u5xhaHkkQ2XTbxZsdwxf5Q==,type:str]
+    eshopqa: ENC[AES256_GCM,data:pBZk+zwofLDTzVbmHjG9Thc/BbuET4HvNzIhAziZUJE=,iv:t39DLTmAWprqkREENepuaPovt0lUpY7RDo91cnFVBLs=,tag:GQaHph51e6F+hDhTGtxVcA==,type:str]
 sops:
     age:
         - enc: |
@@ -20,6 +21,6 @@ sops:
             -----END AGE ENCRYPTED FILE-----
           recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
     encrypted_regex: ^(data|stringData)$
-    lastmodified: "2026-10-31T13:16:24Z"
-    mac: ENC[AES256_GCM,data:eVzYfxcslH3pvRTQqVNZQ1BpGzPtqk6K0kjtgWdlyWCl8gs9NdF/jcYUKN+/YUCVW8Yjicm/Vx+pJ6y7qR5BzihCJOaeQm8jUnSf+U4Eg5ty0cqtHcCZzMwEMRgHzFvKO7+JZbDzcVK2rOXnnj/ZwdwhHO48ktaYvwZN34u8e0k=,iv:glnm2BVUifmJq02Cm/6Gn+mM2AGLuj1imYhSCtIwJow=,tag:89UVQTmaJVFA6EhgNILY7w==,type:str]
+    lastmodified: "2026-10-31T14:36:37Z"
+    mac: ENC[AES256_GCM,data:IVfltVLOQopRil84bcVsXDaFmZB6IBGdqaFs3gGFNoKI2EVZ6Bml8BSknSzGe/6WdBXbp5SViQE5hGq78J4Rd9c6066jNLfz7KCCFnSqjM8yLybalgsZDFNZ9efUH8PwIvcAdDGvQ5j3gzbY9v6ffqsuxMeCFje4a3bcgxULmro=,iv:sY1zLFrpNI0DDGpVFWdQupio75TftR3kdRqtDkhVrv4=,tag:6DzYb3z4wp1mTKWRceC/Uw==,type:str]
     version: 3.13.3

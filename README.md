@@ -7,7 +7,8 @@ Spec: issue #1; vocabulary: [GLOSSARY.md](GLOSSARY.md); decisions: [docs/adr/](d
 | Environment | URL | Deployed from |
 | --- | --- | --- |
 | eshop-dev | https://eshop.localhost | every push to `main` |
-| eshop-prod | https://prod.eshop.localhost | release tags `vX.Y.Z` |
+| eshop-qa | https://qa.eshop.localhost | the release candidate `vX.Y.Z-rc.N` pinned in Git; moves when QA merges its promotion PR |
+| eshop-prod | https://prod.eshop.localhost | the release `vX.Y.Z` pinned in Git; moves when the production approver merges its promotion PR |
 
 Mocks (SMS inbox, ID Verification / Credit Check, eShop Co. Enterprise System admin tool): https://eshop.localhost/thirdparty-mock/
 
@@ -26,4 +27,5 @@ Mocks (SMS inbox, ID Verification / Credit Check, eShop Co. Enterprise System ad
 ## Docs
 
 - [docs/setup.md](docs/setup.md): cluster setup, Staff account, mocks, the end-to-end smoke test, releasing, development
-- [docs/git-workflow.md](docs/git-workflow.md): tag-based releases (`release/N.x` branches, `vX.Y.Z` tags)
+- [docs/git-workflow.md](docs/git-workflow.md): protected `main`, release candidates, gates, QA, sign-off, promotion PRs
+  and rollback (`release/N.x` branches, `vX.Y.Z-rc.N` and `vX.Y.Z` tags)

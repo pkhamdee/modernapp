@@ -1,11 +1,11 @@
 # Local setup
 
-Takes a fresh Mac (Apple Silicon) to a Rancher Desktop k3s cluster that Flux manages from this repo, serving `https://eshop.localhost` (`eshop-dev`) and `https://prod.eshop.localhost` (`eshop-prod`).
+Takes a fresh Mac (Apple Silicon) to a Rancher Desktop k3s cluster that Flux manages from this repo, serving `https://eshop.localhost` (`eshop-dev`), `https://qa.eshop.localhost` (`eshop-qa`) and `https://prod.eshop.localhost` (`eshop-prod`).
 
 ## 1. Rancher Desktop
 
 1. Install [Rancher Desktop](https://rancherdesktop.io/) (`brew install --cask rancher`).
-2. **Preferences → Virtual Machine**: memory **12 GB** (SQL Server under Rosetta needs about 2 GB; both app namespaces and the shared mocks need the rest), 4+ CPUs.
+2. **Preferences → Virtual Machine**: memory **12 GB** (SQL Server under Rosetta needs about 2 GB; the app namespaces and the shared mocks need the rest; once QA runs, a third copy of the apps and PostgreSQL may call for more), 4+ CPUs.
 3. **Preferences → Virtual Machine → Emulation**: VZ with **Rosetta** enabled, so `linux/amd64` images (SQL Server) run.
 4. **Preferences → Kubernetes**: **enabled**, Traefik **enabled** (it is the Gateway API implementation, ADR-0002).
 5. **Preferences → Container Engine**: either works; `dockerd (moby)` is assumed by the commands in this repo.
@@ -17,18 +17,19 @@ kubectl config use-context rancher-desktop
 kubectl get nodes
 ```
 
-Rancher Desktop forwards host ports 80 and 443 to Traefik, and macOS resolves every `*.localhost` name to `127.0.0.1`, so `https://eshop.localhost` and `https://prod.eshop.localhost` reach the cluster without editing `/etc/hosts`.
+Rancher Desktop forwards host ports 80 and 443 to Traefik, and macOS resolves every `*.localhost` name to `127.0.0.1`, so `https://eshop.localhost`, `https://qa.eshop.localhost` and `https://prod.eshop.localhost` reach the cluster without editing `/etc/hosts`.
 
 ### Environments and hostnames
 
-Both environments share the one `eshop` Gateway on port 443 and run the same apps with the same paths (`/`, `/api`, `/images`); they are told apart by hostname, so neither ever shadows the other's routes:
+The environments share the one `eshop` Gateway on port 443 and run the same apps with the same paths (`/`, `/api`, `/images`); they are told apart by hostname, so none ever shadows another's routes:
 
 | Environment | Namespace | Follows | URL | Gateway listener |
 | --- | --- | --- | --- | --- |
 | dev | `eshop-dev` | `main` (`main-<sha>` images) | `https://eshop.localhost` | `https` |
-| prod | `eshop-prod` | the newest release tag `vX.Y.Z` (its manifests and its `X.Y.Z` images, docs/git-workflow.md) | `https://prod.eshop.localhost` | `https-prod` (accepts routes from `eshop-prod` only) |
+| qa | `eshop-qa` | the release candidate pinned in `clusters/local/qa-release.yaml`: tag `vX.Y.Z-rc.N`'s manifests and its `X.Y.Z-rc.N` images, moved only by a QA promotion PR (docs/git-workflow.md). **Nothing until the first release candidate is promoted** (below) | `https://qa.eshop.localhost` | `https-qa` (accepts routes from `eshop-qa` only) |
+| prod | `eshop-prod` | the release pinned in `clusters/local/prod-release.yaml`: tag `vX.Y.Z`'s manifests and its `X.Y.Z` images, moved only by a promotion PR (docs/git-workflow.md) | `https://prod.eshop.localhost` | `https-prod` (accepts routes from `eshop-prod` only) |
 
-Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/eshop-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials.
+Base HTTPRoutes are written for dev; `deploy/apps/qa/kustomization.yaml` and `deploy/apps/prod/kustomization.yaml` patch every HTTPRoute to their hostname and listener. The one certificate `gateway/eshop-localhost-tls` carries all three names, and plain HTTP on any of them redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials, its own Staff account, its own share on the mock Samba and its own Enterprise database (`enterprise_<env>`) on the mock SQL Server.
 
 ### DOCKER_HOST gotcha
 
@@ -82,18 +83,22 @@ Bootstrap installs Flux, commits `clusters/local/flux-system/` to `main` if it c
 ## 5. Check
 
 ```sh
-flux get kustomizations          # flux-system, infra-controllers, infra-configs, thirdparty, apps-dev: Ready; apps-prod: see below
+flux get kustomizations          # flux-system, infra-controllers, infra-configs, thirdparty, apps-dev, apps-prod: Ready
+                                 # apps-qa: SUSPENDED True until the first release candidate is promoted to QA
 kubectl get gateway -n gateway   # eshop, PROGRAMMED True
 curl -k https://eshop.localhost/api/product-categories   # catalog JSON from eshop-api
 curl -k https://eshop.localhost                          # eshop-web
 curl -kI https://eshop.localhost/images/public/demo-iphone-17.svg   # a Product photo from eshop-node-api
 curl -I http://eshop.localhost  # 301 to https
-curl -k https://prod.eshop.localhost/api/product-categories   # eshop-prod (after the first release; own database)
+curl -k https://prod.eshop.localhost/api/product-categories   # eshop-prod (the pinned release; own database)
+curl -k https://qa.eshop.localhost/api/product-categories     # eshop-qa (the pinned release candidate), once QA runs one
 open https://eshop.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-in codes for any mobile number
 open https://eshop.localhost/thirdparty-mock/enterprise/ # mock Enterprise System: pushed Contracts, simulate Payment, cancel
 ```
 
-**`eshop-prod` before the first release.** Prod runs only what a release tag says (docs/git-workflow.md). Until the first `vX.Y.Z` tag has been pushed and its images built, there is nothing to deploy, so the GitRepository `eshop-release`, the ImagePolicy `flux-system/eshop-release` and the Kustomization `apps-prod` are not Ready (`no match found for semver: 0.0.0`) and `https://prod.eshop.localhost` serves nothing. That is expected; they turn Ready a few minutes after the first release (docs/git-workflow.md, "Releasing").
+**`eshop-prod` runs the pinned release.** Prod runs only the release pinned in `clusters/local/prod-release.yaml` (`scripts/pin-release.sh prod` prints it; docs/git-workflow.md, "Prod promotion"). On a fresh cluster Flux deploys that release, starting from an empty prod database. If the pinned tag or its images were missing, the GitRepository `eshop-release` or `apps-prod` would stay not Ready and `https://prod.eshop.localhost` would serve nothing.
+
+**`eshop-qa` runs the pinned release candidate, from the first one on.** QA is pinned the same way, in `clusters/local/qa-release.yaml` (`scripts/pin-release.sh qa`), and its PostgreSQL keeps its data from one release candidate to the next. A release tag carries its own overlay, and no tag before the first release candidate cut after #74 contains `deploy/apps/qa`, so QA cannot run `v0.2.0`. Until a release candidate is promoted, `apps-qa` is therefore **suspended** (`suspend: true # release-pin-until: qa`) and its pin holds `0.2.0` only as a placeholder; `scripts/pin-release.sh qa` says so. Everything else QA needs is already applied from `main`: namespace `eshop-qa`, the Gateway listeners `https-qa`/`http-qa`, `qa.eshop.localhost` in the certificate (reissued by cert-manager from the same local CA, so nothing new to trust), the thirdparty NetworkPolicies, the `eshopqa` Samba share and the `enterprise_qa` database with login `eshop_sync_qa`. Until then `https://qa.eshop.localhost` answers 404. The first QA promotion PR (`scripts/pin-release.sh qa X.Y.Z-rc.N`) pins the candidate and deletes the suspend line in the same edit; once merged, Flux deploys QA for the first time, starting from an empty database (docs/git-workflow.md, "QA (`eshop-qa`)").
 
 **A cluster that ran the old names** (before #49 and #50) needs a few human steps: see [Moving to eShop](#moving-to-eshop-49-50) below.
 
@@ -126,10 +131,11 @@ access tokens), then give it to CI. `gh secret set` prompts for the token, so it
 
 ```sh
 gh variable set DOCKERHUB_USERNAME --body pkhamdee
-gh secret set DOCKERHUB_TOKEN
+gh secret set DOCKERHUB_TOKEN --env release --repo pkhamdee/modernapp   # since #78 a secret of environment release
 ```
 
-Without them the `image <service>` jobs fail at login, and dev shows ImagePullBackOff with `apps-dev` not Ready. If
+(Since #78 the token is a secret of the `release` environment, not of the repository: [Release
+secrets](#release-secrets).) Without them the `push images` job fails at login, and dev shows ImagePullBackOff with `apps-dev` not Ready. If
 Docker Hub's default repository privacy was changed to private, make each `pkhamdee/<service>` repository public.
 
 ### 2. When #50 is on `main`: dev moves, prod stays on v0.1.1
@@ -219,12 +225,12 @@ renamed CI jobs.
 
 ## Staff back office (demo account)
 
-The back office is at `https://eshop.localhost/staff` (prod: `https://prod.eshop.localhost/staff`). Each environment has
+The back office is at `https://eshop.localhost/staff` (QA: `https://qa.eshop.localhost/staff`, prod: `https://prod.eshop.localhost/staff`). Each environment has
 one demo Staff account; its username and password live **only** in the SOPS-encrypted Secret
 `deploy/apps/<env>/eshop-api-staff.sops.yaml` (never in plain text in git). Read them with:
 
 ```sh
-SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/eshop-api-staff.sops.yaml   # or prod
+SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d deploy/apps/dev/eshop-api-staff.sops.yaml   # or qa, prod
 ```
 
 eshop-api provisions the account at startup from `Staff__Accounts__0__Username|Password|DisplayName` (stored as a salted
@@ -248,15 +254,15 @@ starting price, then at least ฿100 above the current highest; Bids before open
 ## Mock Enterprise System (SQL Server)
 
 The Enterprise System is a real SQL Server 2022 (`mcr.microsoft.com/mssql/server`, amd64 only, so it runs under Rosetta;
-about 2 GB of memory and a slow first start) in the `thirdparty` namespace, shared by both environments:
-databases `enterprise_dev` and `enterprise_prod`, fake schema `hp.contract` / `hp.payment`
+about 2 GB of memory and a slow first start) in the `thirdparty` namespace, shared by every environment:
+databases `enterprise_dev`, `enterprise_qa` and `enterprise_prod`, fake schema `hp.contract` / `hp.payment`
 (`deploy/thirdparty/mssql/enterprise-schema.sql`). The pod's `schema` container creates the databases, applies the
 schema and (re)sets the logins on every start. Passwords are in the SOPS Secret
 `deploy/thirdparty/mssql/mssql-credentials.sops.yaml` (`sa`, `enterprise_admin` for the admin tool, `eshop_sync_dev` /
-`eshop_sync_prod` for eshop-sync-master). Each environment's copy of its sync login is in
+`eshop_sync_qa` / `eshop_sync_prod` for eshop-sync-master). Each environment's copy of its sync login is in
 `deploy/apps/<env>/eshop-sync-master-enterprise.sops.yaml` and must match.
 
-**Admin tool** (story 62): `https://eshop.localhost/thirdparty-mock/enterprise/` → `dev/` or `prod/` lists the Contracts
+**Admin tool** (story 62): `https://eshop.localhost/thirdparty-mock/enterprise/` → `dev/`, `qa/` or `prod/` lists the Contracts
 eshop-sync-master pushed (newest first) with their Payments, and per Contract: **Simulate Payment** (one Installment by
 default; the last one makes it `PAID_OFF`), **Mark overdue / Mark active**, **Cancel Contract**. The same as JSON for
 scripts:
@@ -317,16 +323,17 @@ cd e2e
 npm ci && npx playwright install chromium            # once
 npm run e2e                                          # eshop-dev: https://eshop.localhost
 E2E_BASE_URL=https://prod.eshop.localhost npm run e2e   # eshop-prod (same as npm run e2e:prod)
+npm run e2e:qa                                       # eshop-qa: https://qa.eshop.localhost (once QA runs a release candidate)
 npm run report                                       # HTML report of the last run (traces of failures)
 ```
 
 - **Staff credentials** come from the environment's SOPS Secret (`deploy/apps/<env>/eshop-api-staff.sops.yaml`),
   decrypted at run time by `global-setup.ts` with `sops` and the age key (`SOPS_AGE_KEY_FILE`, default
   `~/.config/sops/age/keys.txt`) into the test process's environment only; it is never printed or written to the
-  report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|prod` overrides the environment name
-  derived from the host (it picks the Enterprise database in the admin tool and the Secret).
+  report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|qa|prod` overrides the environment name
+  derived from the host (`qa.` → qa, `prod.` → prod, otherwise dev); it picks the Enterprise database in the admin tool and the Secret.
 - The certificate is self-signed; the test accepts it.
-- **GitHub Actions**: `e2e/run-on-actions.sh [base_url]` (default `https://prod.eshop.localhost`) runs
+- **GitHub Actions**: `e2e/run-on-actions.sh [prod|qa|dev] [version]` (default `prod`, no version) runs
   `.github/workflows/e2e.yml` on GitHub Actions with the job on this machine, which GitHub-hosted runners can't
   reach. The repository is public, so no runner stays registered: the script registers an ephemeral runner
   (label `eshop-e2e` only), dispatches the workflow to it, follows the run (the Playwright report is a run
@@ -334,50 +341,209 @@ npm run report                                       # HTML report of the last r
   age key: the job decrypts the Staff account itself, so no Staff secrets are stored in GitHub. Workflow runs
   from outside contributors' pull requests always wait for approval (repo setting), so nobody else's workflow
   can reach a runner here unreviewed.
+- **QA's test of a release candidate** is `e2e/run-on-actions.sh qa X.Y.Z-rc.N`: only such a run counts for
+  sign-off (git-workflow.md, "QA test run"). Given a version (required for `qa`, optional `X.Y.Z` for `prod`, none
+  for `dev`), the run refuses unless the environment is actually serving it, checked against the cluster by
+  `e2e/check-serving.sh <env> <version>` (Flux applied tag `v<version>` to `apps-<env>`, and every Deployment in
+  `eshop-<env>` finished rolling out with the `<version>` images), before and again after the test. The script makes
+  the check here first, so `e2e/run-on-actions.sh qa 0.3.0-rc.1` while QA serves something else stops at once:
+  `eshop-qa is not serving 0.3.0-rc.1: apps-qa applied v0.3.0-rc.2@sha1:...` (while QA has no release yet:
+  `... apps-qa is suspended ...`). The run is named `E2E <environment>[ <version>]` (`E2E qa 0.3.0-rc.1`) and its
+  summary lists the version, the applied revision and the images. The job uses this machine's `kubectl` and `jq`
+  (the runner inherits the shell's `PATH` and `~/.kube/config`, current context the Rancher Desktop cluster).
+  Tests for the check, with a fake kubectl: `e2e/check-serving.test.sh` (run in CI's `repo rules` job).
 
 ## Releasing
 
-Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is your step: agents can't push release tags. Cut the release, let CI build it and Flux deploy it to `eshop-prod`, then run the smoke test there:
+Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"): release candidate → QA → sign-off → prod. Cutting a
+candidate is your step: agents can't push release tags.
+
+**Human, once, in this order** (each is described below):
+
+1. **Create the promotion token** ([Promotion token](#promotion-token), steps 1 to 3); don't store it yet.
+2. **Protect `main` and create the `release` environment** ([Protecting main](#protecting-main)): run
+   `scripts/protect-main.sh`, dry run first. This comes before the secrets because environment secrets need the
+   environment to exist. Until step 3 is done, the jobs in that environment still read the repository secrets.
+3. **Release secrets** ([Release secrets](#release-secrets)): put `PROMOTION_TOKEN` and `DOCKERHUB_TOKEN` into the
+   `release` environment, then delete the repository-level copies.
+4. **Cut the first release candidate** (below). On the existing `release/0.x` (it holds v0.2.0), the first candidate
+   of 0.3 is `scripts/release.sh 0.3.0-rc.1`: it merges `main` into `release/0.x` first, after showing you the merge.
+   Its QA promotion PR also starts `eshop-qa` for the first time.
 
 ```sh
-# 1. Tag (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
-scripts/release.sh 0.2.0
+# 1. Release candidate: tag v0.3.0-rc.1, push, print the CI run URL. A new minor's first candidate (X.Y.0-rc.1)
+#    forks release/<MAJOR>.x from main, or merges main into the existing branch first (refused while the branch has
+#    a commit that is not on main); other candidates tag the branch head
+scripts/release.sh 0.3.0-rc.1
 
-# 2. Watch CI: test → validate tag → build/scan/push docker.io/pkhamdee/<service>:0.2.0 → GitHub Release
-gh run watch "$(gh run list --workflow ci-release.yml --branch v0.2.0 --limit 1 --json databaseId --jq '.[0].databaseId')"
+# 2. Watch CI: test → validate tag → build → temporary copy and gates → scan → push docker.io/pkhamdee/<service>:0.3.0-rc.1
+#    → opens the QA promotion PR "eshop-qa: deploy v0.3.0-rc.1" (images with digests, gate results, CI run link)
+gh run watch "$(gh run list --workflow ci-release.yml --branch v0.3.0-rc.1 --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh pr list --head promote/qa-0.3.0-rc.1
 
-# 3. Flux follows the release a few minutes later (clusters/local/prod-release.yaml)
-flux get images policy eshop-release -n flux-system  # 0.2.0
-flux get kustomization apps-prod                      # Applied revision: v0.2.0@…
-kubectl -n eshop-prod get deploy -o wide             # images :0.2.0, all READY
-curl -k https://prod.eshop.localhost/api/product-categories
+# 3. QA: merging that PR is QA's approval; Flux deploys the candidate to eshop-qa a minute or two later
+flux get kustomization apps-qa                        # Applied revision: v0.3.0-rc.1@…
+kubectl -n eshop-qa get deploy -o wide               # images :0.3.0-rc.1, all READY
 
-# 4. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
-cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh
+# 4. QA's Playwright run against https://qa.eshop.localhost, recorded as "E2E qa 0.3.0-rc.1"
+e2e/run-on-actions.sh qa 0.3.0-rc.1
+
+# 5. Sign-off (a maintainer, from main): refuses unless main pins QA to 0.3.0-rc.1 and its latest QA run passed;
+#    copies the images to 0.3.0 by digest, tags v0.3.0 on the candidate's commit, publishes the GitHub Release and
+#    opens the prod promotion PR "eshop-prod: deploy v0.3.0"; merging that is the production approval
+gh workflow run sign-off.yml --ref main -f version=0.3.0-rc.1
+gh run watch "$(gh run list --workflow sign-off.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh pr list --head promote/prod-0.3.0
+
+# 6. Post-release smoke test against eshop-prod (locally, or on GitHub Actions)
+cd e2e && npm run e2e:prod                            # or: e2e/run-on-actions.sh prod 0.3.0
 ```
 
-A fix after the release goes to `release/0.x` **and** `main`, then the next patch, e.g. `scripts/release.sh 0.1.2` (git-workflow.md, "Patch release").
+A fix found in QA goes to `release/0.x` **and** `main`, then the next candidate (`scripts/release.sh 0.3.0-rc.2`); a
+fix after the release, the next patch's candidate (`scripts/release.sh 0.3.1-rc.1`; git-workflow.md, "Patch release").
+`scripts/release.sh X.Y.Z` (no `-rc.N`) refuses: sign-off tags releases.
+
+If the promotion token is missing, CI's `open the QA promotion PR` job fails after the images are pushed and names
+the secret; set it and re-run that job, or open the PR yourself with `scripts/promotion-pr.sh qa 0.3.0-rc.1`
+(`PROMOTION_PUSH=0` first shows the commit and description without pushing).
+
+Sign-off's refusals say what is missing (QA pinned to another candidate or suspended, no passing QA run, a missing
+image, `v0.3.0` already released). If it fails half-way (a registry or GitHub error), run it again with the same
+version: it skips what is done and finishes. It needs `PROMOTION_TOKEN` and the same Docker Hub credentials as CI's
+push job (variable `DOCKERHUB_USERNAME`, `release` environment secret `DOCKERHUB_TOKEN`, Read & Write), and only maintainers (repo role
+admin or maintain) may run it (git-workflow.md, "Releasing").
+
+### Promotion token
+
+CI opens promotion PRs (and, with sign-off, pushes the release tag) with a **fine-grained personal access token**,
+stored as the secret `PROMOTION_TOKEN` of the `release` environment. Not the workflow's own `GITHUB_TOKEN`: GitHub runs no workflow for a PR
+or tag that token creates, so a promotion PR would never get its required checks. Commits and PRs made with it show
+you as the actor (the commits themselves are authored by `github-actions[bot]`).
+
+**Human**, once, and again before it expires:
+
+1. github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
+2. Name `modernapp PROMOTION_TOKEN`; resource owner `pkhamdee`; **expiration** 90 days (or what you accept; a calendar
+   reminder a week before helps); **Repository access**: Only select repositories → `pkhamdee/modernapp`.
+3. **Repository permissions**: Contents **Read and write**, Pull requests **Read and write** (Metadata read-only is
+   added by itself). Nothing else; add Workflows read and write only if a promotion ever has to change
+   `.github/workflows/`.
+4. Give it to CI as a secret of the `release` environment ([Release secrets](#release-secrets); the environment is
+   created by `scripts/protect-main.sh`).
+
+**Renewal**: regenerate the token on the same page (or create a new one with the same settings) and run the same
+`gh secret set PROMOTION_TOKEN --env release --repo pkhamdee/modernapp`. An expired or revoked token makes the promotion job fail at `git push` or `gh pr create` with an
+authentication error; the images are already pushed, so re-run just that job once the secret is updated. The
+token must belong to a repository admin or maintainer: only they may create `v*` tags (ruleset "Create release
+tags"; git-workflow.md, "Tags"). It pushes only `promote/*` branches and `vX.Y.Z` tags, never `main`,
+so `main`'s ruleset needs no bypass for it either: a person merges the promotion PR.
+
+### Protecting main
+
+`main`'s ruleset and the `release` environment are code: `scripts/protect-main.sh` (what it sets and why:
+git-workflow.md, "Protecting main"). **Human** (a repo admin), once after it lands on `main`, and again whenever it
+or the names of ci-release.yml's pull-request jobs change:
+
+```sh
+git checkout main && git pull
+scripts/protect-main.sh --dry-run    # prints every request it would send; reads only
+scripts/protect-main.sh              # creates or updates rulesets "Protect main", "Protect release tags",
+                                     # "Create release tags" and environment "release"
+```
+
+Check: Settings → Rules → Rulesets → **Protect main** (Active; bypass: Deploy keys; required checks listed),
+**Protect release tags** (no bypass; deletion, update, force-push), **Create release tags** (bypass: Repository
+admin and Maintain roles; creation), and
+Settings → Environments → **release** (Deployment branches and tags: `main`, tag `v*`). Then:
+
+- `git push origin HEAD:main` from a clone is rejected (`GH013: Repository rule violations`);
+- a PR with a failing required check can't be merged;
+- Flux's next dev image commit still lands (`git log origin/main --author=fluxcdbot`, or
+  `flux get image update`).
+
+**Two approvals later**: `scripts/protect-main.sh --approvals 2` (also dismisses stale approvals and requires the
+last push to be approved by someone else). **Emergency**: Settings → Rules → Rulesets → Protect main → Enforcement
+status *Disabled*, merge the fix by PR, then run `scripts/protect-main.sh` again to restore it.
+
+### Release secrets
+
+The two release secrets belong to the `release` environment, so only `main` and `v*` tags can use them
+(git-workflow.md, "The release environment"): `DOCKERHUB_TOKEN` (CI's `push images` and sign-off) and
+`PROMOTION_TOKEN` (CI's `open the QA promotion PR` and sign-off). **Human**, once, after `scripts/protect-main.sh`
+created the environment (`gh secret set` prompts for each value, so it never lands in shell history):
+
+```sh
+gh secret set DOCKERHUB_TOKEN --env release --repo pkhamdee/modernapp   # a Docker Hub access token, Read & Write
+gh secret set PROMOTION_TOKEN --env release --repo pkhamdee/modernapp   # the fine-grained token (Promotion token)
+gh secret list --env release --repo pkhamdee/modernapp                  # both listed
+# then remove the repository-level copies, which any workflow on any branch could read:
+gh secret delete DOCKERHUB_TOKEN --repo pkhamdee/modernapp
+gh secret delete PROMOTION_TOKEN --repo pkhamdee/modernapp              # if it was ever set there
+gh secret list --repo pkhamdee/modernapp                                # neither listed
+```
+
+The variable `DOCKERHUB_USERNAME` stays a repository variable (not secret). An environment secret overrides a
+repository secret of the same name, so the order above never leaves CI without a token. A run from another branch
+that reaches one of these jobs fails with "Branch ... is not allowed to deploy to release"; so a release dry run
+pushes only from `main` (from another branch `plan` skips the push, with a notice).
+
+## Temporary copy (release gate)
+
+Before CI pushes any image (`main` pushes, release-candidate tags, dry runs; never pull requests), it starts a **temporary
+copy** of eShop from the images it has just built and pushes nothing unless the copy becomes healthy (ADR 0007). The
+copy is one Compose file, `scripts/gates/temporary-copy/compose.yaml`: eshop-web, eshop-api, eshop-node-api,
+PostgreSQL and thirdparty-mock behind a small gateway that routes like the cluster's HTTPRoutes (`/api`, `/images`,
+`/thirdparty-mock/`, the rest to eshop-web), on plain HTTP. No sync master and no SQL Server, so the mock Enterprise
+admin tool and the Enterprise sync don't work in it. Its data lives only in the containers and goes with `down`.
+
+`up` waits until every part answers its probe, then checks through the gateway that the demo catalog and its photos
+are there, that a Customer signs in by SMS code (read from the mock's inbox) and that Staff sign in, and seeds an open
+Auction with a Lot (as dev has) through the Staff API (`temporary-copy/ready.mjs`). If anything fails it prints each
+part's status and last log lines, writes them to `reports/temporary-copy/`, removes the copy and exits 1.
+
+```sh
+export DOCKER_HOST=unix://$HOME/.rd/docker.sock
+scripts/gates/temporary-copy.sh build    # the four images from this checkout, as temporary-copy/<service>:local
+scripts/gates/temporary-copy.sh up       # ~10 s; then http://localhost:8090 (Staff: staff / temporary-copy-staff)
+scripts/gates/temporary-copy.sh down     # stop it and throw its data away
+
+# The images CI built or pushed instead of local ones, e.g. to reproduce a failed gate:
+ESHOP_API_IMAGE=docker.io/pkhamdee/eshop-api:main-93392bd scripts/gates/temporary-copy.sh up
+#   also ESHOP_WEB_IMAGE, ESHOP_NODE_API_IMAGE, THIRDPARTY_MOCK_IMAGE; the newest main build of one:
+scripts/gates/latest-main-image.sh docker.io/pkhamdee/eshop-web
+```
+
+Other settings (header of `scripts/gates/temporary-copy.sh`): `TEMPORARY_COPY_PORT` (default 8090),
+`TEMPORARY_COPY_TIMEOUT_SECONDS` (180), `TEMPORARY_COPY_KEEP=1` to leave a copy that failed running for a look. The
+SMS inbox is at `http://localhost:8090/thirdparty-mock/sms/inbox`. The Staff account, the database password and the
+token signing key are throwaway values that exist only in the copy (Staff and the Node image: `temporary-copy/defaults.env`). To run the Playwright demo against it, set
+`E2E_BASE_URL=http://localhost:8090 E2E_MOCK_URL=http://localhost:8090 E2E_ENV=dev STAFF_USERNAME=staff
+STAFF_PASSWORD=temporary-copy-staff`; its two
+Enterprise sync steps can't pass there.
 
 ## Repo layout
 
 | Path | What | Flux Kustomization |
 | --- | --- | --- |
 | `clusters/local/` | Cluster entry point: `flux-system/` (generated by bootstrap) plus the Kustomizations below | `flux-system` |
-| `clusters/local/prod-release.yaml` | What `eshop-prod` runs: GitRepository `eshop-release` (one release tag) and the image automation that moves it, and `apps-prod`'s image tags, to the newest `X.Y.Z` release once its images exist, committed to `main` | `flux-system` |
+| `clusters/local/prod-release.yaml` | What `eshop-prod` runs, the **prod pin**: GitRepository `eshop-release` (one release tag) and Kustomization `apps-prod` with that release's `X.Y.Z` images; the `# release-pin: prod` lines change only in a promotion PR (`scripts/pin-release.sh`) | `flux-system` |
+| `clusters/local/qa-release.yaml` | What `eshop-qa` runs, the **QA pin**, same shape: GitRepository `eshop-qa` (one release-candidate tag) and Kustomization `apps-qa` with its `X.Y.Z-rc.N` images; the `# release-pin: qa` lines change only in a QA promotion PR. Suspended until the first one | `flux-system` |
 | `deploy/infrastructure/controllers/` | Namespaces, Traefik `HelmChartConfig` (Gateway API provider), cert-manager, CloudNativePG operator | `infra-controllers` |
 | `deploy/infrastructure/configs/` | Issuers, the `eshop` Gateway and its certificate, platform secrets | `infra-configs` (after controllers) |
 | `deploy/apps/base/` | One directory per app, environment-neutral | – |
 | `deploy/apps/dev/` | `eshop-dev` overlay, follows `main` | `apps-dev` (after configs) |
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
-| `deploy/apps/prod/` | `eshop-prod` overlay, applied as it is in the newest release tag, served at `prod.eshop.localhost` | `apps-prod` (after configs; source `eshop-release`) |
+| `deploy/apps/prod/` | `eshop-prod` overlay, applied as it is in the pinned release tag, served at `prod.eshop.localhost` | `apps-prod` (after configs; source `eshop-release`) |
+| `deploy/apps/qa/` | `eshop-qa` overlay (a copy of prod's), applied as it is in the pinned release-candidate tag, served at `qa.eshop.localhost` | `apps-qa` (after configs; source `eshop-qa`) |
 | `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, `samba/`: image share with one share per environment, `mssql/`: mock Enterprise System, ...); thirdparty-mock follows `main` via its own image automation | `thirdparty` (after configs) |
 | `services/eshop-api/` | .NET solution: `src/Eshop.Domain`, `src/Eshop.Data` (EF Core, migrations), `src/Eshop.Api`, `src/Eshop.SyncMaster` (eshop-sync-master), `tests/Eshop.Api.Tests` (Seam 1), `tests/Eshop.SyncMaster.Tests` (Seam 2) | – |
 | `services/eshop-web/` | React + Vite + TypeScript, served by Caddy | – |
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
-| `scripts/` | Repo tasks: `release.sh X.Y.Z` cuts a release (human-run); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
-| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release tag | – |
+| `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI); `sign-off.sh` signs off a candidate (the sign-off workflow); `protect-main.sh` sets `main`'s ruleset and the `release` environment (admin-run); tests of all of them in `tests/release-scripts.sh`; `lib/` holds what they share, sourced: `versions.sh` (the version grammar: X.Y.Z, X.Y.Z-rc.N, 0.0.0-test.N, and which environment takes which), `repo.sh` (the GitHub repository and image registry, env-overridable), `images.sh` (the image list in PR and Release bodies); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
+| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `image-scan.sh` (Trivy on built images), `perf.sh` (Locust; load, thresholds and locustfile in `perf/`), `dast.sh` (OWASP ZAP against the copy, signed out and as a Customer and Staff via `dast-session.mjs`; accepted alerts in `dast-rules.conf`). See [Running the gates locally](#running-the-gates-locally) | – |
+| `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release-candidate tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
 
@@ -416,6 +582,93 @@ cd services/eshop-node-api
 npm ci && npm run lint && npm test                                  # as CI runs it
 npm run dev                                                         # http://localhost:8081, images in ./.local-share
 ```
+
+### Running the gates locally
+
+The gates in `scripts/gates/` run exactly as CI runs them (jobs `sast` and `deps` in `ci-release.yml`, on every PR,
+push and tag). Each needs only git and Docker: it pulls its tool's pinned image, writes its reports to
+`reports/<gate>/` (git-ignored; CI uploads them as the `sast-report` and `deps-report` artifacts) and exits non-zero
+when the gate fails. Downloads (Semgrep rules, Trivy's database) are cached in `~/.cache/eshop-gates`.
+
+```sh
+export DOCKER_HOST=unix://$HOME/.rd/docker.sock
+scripts/gates/sast.sh     # Semgrep CE: fails on an ERROR finding; reports/sast/summary.txt lists every finding
+scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulnerability; reports/deps/trivy.txt
+```
+
+- **SAST** scans `services`, `e2e`, `scripts`, `.github`, `deploy` and `clusters` (test code included) with the
+  semgrep-rules repository at a pinned commit (`RULES_COMMIT` in `sast.sh`). WARNING and INFO findings are reported,
+  never blocking. To accept a false positive, add `rule-id | path-glob | reason` to
+  `scripts/gates/sast-accepted.txt`; the reason is required, and inline `nosemgrep` comments are ignored. Paths
+  skipped inside those folders are in `.semgrepignore`.
+- **Dependency scan** reads the npm `package-lock.json` files (dev dependencies included) and eshop-api's NuGet
+  `packages.lock.json` files. Those exist because `Directory.Build.props` sets `RestorePackagesWithLockFile`: after
+  changing a package in `Directory.Packages.props`, run `dotnet restore` and commit the updated lock files (CI
+  restores with `--locked-mode` and fails on a stale one). Every severity is in the report; only CRITICAL fails,
+  fixed or not, as in the image scan.
+- **Image scan** (`image-scan.sh`, CI: the `scan` job, one per image, artifact `image-scan-report-<service>`) runs
+  Trivy on built images from their docker archives, before any is pushed; fails on a CRITICAL finding, fixed or
+  not. Reports: `reports/image-scan/<name>.txt` and `.json`.
+
+  ```sh
+  scripts/gates/temporary-copy.sh build
+  docker save temporary-copy/eshop-api:local -o /tmp/eshop-api.tar && scripts/gates/image-scan.sh /tmp/eshop-api.tar
+  ```
+- **Temporary copy** (`temporary-copy.sh`, the copy the image gates run against): see
+  [Temporary copy](#temporary-copy-release-gate).
+- **Performance** (`perf.sh`, CI: the `gate` job, artifact `perf-report`) runs Locust headless from its pinned image
+  against a running temporary copy, on the copy's Compose network: about 50 Customers for 60 s over the catalog,
+  Products, sign-in by SMS code (each user with its own mobile number), and the Auction and its Lots. It fails when
+  the p95 of all requests is over 500 ms or more than 1% of them failed. Staff sign-in is left out on purpose: its
+  password check is deliberately slow. The load and the thresholds are in `scripts/gates/perf/locust.conf`; the
+  flows in `locustfile.py` beside it. `reports/perf/summary.txt` gives the verdict and the slowest endpoints;
+  `locust.html` and `locust_*.csv` the per-endpoint numbers.
+
+  ```sh
+  scripts/gates/temporary-copy.sh build && scripts/gates/temporary-copy.sh up
+  scripts/gates/perf.sh                              # ~70 s
+  LOCUST_RUN_TIME=15s LOCUST_USERS=10 scripts/gates/perf.sh   # any locust.conf value, for one run
+  scripts/gates/temporary-copy.sh down
+  ```
+
+  With a copy started under another project name (`TEMPORARY_COPY_PROJECT`), run `perf.sh` with the same variable
+  so it joins that copy's network; `PERF_NETWORK` and `PERF_HOST` point it anywhere else.
+- **DAST** (`dast.sh`, OWASP ZAP, signed out and signed in) runs against a running temporary copy, on its Compose
+  network, in the `gate` job after Locust (artifact `dast-report`):
+
+  ```sh
+  scripts/gates/temporary-copy.sh up
+  scripts/gates/dast.sh       # ~2 min; reports/dast/summary.txt, <scan>.html/json, <scan>-requests.tsv
+  scripts/gates/temporary-copy.sh down
+  ```
+
+  Four scans: a ZAP **baseline** (spider plus passive rules) of the web app through the gateway, and three ZAP **API
+  scans** (ZAP's API-Minimal active rules) of every operation in eshop-api's OpenAPI description, sent through the
+  gateway: **signed out**, **as a Customer** and **as Staff**. The description is `/openapi/v1.json` on eshop-api,
+  served only when `OpenApi__Enabled=true`, which only the copy's `compose.yaml` sets (the cluster never does, and
+  the Gateway routes only `/api`). The sessions are obtained as a Customer or Staff member would, inside the copy only
+  (`scripts/gates/dast-session.mjs`): the Customer by SMS code read from thirdparty-mock's inbox, with a fresh mobile
+  number per run; Staff with the copy's throwaway account (`TEMPORARY_COPY_STAFF_USERNAME` / `_PASSWORD`, default in
+  `scripts/gates/temporary-copy/defaults.env`:
+  `staff` / `temporary-copy-staff`). ZAP sends the token as `Authorization: Bearer ...` on every request to the
+  gateway. The signed-in scans change the copy's data (they submit, bid, add Branches, retire and reinstate
+  Products), which is why they run last, Customer before Staff; tokens are stateless and Staff sign-in has no lockout,
+  so a scan can't lose its session.
+
+  The gate fails on any High-risk alert; Medium, Low and Informational ones are in the reports only. It also fails
+  when a signed-in scan got **no 2xx answer from an endpoint only its role may use** (`CUSTOMER_ONLY` /
+  `STAFF_ONLY` path patterns in `dast.sh`), so a sign-in that silently stopped working can't pass as a clean scan;
+  `summary.txt` lists, per role, the role-only endpoints reached with 2xx (from `<scan>-requests.tsv`, every request
+  ZAP kept, written by the hook `dast-hook.py`). A sign-in that fails outright (a wrong Staff password) stops the
+  gate before the scan. To accept an alert, add its rule to `scripts/gates/dast-rules.conf` (ZAP's tab-separated
+  `-c` format: `id IGNORE (name)`, or `id OUTOFSCOPE url-regex` for some URLs) under a `# reason: ...` comment; a
+  rule without a reason fails the gate. For a copy started with another `TEMPORARY_COPY_PROJECT`, export the same
+  value for `dast.sh`. `DAST_SCANS` picks the scans, e.g. `DAST_SCANS=customer` or `DAST_SCANS='api staff'`.
+- To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, a lockfile
+  entry such as lodash 4.17.4, an `await Task.Delay(800)` in a catalog endpoint, or a response header leaking a
+  password hash in eshop-web's `Caddyfile`, `X-Debug-Hash "$2a$10$..."`, for DAST; the same header set in a
+  Customer-only handler such as `ListContracts` is caught only by the Customer scan), rebuild that image and restart
+  the copy, run the gate, see it fail, and revert. Never commit the plant.
 
 ## Troubleshooting
 

@@ -1,0 +1,4 @@
+# ShellCheck (CI: repo rules). Sourced helpers (scripts/lib/*.sh, scripts/gates/lib.sh) are named relative to the
+# script that sources them, and followed.
+source-path=SCRIPTDIR
+external-sources=true

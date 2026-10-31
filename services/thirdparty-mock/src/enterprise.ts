@@ -4,23 +4,23 @@ import { escapeHtml, page } from './html.ts'
 import { log } from './log.ts'
 
 // Admin tool of the mock Enterprise System (story 62). The Enterprise System itself is the real SQL Server in
-// the thirdparty namespace (deploy/thirdparty/mssql), databases enterprise_dev and enterprise_prod, fake
+// the thirdparty namespace (deploy/thirdparty/mssql), databases enterprise_dev, enterprise_qa and enterprise_prod, fake
 // schema hp.contract / hp.payment. eshop-sync-master pushes Contracts there; this page lists them and lets a
 // developer do what the Enterprise System's own staff would: record a Payment, mark overdue, cancel.
 // The pull (#10) brings those changes back to eShop.
 //
 //   GET  /enterprise/                                  pick an environment
-//   GET  /enterprise/{dev|prod}/                       Contracts (newest first) with their Payments, and forms
-//   GET  /enterprise/{dev|prod}/contracts              same as JSON (handy in scripts)
-//   POST /enterprise/{dev|prod}/contracts/{no}/payments  {amount?, channel?}  amount defaults to one Installment
-//   POST /enterprise/{dev|prod}/contracts/{no}/status    {status: ACTIVE|OVERDUE}
-//   POST /enterprise/{dev|prod}/contracts/{no}/cancel    {reason?}
+//   GET  /enterprise/{dev|qa|prod}/                       Contracts (newest first) with their Payments, and forms
+//   GET  /enterprise/{dev|qa|prod}/contracts              same as JSON (handy in scripts)
+//   POST /enterprise/{dev|qa|prod}/contracts/{no}/payments  {amount?, channel?}  amount defaults to one Installment
+//   POST /enterprise/{dev|qa|prod}/contracts/{no}/status    {status: ACTIVE|OVERDUE}
+//   POST /enterprise/{dev|qa|prod}/contracts/{no}/cancel    {reason?}
 // HTML forms get a 303 back to the list; JSON callers get JSON.
 //
 // Connection: ENTERPRISE_SQL_SERVER (default "mssql"), ENTERPRISE_SQL_USER (default "enterprise_admin"),
 // ENTERPRISE_SQL_PASSWORD (from the mssql-credentials Secret). Without a password the pages say so.
 
-const ENVIRONMENTS = { dev: 'enterprise_dev', prod: 'enterprise_prod' } as const
+const ENVIRONMENTS = { dev: 'enterprise_dev', qa: 'enterprise_qa', prod: 'enterprise_prod' } as const
 type Environment = keyof typeof ENVIRONMENTS
 
 const pools = new Map<Environment, Promise<sql.ConnectionPool>>()
@@ -187,6 +187,7 @@ export function enterpriseRouter(): Router {
 <p class="muted">eShop Co.'s core hire-purchase system, played by SQL Server in the thirdparty namespace. eshop-sync-master pushes accepted Contracts here every 30 s.</p>
 <ul>
   <li><a href="dev/">enterprise_dev</a> (eshop-dev)</li>
+  <li><a href="qa/">enterprise_qa</a> (eshop-qa)</li>
   <li><a href="prod/">enterprise_prod</a> (eshop-prod)</li>
 </ul>`))
   })
@@ -238,7 +239,7 @@ function handle(action: (environment: Environment, request: Request, response: R
   return async (request: Request, response: Response) => {
     const environment = String(request.params.env ?? '')
     if (!(environment in ENVIRONMENTS)) {
-      response.status(404).json({ error: 'environment must be dev or prod' })
+      response.status(404).json({ error: 'environment must be dev, qa or prod' })
       return
     }
     try {
