@@ -30,8 +30,6 @@ Both environments share the one `eshop` Gateway on port 443 and run the same app
 
 Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/eshop-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials.
 
-Until `v0.2.0` is released, prod still runs v0.1.1 under its old names, in `sphone-prod` at `https://prod.sphone.localhost` (temporary Gateway `sphone`): see [Moving to eShop](#moving-to-eshop-49-50).
-
 ### DOCKER_HOST gotcha
 
 If `docker` commands fail with a context error (for example a stale `rd-ssh` context), point the CLI and Testcontainers at Rancher Desktop's socket directly:
@@ -115,11 +113,13 @@ The rename to eShop (spec #46) moves the environments from `sphone-dev` / `sphon
 with no redirect from the old names and no data migration. A fresh cluster needs none of this section; a cluster that
 ran the old names needs the steps marked **human** (agents don't change the cluster or GitHub settings).
 
+**The move is complete**: prod runs `v0.2.0` in `eshop-prod`, and the temporary entries that kept v0.1.x running
+were removed from `main` (#62). Rolling prod back to a v0.1.x release is no longer possible.
+
 ### 1. Images on Docker Hub
 
 CI pushes every image to Docker Hub as `docker.io/pkhamdee/<service>` (#63); new Docker Hub repositories are public,
-so Flux and the pods pull them without credentials. Only the v0.1.1 prod images (`ghcr.io/pkhamdee/sphone-*`) stay on
-GHCR until step 4.
+so Flux and the pods pull them without credentials. The v0.1.x images on GHCR are no longer used.
 
 **Human**, once: create a Docker Hub access token with Read & Write (hub.docker.com → Account settings → Personal
 access tokens), then give it to CI. `gh secret set` prompts for the token, so it never lands in shell history:
@@ -145,16 +145,7 @@ What Flux does by itself:
   `gateway/eshop-localhost-tls`, issued by a **new** local CA `eshop-local-ca` ("eShop Local CA").
 - **prod keeps running v0.1.1** in `sphone-prod` at `https://prod.sphone.localhost`, unchanged, until `v0.2.0` is
   out. A release's own manifests name its namespace, Gateway, Secrets, SMB account and SQL login, and v0.1.x still
-  uses the old ones, so `main` keeps these **temporary** entries for it, each commented in place:
-  - Namespace `sphone-prod` (`deploy/infrastructure/controllers/namespaces.yaml`);
-  - Gateway `sphone` with only the `https-prod` / `http-prod` listeners for `prod.sphone.localhost`, and its
-    certificate `gateway/sphone-localhost-tls` from the new CA (`deploy/infrastructure/configs/gateway-v0.1-prod.yaml`);
-  - `sphone-prod` and the `sphone-*` caller names in the thirdparty NetworkPolicies
-    (`deploy/thirdparty/{mssql,samba,thirdparty-mock}/network-policy.yaml`);
-  - Samba account `sphoneprod` and share `sphone-prod` (`deploy/thirdparty/samba/samba.yaml`, key `sphoneprod` in
-    `samba-accounts.sops.yaml`, password unchanged because v0.1.1's own Secret holds it);
-  - SQL Server login `sphone_sync_prod` (`deploy/thirdparty/mssql/logins.sql`, same password as `eshop_sync_prod`);
-  - the `ghcr.io/pkhamdee/sphone-*` entries in `apps-prod`'s `images` (`clusters/local/apps.yaml`).
+  used the old ones, so `main` kept temporary entries for it until step 4 (#62).
 
   The Flux objects that drive prod are renamed (GitRepository and ImagePolicy `eshop-release`, ImageUpdateAutomation
   `eshop-prod`); `apps-prod` keeps its name and re-applies the same v0.1.1. Samba and SQL Server restart once (their
@@ -204,22 +195,17 @@ kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
 cd e2e && npm run e2e:prod      # smoke test against https://prod.eshop.localhost
 ```
 
-### 4. After `v0.2.0` runs in prod: remove the temporary entries
+### 4. Temporary entries removed (#62)
 
-A PR to `main` (`git grep -n -i sphone` lists every line; keep only the history in ADRs and issue links) that:
+The temporary v0.1.x entries (namespace `sphone-prod`, Gateway `sphone` and its certificate for
+`prod.sphone.localhost`, the `sphoneprod` Samba account and share, the `sphone_sync_prod` login, the old names in the
+thirdparty NetworkPolicies and the old image entries in `apps-prod`) are gone from `main`. Flux deletes namespace
+`sphone-prod` and the Gateway `sphone`. Rolling prod back to a v0.1.x release is no longer possible.
 
-- deletes `deploy/infrastructure/configs/gateway-v0.1-prod.yaml` and its line in that folder's `kustomization.yaml`;
-- deletes the `sphone-prod` Namespace from `deploy/infrastructure/controllers/namespaces.yaml`;
-- drops `sphone-prod` and the `sphone-*` names from the three thirdparty NetworkPolicies (back to
-  `values: [eshop-dev, eshop-prod]` and a `matchLabels` on the `eshop-*` name);
-- drops the `sphoneprod` account, UID, share and folder from `deploy/thirdparty/samba/samba.yaml`, and the key
-  `sphoneprod` from `samba-accounts.sops.yaml` (`sops deploy/thirdparty/samba/samba-accounts.sops.yaml`);
-- drops the `sphone_sync_prod` lines from `deploy/thirdparty/mssql/logins.sql` and the note in
-  `mssql-credentials.sops.yaml`;
-- drops the `ghcr.io/pkhamdee/sphone-*` entries and their comment from `apps-prod` in `clusters/local/apps.yaml`.
+#### Human: after this is applied
 
-Flux then deletes namespace `sphone-prod` and the Gateway `sphone`. From then on prod can't be rolled back to a
-v0.1.x release. **Human**, after it is applied:
+Once `flux get kustomizations` shows the commit removing them Ready, drop the leftovers Flux does not own: the old
+SQL Server login, the old certificate's Secret and the old prod folder on the Samba volume.
 
 ```sh
 kubectl -n thirdparty exec deploy/mssql -c mssql -- bash -c \
