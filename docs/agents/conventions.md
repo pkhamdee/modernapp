@@ -48,7 +48,10 @@ Layout:
   (the dependency-scan gate reads it; CI restores with `--locked-mode`): run `dotnet restore` after any package
   change and commit the lock files.
 - Gates (`scripts/gates/*.sh`, `docs/setup.md` "Running the gates locally"): a Semgrep ERROR that is a false
-  positive goes in `scripts/gates/sast-accepted.txt` with a reason; `nosemgrep` comments are ignored.
+  positive goes in `scripts/gates/sast-accepted.txt` with a reason; `nosemgrep` comments are ignored. The ZAP gate
+  (`dast.sh`) scans every operation in the OpenAPI description, which eshop-api serves only with
+  `OpenApi:Enabled` (set in the temporary copy alone); a High alert to accept goes in `scripts/gates/dast-rules.conf`
+  under a `# reason:` line. Every response carries `X-Content-Type-Options: nosniff` (Program.cs).
 
 Adding an endpoint:
 

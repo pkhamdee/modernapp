@@ -393,6 +393,17 @@ jobs:
           path: reports/perf/
           if-no-files-found: ignore
 
+      # ZAP baseline (web) and API scan (OpenAPI), signed out; fails on High (scripts/gates/dast-rules.conf).
+      - name: ZAP baseline and API scans, signed out (fail on High)
+        run: scripts/gates/dast.sh
+      - name: Keep the ZAP reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: dast-report
+          path: reports/dast/
+          if-no-files-found: ignore
+
       - name: Stop the temporary copy
         if: always()
         run: scripts/gates/temporary-copy.sh down

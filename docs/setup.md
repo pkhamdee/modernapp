@@ -539,7 +539,7 @@ Enterprise sync steps can't pass there.
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
 | `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI); `sign-off.sh` signs off a candidate (the sign-off workflow); `protect-main.sh` sets `main`'s ruleset and the `release` environment (admin-run); tests of all of them in `tests/release-scripts.sh`; `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
-| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `perf.sh` (Locust; load, thresholds and locustfile in `perf/`). See [Running the gates locally](#running-the-gates-locally) | – |
+| `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `perf.sh` (Locust; load, thresholds and locustfile in `perf/`), `dast.sh` (OWASP ZAP against the copy, accepted alerts in `dast-rules.conf`). See [Running the gates locally](#running-the-gates-locally) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release-candidate tag | – |
 
 Every Kustomization decrypts SOPS (`*.sops.yaml`) with `flux-system/sops-age` where needed and prunes only what it applied, so other workloads in the cluster are untouched.
@@ -622,9 +622,27 @@ scripts/gates/deps.sh     # Trivy over every lockfile: fails on a CRITICAL vulne
 
   With a copy started under another project name (`TEMPORARY_COPY_PROJECT`), run `perf.sh` with the same variable
   so it joins that copy's network; `PERF_NETWORK` and `PERF_HOST` point it anywhere else.
+- **DAST** (`dast.sh`, OWASP ZAP, signed out) runs against a running temporary copy, on its Compose network, in the
+  `gate` job (artifact `dast-report`):
+
+  ```sh
+  scripts/gates/temporary-copy.sh up
+  scripts/gates/dast.sh                    # ~1 min; reports/dast/summary.txt, web.html/json, api.html/json
+  scripts/gates/temporary-copy.sh down
+  ```
+
+  Two scans: a ZAP **baseline** (spider plus passive rules) of the web app through the gateway, and a ZAP **API
+  scan** (ZAP's API-Minimal active rules) of every operation in eshop-api's OpenAPI description, sent through the
+  gateway. The description is `/openapi/v1.json` on eshop-api, served only when `OpenApi__Enabled=true`, which only
+  the copy's `compose.yaml` sets (the cluster never does, and the Gateway routes only `/api`). Any High-risk alert
+  fails the gate; Medium, Low and Informational ones are in the reports only. To accept an alert, add its rule to
+  `scripts/gates/dast-rules.conf` (ZAP's tab-separated `-c` format: `id IGNORE (name)`, or `id OUTOFSCOPE url-regex`
+  for some URLs) under a `# reason: ...` comment; a rule without a reason fails the gate. For a copy started with
+  another `TEMPORARY_COPY_PROJECT`, export the same value for `dast.sh`. `DAST_SCANS=web` (or `api`) runs one scan.
 - To prove a gate still bites, plant a fault locally (a C# `new SqlCommand($"... {input}", ...)`, a lockfile
-  entry such as lodash 4.17.4, or an `await Task.Delay(800)` in a catalog endpoint, then rebuild that image and
-  restart the copy), run the gate, see it fail, and revert. Never commit the plant.
+  entry such as lodash 4.17.4, an `await Task.Delay(800)` in a catalog endpoint, or a response header leaking a
+  password hash in eshop-web's `Caddyfile`, `X-Debug-Hash "$2a$10$..."`, for DAST), rebuild that image and restart
+  the copy, run the gate, see it fail, and revert. Never commit the plant.
 
 ## Troubleshooting
 
