@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# Protects main and the release secrets on GitHub, as code (docs/git-workflow.md, "Protecting main"; ADR 0007).
+# Idempotent: run it again after changing it, or to put the settings back after an emergency.
+#
+#   scripts/protect-main.sh --dry-run        # prints every request it would send (reads only); run this first
+#   scripts/protect-main.sh                  # applies them
+#   scripts/protect-main.sh --approvals 2    # the switch to two required approvals, once there are two approvers
+#
+# 1. Branch ruleset "Protect main" (created, or updated in place by name):
+#    - changes reach main only through a pull request (no direct push, no force-push, no deletion);
+#    - the PR's required status checks are every job ci-release.yml runs on a pull request: the jobs with no
+#      `needs:` and no `if:`, by their `name:` (the check's context), from GitHub Actions only. The gate, scan and
+#      push jobs never run on a PR, so they can't be required; renaming a PR job changes its check, so run this again;
+#    - approvals: 0 by default (with one maintainer the merge is the approval: GitHub doesn't let an author approve
+#      their own PR). With --approvals N > 0 it also dismisses stale approvals on a new push and requires the last
+#      push to be approved by someone other than its pusher;
+#    - bypass: deploy keys only, so Flux's image automation (it pushes with the flux-system deploy key) still commits
+#      dev's image updates straight to main. Nobody else bypasses, admins included; an emergency is in the docs.
+# 2. Environment "release", deployable only from main and from v* tags. ci-release.yml's push and promote-qa jobs and
+#    sign-off.yml use it, so its secrets (DOCKERHUB_TOKEN, PROMOTION_TOKEN) are out of reach of a workflow run from
+#    any other branch. The secrets themselves are a human step (docs/setup.md, "Release secrets").
+#
+# Needs gh signed in as a repo admin, and jq. scripts/tests/release-scripts.sh tests it against a fake gh.
+set -euo pipefail
+
+REPO=pkhamdee/modernapp
+RULESET="Protect main"
+ENVIRONMENT=release
+GITHUB_ACTIONS_APP_ID=15368 # required checks must come from GitHub Actions, not from any status a token can post
+
+usage() { echo "usage: scripts/protect-main.sh [--dry-run] [--approvals N]   (N from 0 to 10; default 0)" >&2; exit 2; }
+dry_run=false
+approvals=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) dry_run=true ;;
+    --approvals) [ $# -ge 2 ] || usage; approvals=$2; shift ;;
+    *) usage ;;
+  esac
+  shift
+done
+[[ "$approvals" =~ ^([0-9]|10)$ ]] || usage
+
+cd "$(dirname "$0")/.."
+
+# The checks: jobs of ci-release.yml with neither `needs:` nor `if:` run on every pull request.
+checks=$(awk '
+  function flush() { if (id != "" && !gated) print (name != "" ? name : id) }
+  /^jobs:/ { in_jobs = 1; next }
+  in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { flush(); id = $1; sub(/:$/, "", id); name = ""; gated = 0; next }
+  in_jobs && /^    name:/ { name = $0; sub(/^    name:[[:space:]]*/, "", name); gsub(/^"|"$/, "", name) }
+  in_jobs && /^    (needs|if):/ { gated = 1 }
+  END { flush() }
+' .github/workflows/ci-release.yml)
+if [ -z "$checks" ] || [[ "$checks" == *"\${{"* ]]; then
+  echo "can't read the pull-request jobs of .github/workflows/ci-release.yml:" >&2; echo "$checks" >&2; exit 1
+fi
+
+if [ "$approvals" -gt 0 ]; then strict_reviews=true; else strict_reviews=false; fi
+ruleset=$(jq -n --arg name "$RULESET" --argjson approvals "$approvals" --argjson strict "$strict_reviews" \
+  --argjson app "$GITHUB_ACTIONS_APP_ID" --arg checks "$checks" '{
+  name: $name,
+  target: "branch",
+  enforcement: "active",
+  conditions: { ref_name: { include: ["refs/heads/main"], exclude: [] } },
+  bypass_actors: [ { actor_id: null, actor_type: "DeployKey", bypass_mode: "always" } ],
+  rules: [
+    { type: "deletion" },
+    { type: "non_fast_forward" },
+    { type: "pull_request", parameters: {
+        required_approving_review_count: $approvals,
+        dismiss_stale_reviews_on_push: $strict,
+        require_last_push_approval: $strict,
+        require_code_owner_review: false,
+        required_review_thread_resolution: false } },
+    { type: "required_status_checks", parameters: {
+        strict_required_status_checks_policy: false,
+        required_status_checks: [ $checks | split("\n")[] | { context: ., integration_id: $app } ] } }
+  ] }')
+
+# send <METHOD> <path> [json]: prints it on --dry-run, sends it otherwise.
+send() {
+  if $dry_run; then
+    echo "$1 $2"
+    [ -z "${3:-}" ] || jq . <<<"$3"
+  elif [ -n "${3:-}" ]; then
+    gh api "$2" --method "$1" --input - <<<"$3" >/dev/null && echo "$1 $2: done"
+  else
+    gh api "$2" --method "$1" >/dev/null && echo "$1 $2: done"
+  fi
+}
+
+# 1. The ruleset, found by name.
+id=$(gh api "repos/$REPO/rulesets" | jq -r --arg name "$RULESET" 'map(select(.name == $name)) | first | .id // empty')
+if [ -n "$id" ]; then
+  send PUT "repos/$REPO/rulesets/$id" "$ruleset"
+else
+  send POST "repos/$REPO/rulesets" "$ruleset"
+fi
+
+# 2. The environment and its deployment branch and tag policies: exactly main and v* tags.
+send PUT "repos/$REPO/environments/$ENVIRONMENT" \
+  '{"deployment_branch_policy":{"protected_branches":false,"custom_branch_policies":true}}'
+policies_path="repos/$REPO/environments/$ENVIRONMENT/deployment-branch-policies"
+if ! existing=$(gh api "$policies_path" 2>/dev/null); then
+  $dry_run || { echo "can't read $policies_path" >&2; exit 1; }
+  existing='{"branch_policies":[]}' # the environment doesn't exist yet
+fi
+wanted='[{"name":"main","type":"branch"},{"name":"v*","type":"tag"}]'
+jq -c --argjson wanted "$wanted" '$wanted - [.branch_policies[] | {name, type}] | .[]' <<<"$existing" |
+  while read -r policy; do send POST "$policies_path" "$policy"; done
+jq -r --argjson wanted "$wanted" '.branch_policies[] | select({name, type} as $p | $wanted | index([$p]) | not) | .id' \
+  <<<"$existing" | while read -r extra; do send DELETE "$policies_path/$extra"; done
+
+if $dry_run; then
+  echo "Dry run: nothing sent. Required checks:"; while read -r check; do echo "  $check"; done <<<"$checks"
+else
+  echo "main is protected ($approvals approvals); environment $ENVIRONMENT deploys from main and v* tags only."
+  echo "Next, if not done yet: the release secrets (docs/setup.md, \"Release secrets\")."
+fi

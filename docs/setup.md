@@ -96,9 +96,9 @@ open https://eshop.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-
 open https://eshop.localhost/thirdparty-mock/enterprise/ # mock Enterprise System: pushed Contracts, simulate Payment, cancel
 ```
 
-**`eshop-prod` runs the pinned release.** Prod runs only the release pinned in `clusters/local/prod-release.yaml` (`scripts/pin-release.sh prod` prints it; docs/git-workflow.md, "How a release reaches `eshop-prod`"). On a fresh cluster Flux deploys that release, starting from an empty prod database. If the pinned tag or its images were missing, the GitRepository `eshop-release` or `apps-prod` would stay not Ready and `https://prod.eshop.localhost` would serve nothing.
+**`eshop-prod` runs the pinned release.** Prod runs only the release pinned in `clusters/local/prod-release.yaml` (`scripts/pin-release.sh prod` prints it; docs/git-workflow.md, "Prod promotion"). On a fresh cluster Flux deploys that release, starting from an empty prod database. If the pinned tag or its images were missing, the GitRepository `eshop-release` or `apps-prod` would stay not Ready and `https://prod.eshop.localhost` would serve nothing.
 
-**`eshop-qa` runs the pinned release candidate, from the first one on.** QA is pinned the same way, in `clusters/local/qa-release.yaml` (`scripts/pin-release.sh qa`), and its PostgreSQL keeps its data from one release candidate to the next. A release tag carries its own overlay, and no tag before the first release candidate cut after #74 contains `deploy/apps/qa`, so QA cannot run `v0.2.0`. Until a release candidate is promoted, `apps-qa` is therefore **suspended** (`suspend: true # release-pin-until: qa`) and its pin holds `0.2.0` only as a placeholder; `scripts/pin-release.sh qa` says so. Everything else QA needs is already applied from `main`: namespace `eshop-qa`, the Gateway listeners `https-qa`/`http-qa`, `qa.eshop.localhost` in the certificate (reissued by cert-manager from the same local CA, so nothing new to trust), the thirdparty NetworkPolicies, the `eshopqa` Samba share and the `enterprise_qa` database with login `eshop_sync_qa`. Until then `https://qa.eshop.localhost` answers 404. The first QA promotion PR (`scripts/pin-release.sh qa X.Y.Z-rc.N`) pins the candidate and deletes the suspend line in the same edit; once merged, Flux deploys QA for the first time, starting from an empty database (docs/git-workflow.md, "QA").
+**`eshop-qa` runs the pinned release candidate, from the first one on.** QA is pinned the same way, in `clusters/local/qa-release.yaml` (`scripts/pin-release.sh qa`), and its PostgreSQL keeps its data from one release candidate to the next. A release tag carries its own overlay, and no tag before the first release candidate cut after #74 contains `deploy/apps/qa`, so QA cannot run `v0.2.0`. Until a release candidate is promoted, `apps-qa` is therefore **suspended** (`suspend: true # release-pin-until: qa`) and its pin holds `0.2.0` only as a placeholder; `scripts/pin-release.sh qa` says so. Everything else QA needs is already applied from `main`: namespace `eshop-qa`, the Gateway listeners `https-qa`/`http-qa`, `qa.eshop.localhost` in the certificate (reissued by cert-manager from the same local CA, so nothing new to trust), the thirdparty NetworkPolicies, the `eshopqa` Samba share and the `enterprise_qa` database with login `eshop_sync_qa`. Until then `https://qa.eshop.localhost` answers 404. The first QA promotion PR (`scripts/pin-release.sh qa X.Y.Z-rc.N`) pins the candidate and deletes the suspend line in the same edit; once merged, Flux deploys QA for the first time, starting from an empty database (docs/git-workflow.md, "QA (`eshop-qa`)").
 
 **A cluster that ran the old names** (before #49 and #50) needs a few human steps: see [Moving to eShop](#moving-to-eshop-49-50) below.
 
@@ -131,10 +131,11 @@ access tokens), then give it to CI. `gh secret set` prompts for the token, so it
 
 ```sh
 gh variable set DOCKERHUB_USERNAME --body pkhamdee
-gh secret set DOCKERHUB_TOKEN
+gh secret set DOCKERHUB_TOKEN --env release --repo pkhamdee/modernapp   # since #78 a secret of environment release
 ```
 
-Without them the `image <service>` jobs fail at login, and dev shows ImagePullBackOff with `apps-dev` not Ready. If
+(Since #78 the token is a secret of the `release` environment, not of the repository: [Release
+secrets](#release-secrets).) Without them the `push images` job fails at login, and dev shows ImagePullBackOff with `apps-dev` not Ready. If
 Docker Hub's default repository privacy was changed to private, make each `pkhamdee/<service>` repository public.
 
 ### 2. When #50 is on `main`: dev moves, prod stays on v0.1.1
@@ -355,10 +356,24 @@ npm run report                                       # HTML report of the last r
 ## Releasing
 
 Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"): release candidate → QA → sign-off → prod. Cutting a
-candidate is your step: agents can't push release tags. Needs the [promotion token](#promotion-token) once.
+candidate is your step: agents can't push release tags.
+
+**Human, once, in this order** (each is described below):
+
+1. **Create the promotion token** ([Promotion token](#promotion-token), steps 1 to 3); don't store it yet.
+2. **Protect `main` and create the `release` environment** ([Protecting main](#protecting-main)): run
+   `scripts/protect-main.sh`, dry run first. This comes before the secrets because environment secrets need the
+   environment to exist. Until step 3 is done, the jobs in that environment still read the repository secrets.
+3. **Release secrets** ([Release secrets](#release-secrets)): put `PROMOTION_TOKEN` and `DOCKERHUB_TOKEN` into the
+   `release` environment, then delete the repository-level copies.
+4. **Cut the first release candidate** (below). On the existing `release/0.x` (it holds v0.2.0), the first candidate
+   of 0.3 is `scripts/release.sh 0.3.0-rc.1`: it merges `main` into `release/0.x` first, after showing you the merge.
+   Its QA promotion PR also starts `eshop-qa` for the first time.
 
 ```sh
-# 1. Release candidate: tag v0.3.0-rc.1 (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
+# 1. Release candidate: tag v0.3.0-rc.1, push, print the CI run URL. A new minor's first candidate (X.Y.0-rc.1)
+#    forks release/<MAJOR>.x from main, or merges main into the existing branch first (refused while the branch has
+#    a commit that is not on main); other candidates tag the branch head
 scripts/release.sh 0.3.0-rc.1
 
 # 2. Watch CI: test → validate tag → build → temporary copy and gates → scan → push docker.io/pkhamdee/<service>:0.3.0-rc.1
@@ -395,13 +410,13 @@ the secret; set it and re-run that job, or open the PR yourself with `scripts/pr
 Sign-off's refusals say what is missing (QA pinned to another candidate or suspended, no passing QA run, a missing
 image, `v0.3.0` already released). If it fails half-way (a registry or GitHub error), run it again with the same
 version: it skips what is done and finishes. It needs `PROMOTION_TOKEN` and the same Docker Hub credentials as CI's
-push job (variable `DOCKERHUB_USERNAME`, secret `DOCKERHUB_TOKEN`, Read & Write), and only maintainers (repo role
+push job (variable `DOCKERHUB_USERNAME`, `release` environment secret `DOCKERHUB_TOKEN`, Read & Write), and only maintainers (repo role
 admin or maintain) may run it (git-workflow.md, "Releasing").
 
 ### Promotion token
 
 CI opens promotion PRs (and, with sign-off, pushes the release tag) with a **fine-grained personal access token**,
-stored as the repo secret `PROMOTION_TOKEN`. Not the workflow's own `GITHUB_TOKEN`: GitHub runs no workflow for a PR
+stored as the secret `PROMOTION_TOKEN` of the `release` environment. Not the workflow's own `GITHUB_TOKEN`: GitHub runs no workflow for a PR
 or tag that token creates, so a promotion PR would never get its required checks. Commits and PRs made with it show
 you as the actor (the commits themselves are authored by `github-actions[bot]`).
 
@@ -413,17 +428,61 @@ you as the actor (the commits themselves are authored by `github-actions[bot]`).
 3. **Repository permissions**: Contents **Read and write**, Pull requests **Read and write** (Metadata read-only is
    added by itself). Nothing else; add Workflows read and write only if a promotion ever has to change
    `.github/workflows/`.
-4. Give it to CI (`gh secret set` prompts for it, so it never lands in shell history):
-
-```sh
-gh secret set PROMOTION_TOKEN --repo pkhamdee/modernapp
-```
+4. Give it to CI as a secret of the `release` environment ([Release secrets](#release-secrets); the environment is
+   created by `scripts/protect-main.sh`).
 
 **Renewal**: regenerate the token on the same page (or create a new one with the same settings) and run the same
-`gh secret set`. An expired or revoked token makes the promotion job fail at `git push` or `gh pr create` with an
+`gh secret set PROMOTION_TOKEN --env release --repo pkhamdee/modernapp`. An expired or revoked token makes the promotion job fail at `git push` or `gh pr create` with an
 authentication error; the images are already pushed, so re-run just that job once the secret is updated. The
 "Protect release tags" ruleset blocks only deleting, moving and force-pushing `v*` tags, not creating them, so the
-token needs no bypass (git-workflow.md, "Tags").
+token needs no bypass (git-workflow.md, "Tags"). It pushes only `promote/*` branches and `vX.Y.Z` tags, never `main`,
+so `main`'s ruleset needs no bypass for it either: a person merges the promotion PR.
+
+### Protecting main
+
+`main`'s ruleset and the `release` environment are code: `scripts/protect-main.sh` (what it sets and why:
+git-workflow.md, "Protecting main"). **Human** (a repo admin), once after it lands on `main`, and again whenever it
+or the names of ci-release.yml's pull-request jobs change:
+
+```sh
+git checkout main && git pull
+scripts/protect-main.sh --dry-run    # prints every request it would send; reads only
+scripts/protect-main.sh              # creates or updates ruleset "Protect main" and environment "release"
+```
+
+Check: Settings → Rules → Rulesets → **Protect main** (Active; bypass: Deploy keys; required checks listed), and
+Settings → Environments → **release** (Deployment branches and tags: `main`, tag `v*`). Then:
+
+- `git push origin HEAD:main` from a clone is rejected (`GH013: Repository rule violations`);
+- a PR with a failing required check can't be merged;
+- Flux's next dev image commit still lands (`git log origin/main --author=fluxcdbot`, or
+  `flux get image update`).
+
+**Two approvals later**: `scripts/protect-main.sh --approvals 2` (also dismisses stale approvals and requires the
+last push to be approved by someone else). **Emergency**: Settings → Rules → Rulesets → Protect main → Enforcement
+status *Disabled*, merge the fix by PR, then run `scripts/protect-main.sh` again to restore it.
+
+### Release secrets
+
+The two release secrets belong to the `release` environment, so only `main` and `v*` tags can use them
+(git-workflow.md, "The release environment"): `DOCKERHUB_TOKEN` (CI's `push images` and sign-off) and
+`PROMOTION_TOKEN` (CI's `open the QA promotion PR` and sign-off). **Human**, once, after `scripts/protect-main.sh`
+created the environment (`gh secret set` prompts for each value, so it never lands in shell history):
+
+```sh
+gh secret set DOCKERHUB_TOKEN --env release --repo pkhamdee/modernapp   # a Docker Hub access token, Read & Write
+gh secret set PROMOTION_TOKEN --env release --repo pkhamdee/modernapp   # the fine-grained token (Promotion token)
+gh secret list --env release --repo pkhamdee/modernapp                  # both listed
+# then remove the repository-level copies, which any workflow on any branch could read:
+gh secret delete DOCKERHUB_TOKEN --repo pkhamdee/modernapp
+gh secret delete PROMOTION_TOKEN --repo pkhamdee/modernapp              # if it was ever set there
+gh secret list --repo pkhamdee/modernapp                                # neither listed
+```
+
+The variable `DOCKERHUB_USERNAME` stays a repository variable (not secret). An environment secret overrides a
+repository secret of the same name, so the order above never leaves CI without a token. A run from another branch
+that reaches one of these jobs fails with "Branch ... is not allowed to deploy to release"; a release dry run
+therefore pushes only from `main`.
 
 ## Temporary copy (release gate)
 
@@ -479,7 +538,7 @@ Enterprise sync steps can't pass there.
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
-| `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI; tests in `tests/`); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
+| `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI); `sign-off.sh` signs off a candidate (the sign-off workflow); `protect-main.sh` sets `main`'s ruleset and the `release` environment (admin-run); tests of all of them in `tests/release-scripts.sh`; `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
 | `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `perf.sh` (Locust; load, thresholds and locustfile in `perf/`), `dast.sh` (OWASP ZAP against the copy, signed out and as a Customer and Staff via `dast-session.mjs`; accepted alerts in `dast-rules.conf`). See [Running the gates locally](#running-the-gates-locally) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release-candidate tag | – |
 

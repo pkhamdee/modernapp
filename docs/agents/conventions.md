@@ -1,7 +1,7 @@
 # Conventions and gotchas for agents
 
 What the code does not tell you at a glance. Commands, layout and setup live in `docs/setup.md`
-("Developing", "Repo layout"); releases and how a tag reaches `eshop-prod` in `docs/git-workflow.md`; domain
+("Developing", "Repo layout"); `main`'s protection, releases and promotion to QA and prod in `docs/git-workflow.md`; domain
 terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather than repeating them.
 
 ## Local environment
@@ -199,7 +199,8 @@ eshop-sync-master:
 
 - **Check manifests before pushing**: `DOCKER_HOST=unix://$HOME/.rd/docker.sock scripts/validate-manifests.sh` (kustomize build + kubeconform, as CI does). Pushes touching only `deploy/**` or `clusters/**` run no CI, so a broken manifest is otherwise found only when Flux fails to apply it.
 - **Adding a service**: base folder `deploy/apps/base/<svc>/` (Deployment, Service, an HTTPRoute if the Gateway routes it, `network-policy.yaml`),
-  an entry in `.github/services.json`, a lint/test job in `ci-release.yml` listed in `plan.needs`; if Locust or ZAP
+  an entry in `.github/services.json`, a lint/test job in `ci-release.yml` listed in `plan.needs` (it becomes a
+  required check of `main` once a maintainer re-runs `scripts/protect-main.sh`); if Locust or ZAP
   should reach it, a service in `scripts/gates/temporary-copy/compose.yaml` (and the `gate` job's image list). Dev: see the
   header of `deploy/apps/dev/image-automation.yaml`. Prod: see the header of `deploy/apps/prod/kustomization.yaml`
   and `docs/git-workflow.md` ("Adding a service"). Prod has no image automation: it is pinned to one release in
@@ -258,8 +259,19 @@ Agents are denied these; ask the user, giving the exact command:
   `scripts/release.sh X.Y.Z-rc.N` is how a release candidate is cut, and the release tag `vX.Y.Z` comes only from
   sign-off (`gh workflow run sign-off.yml --ref main -f version=X.Y.Z-rc.N`, a maintainer's step; its logic is
   `scripts/sign-off.sh`, tested with fake `gh`/`crane` in `scripts/tests/release-scripts.sh`);
-- creating or renewing repo secrets such as `PROMOTION_TOKEN` (`docs/setup.md`, "Promotion token"); test
-  `scripts/release.sh`, `scripts/check-release-tag.sh` and `scripts/promotion-pr.sh` with
-  `scripts/tests/release-scripts.sh` (throwaway local repos), never against GitHub.
+- creating or renewing secrets: `PROMOTION_TOKEN` and `DOCKERHUB_TOKEN` are secrets of the `release` environment
+  (`gh secret set <NAME> --env release`; `docs/setup.md`, "Release secrets"), not repo secrets;
+- applying `scripts/protect-main.sh` (main's ruleset and the `release` environment) or changing any repo setting;
+  give the user `scripts/protect-main.sh --dry-run` first. Test `scripts/release.sh`, `scripts/check-release-tag.sh`,
+  `scripts/promotion-pr.sh`, `scripts/sign-off.sh` and `scripts/protect-main.sh` with
+  `scripts/tests/release-scripts.sh` (throwaway local repos, fake `gh`), never against GitHub.
+
+`main` is protected (`docs/git-workflow.md`, "Protecting main"): agents never push to it; every change is a PR whose
+required checks (the jobs `ci-release.yml` runs on a pull request, by `name:`) must pass. Renaming or adding such a
+job changes the required checks: say so in the PR, since a maintainer must re-run `scripts/protect-main.sh`. Jobs
+that need `DOCKERHUB_TOKEN` or `PROMOTION_TOKEN` must declare `environment: release`; that environment deploys only
+from `main` and `v*` tags, so those jobs fail on any other branch (a release dry run pushes only from `main`).
+`scripts/release.sh X.Y.0-rc.1` on an existing `release/N.x` merges `origin/main` into it first and refuses while the
+branch has commits not on `main` by patch-id (`git cherry`).
 
 `gh pr merge <n> --squash --delete-branch` works for agents only as a standalone command, not inside a compound one.
