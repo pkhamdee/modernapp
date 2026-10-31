@@ -26,7 +26,7 @@ Both environments share the one `eshop` Gateway on port 443 and run the same app
 | Environment | Namespace | Follows | URL | Gateway listener |
 | --- | --- | --- | --- | --- |
 | dev | `eshop-dev` | `main` (`main-<sha>` images) | `https://eshop.localhost` | `https` |
-| prod | `eshop-prod` | the newest release tag `vX.Y.Z` (its manifests and its `X.Y.Z` images, docs/git-workflow.md) | `https://prod.eshop.localhost` | `https-prod` (accepts routes from `eshop-prod` only) |
+| prod | `eshop-prod` | the release pinned in `clusters/local/prod-release.yaml`: tag `vX.Y.Z`'s manifests and its `X.Y.Z` images, moved only by a promotion PR (docs/git-workflow.md) | `https://prod.eshop.localhost` | `https-prod` (accepts routes from `eshop-prod` only) |
 
 Base HTTPRoutes are written for dev; `deploy/apps/prod/kustomization.yaml` patches every HTTPRoute to the prod hostname and listener. The one certificate `gateway/eshop-localhost-tls` carries both names, and plain HTTP on either name redirects to HTTPS. Each environment has its own PostgreSQL (`eshop-db` in its namespace) with its own SOPS-encrypted credentials.
 
@@ -82,18 +82,18 @@ Bootstrap installs Flux, commits `clusters/local/flux-system/` to `main` if it c
 ## 5. Check
 
 ```sh
-flux get kustomizations          # flux-system, infra-controllers, infra-configs, thirdparty, apps-dev: Ready; apps-prod: see below
+flux get kustomizations          # flux-system, infra-controllers, infra-configs, thirdparty, apps-dev, apps-prod: Ready
 kubectl get gateway -n gateway   # eshop, PROGRAMMED True
 curl -k https://eshop.localhost/api/product-categories   # catalog JSON from eshop-api
 curl -k https://eshop.localhost                          # eshop-web
 curl -kI https://eshop.localhost/images/public/demo-iphone-17.svg   # a Product photo from eshop-node-api
 curl -I http://eshop.localhost  # 301 to https
-curl -k https://prod.eshop.localhost/api/product-categories   # eshop-prod (after the first release; own database)
+curl -k https://prod.eshop.localhost/api/product-categories   # eshop-prod (the pinned release; own database)
 open https://eshop.localhost/thirdparty-mock/sms/inbox   # mock SMS inbox: sign-in codes for any mobile number
 open https://eshop.localhost/thirdparty-mock/enterprise/ # mock Enterprise System: pushed Contracts, simulate Payment, cancel
 ```
 
-**`eshop-prod` before the first release.** Prod runs only what a release tag says (docs/git-workflow.md). Until the first `vX.Y.Z` tag has been pushed and its images built, there is nothing to deploy, so the GitRepository `eshop-release`, the ImagePolicy `flux-system/eshop-release` and the Kustomization `apps-prod` are not Ready (`no match found for semver: 0.0.0`) and `https://prod.eshop.localhost` serves nothing. That is expected; they turn Ready a few minutes after the first release (docs/git-workflow.md, "Releasing").
+**`eshop-prod` runs the pinned release.** Prod runs only the release pinned in `clusters/local/prod-release.yaml` (`scripts/pin-release.sh prod` prints it; docs/git-workflow.md, "How a release reaches `eshop-prod`"). On a fresh cluster Flux deploys that release, starting from an empty prod database. If the pinned tag or its images were missing, the GitRepository `eshop-release` or `apps-prod` would stay not Ready and `https://prod.eshop.localhost` would serve nothing.
 
 **A cluster that ran the old names** (before #49 and #50) needs a few human steps: see [Moving to eShop](#moving-to-eshop-49-50) below.
 
@@ -337,7 +337,7 @@ npm run report                                       # HTML report of the last r
 
 ## Releasing
 
-Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is your step: agents can't push release tags. Cut the release, let CI build it and Flux deploy it to `eshop-prod`, then run the smoke test there:
+Tag-based, per [git-workflow.md](git-workflow.md) ("Releasing"). Releasing is your step: agents can't push release tags. Cut the release and let CI build it, promote it to `eshop-prod` with a promotion PR, then run the smoke test there:
 
 ```sh
 # 1. Tag (forks release/<MAJOR>.x from main on a new series), push, print the CI run URL
@@ -346,9 +346,12 @@ scripts/release.sh 0.2.0
 # 2. Watch CI: test → validate tag → build/scan/push docker.io/pkhamdee/<service>:0.2.0 → GitHub Release
 gh run watch "$(gh run list --workflow ci-release.yml --branch v0.2.0 --limit 1 --json databaseId --jq '.[0].databaseId')"
 
-# 3. Flux follows the release a few minutes later (clusters/local/prod-release.yaml)
-flux get images policy eshop-release -n flux-system  # 0.2.0
-flux get kustomization apps-prod                      # Applied revision: v0.2.0@…
+# 3. Promote: a PR into main that changes only the pin (git-workflow.md, "Promotion and rollback"); merging it
+#    is the production approval, and Flux applies it a minute or two later
+git checkout -b promote/prod-0.2.0 origin/main
+scripts/pin-release.sh prod 0.2.0
+git commit -am "eshop-prod: promote v0.2.0" && git push -u origin promote/prod-0.2.0 && gh pr create --fill
+flux get kustomization apps-prod                      # after the merge: Applied revision: v0.2.0@…
 kubectl -n eshop-prod get deploy -o wide             # images :0.2.0, all READY
 curl -k https://prod.eshop.localhost/api/product-categories
 
@@ -363,13 +366,13 @@ A fix after the release goes to `release/0.x` **and** `main`, then the next patc
 | Path | What | Flux Kustomization |
 | --- | --- | --- |
 | `clusters/local/` | Cluster entry point: `flux-system/` (generated by bootstrap) plus the Kustomizations below | `flux-system` |
-| `clusters/local/prod-release.yaml` | What `eshop-prod` runs: GitRepository `eshop-release` (one release tag) and the image automation that moves it, and `apps-prod`'s image tags, to the newest `X.Y.Z` release once its images exist, committed to `main` | `flux-system` |
+| `clusters/local/prod-release.yaml` | What `eshop-prod` runs, the **prod pin**: GitRepository `eshop-release` (one release tag) and Kustomization `apps-prod` with that release's `X.Y.Z` images; the `# release-pin: prod` lines change only in a promotion PR (`scripts/pin-release.sh`) | `flux-system` |
 | `deploy/infrastructure/controllers/` | Namespaces, Traefik `HelmChartConfig` (Gateway API provider), cert-manager, CloudNativePG operator | `infra-controllers` |
 | `deploy/infrastructure/configs/` | Issuers, the `eshop` Gateway and its certificate, platform secrets | `infra-configs` (after controllers) |
 | `deploy/apps/base/` | One directory per app, environment-neutral | – |
 | `deploy/apps/dev/` | `eshop-dev` overlay, follows `main` | `apps-dev` (after configs) |
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |
-| `deploy/apps/prod/` | `eshop-prod` overlay, applied as it is in the newest release tag, served at `prod.eshop.localhost` | `apps-prod` (after configs; source `eshop-release`) |
+| `deploy/apps/prod/` | `eshop-prod` overlay, applied as it is in the pinned release tag, served at `prod.eshop.localhost` | `apps-prod` (after configs; source `eshop-release`) |
 | `deploy/thirdparty/` | Shared mocks in the `thirdparty` namespace, one folder per component (`thirdparty-mock/`, `samba/`: image share with one share per environment, `mssql/`: mock Enterprise System, ...); thirdparty-mock follows `main` via its own image automation | `thirdparty` (after configs) |
 | `services/eshop-api/` | .NET solution: `src/Eshop.Domain`, `src/Eshop.Data` (EF Core, migrations), `src/Eshop.Api`, `src/Eshop.SyncMaster` (eshop-sync-master), `tests/Eshop.Api.Tests` (Seam 1), `tests/Eshop.SyncMaster.Tests` (Seam 2) | – |
 | `services/eshop-web/` | React + Vite + TypeScript, served by Caddy | – |

@@ -1,6 +1,5 @@
 # eshop-dev follows main (newest main-<sha> images, manifests from main).
-# eshop-prod follows release tags: manifests AND images come from the newest vX.Y.Z release (see prod-release.yaml
-# and docs/git-workflow.md).
+# eshop-prod (Kustomization apps-prod) is pinned to one release in prod-release.yaml (docs/git-workflow.md).
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -22,37 +21,3 @@ spec:
     provider: sops
     secretRef:
       name: sops-age
----
-apiVersion: kustomize.toolkit.fluxcd.io/v1
-kind: Kustomization
-metadata:
-  name: apps-prod
-  namespace: flux-system
-spec:
-  dependsOn:
-    - name: infra-configs
-  interval: 10m
-  retryInterval: 1m
-  timeout: 5m
-  path: ./deploy/apps/prod
-  prune: true
-  wait: true
-  # deploy/apps/prod as it is in the release tag (GitRepository eshop-release, prod-release.yaml).
-  sourceRef:
-    kind: GitRepository
-    name: eshop-release
-  decryption:
-    provider: sops
-    secretRef:
-      name: sops-age
-  # The release's images, X.Y.Z for vX.Y.Z. Written by Flux image automation (prod-release.yaml) in the same commit
-  # that moves eshop-release to that tag; do not edit by hand. 0.0.0 = no release yet.
-  images:
-    - name: docker.io/pkhamdee/eshop-api
-      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
-    - name: docker.io/pkhamdee/eshop-web
-      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
-    - name: docker.io/pkhamdee/eshop-node-api
-      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}
-    - name: docker.io/pkhamdee/eshop-sync-master
-      newTag: 0.2.0 # {"$imagepolicy": "flux-system:eshop-release:tag"}

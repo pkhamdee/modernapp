@@ -1,9 +1,9 @@
 # eshop-prod: same apps as eshop-dev, its own database, served at https://prod.eshop.localhost.
-# Flux applies this folder as it is in the newest release tag vX.Y.Z, with the X.Y.Z images (apps-prod in
-# clusters/local/apps.yaml, clusters/local/prod-release.yaml, docs/git-workflow.md); there are no image tags here.
+# Flux applies this folder as it is in the pinned release tag vX.Y.Z, with the X.Y.Z images (apps-prod in
+# clusters/local/prod-release.yaml, docs/git-workflow.md); there are no image tags here.
 # To add a service to prod: add ../base/<service> to resources and an `images:` entry to apps-prod in
-# clusters/local/apps.yaml (with the flux-system:eshop-release marker). HTTPRoutes are moved to the prod hostname
-# by the patch below automatically.
+# clusters/local/prod-release.yaml (its newTag line ending in `# release-pin: prod`). HTTPRoutes are moved to the
+# prod hostname by the patch below automatically.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: eshop-prod
