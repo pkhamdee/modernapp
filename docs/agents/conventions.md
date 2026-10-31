@@ -51,7 +51,9 @@ Layout:
   positive goes in `scripts/gates/sast-accepted.txt` with a reason; `nosemgrep` comments are ignored. The ZAP gate
   (`dast.sh`) scans every operation in the OpenAPI description, which eshop-api serves only with
   `OpenApi:Enabled` (set in the temporary copy alone); a High alert to accept goes in `scripts/gates/dast-rules.conf`
-  under a `# reason:` line. Every response carries `X-Content-Type-Options: nosniff` (Program.cs).
+  under a `# reason:` line. Every response carries `X-Content-Type-Options: nosniff` (Program.cs). It scans again
+  signed in as a Customer and as Staff (`dast-session.mjs`) and fails if either got no 2xx from its role's paths
+  (`CUSTOMER_ONLY` / `STAFF_ONLY` in `dast.sh`): a new Customer-only area outside those patterns needs adding there.
 
 Adding an endpoint:
 

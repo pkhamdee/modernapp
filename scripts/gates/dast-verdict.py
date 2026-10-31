@@ -1,10 +1,13 @@
 """Decide the DAST gate from ZAP's JSON reports (run by scripts/gates/dast.sh inside the ZAP image).
 
-usage: dast-verdict.py <dast-rules.conf> <summary.txt> <scan-name>=<zap-report.json>...
+usage: dast-verdict.py <dast-rules.conf> <summary.txt> [--role-only <scan-name>=<path-regex>]...
+                       <scan-name>=<zap-report.json>...
 
-Exit 1 when a High-risk alert is not accepted in the rules file, 2 when the rules file is malformed (a rule without
-a reason) or a report is missing, else 0. Every alert is listed in the summary; Medium, Low and Informational alerts
-never fail.
+Exit 1 when a High-risk alert is not accepted in the rules file, or when a signed-in scan (one named with
+--role-only) got no 2xx answer from an endpoint whose path matches its regex; 2 when the rules file is malformed (a
+rule without a reason) or a report is missing, else 0. Every alert is listed in the summary; Medium, Low and
+Informational alerts never fail. A --role-only scan's requests are read from <scan-name>-requests.tsv beside its
+report (`METHOD<TAB>URL<TAB>STATUS`, written by dast-hook.py), and the summary lists the role-only endpoints it reached.
 
 The rules file uses ZAP's `-c` format (tab-separated `id<TAB>LEVEL<TAB>(name)`, `id<TAB>OUTOFSCOPE<TAB>url-regex`),
 read the way ZAP reads it. An alert is accepted when its rule is IGNOREd, or when every URL it
@@ -13,8 +16,10 @@ comment.
 """
 
 import json
+import os
 import re
 import sys
+from urllib.parse import urlsplit
 
 RISKS = {"3": "High", "2": "Medium", "1": "Low", "0": "Informational"}
 LEVELS = {"IGNORE", "INFO", "WARN", "FAIL", "OUTOFSCOPE"}
@@ -67,7 +72,54 @@ def accepting(rules, alert):
     return []
 
 
-def main(rules_path, summary_path, *reports):
+def role_only_answers(requests_path, pattern):
+    """{(method, path): number of 2xx answers} for the requests whose path matches the role-only regex."""
+    reached = {}
+    with open(requests_path, encoding="utf-8") as f:
+        for line in f:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) < 3 or not fields[2].startswith("2"):
+                continue
+            path = urlsplit(fields[1]).path
+            if re.search(pattern, path):
+                key = (fields[0], path)
+                reached[key] = reached.get(key, 0) + 1
+    return reached
+
+
+def check_role_only(role_only, reports, lines):
+    """Summary lines for each signed-in scan; the scans that reached none of their role's endpoints."""
+    if not role_only:
+        return [], None
+    report_paths = dict(spec.partition("=")[::2] for spec in reports)
+    lines.append("Signed-in scans: 2xx answers from endpoints only that role may use")
+    unreached = []
+    for name, pattern in role_only:
+        requests_path = os.path.join(os.path.dirname(report_paths.get(name, "")), f"{name}-requests.tsv")
+        try:
+            reached = role_only_answers(requests_path, pattern)
+        except OSError as error:
+            return [], f"dast gate: FAILED: no usable {name} request list ({requests_path}): {error}"
+        answers = sum(reached.values())
+        lines.append(f"  {name}: {len(reached)} endpoint(s), {answers} answer(s) (paths matching {pattern})")
+        lines += [f"    {method} {path}: {count}" for (method, path), count in sorted(reached.items())]
+        if not reached:
+            unreached.append(name)
+    lines.append("")
+    return unreached, None
+
+
+def main(rules_path, summary_path, *args):
+    role_only, reports = [], []
+    args = list(args)
+    while args:
+        arg = args.pop(0)
+        if arg == "--role-only" and args:
+            name, _, pattern = args.pop(0).partition("=")
+            role_only.append((name, pattern))
+        else:
+            reports.append(arg)
+
     rules, problems = read_rules(rules_path)
     lines = []
     if problems:
@@ -110,12 +162,22 @@ def main(rules_path, summary_path, *reports):
         lines += [f"  {rules_path}:{r['line']}: {','.join(r['ids'])} {r['level']} {r['pattern']}" for r in unused]
         lines.append("")
 
-    if blocking:
-        lines += [f"dast gate: FAILED: {len(blocking)} High-risk alert(s) not accepted:"]
-        lines += [f"  {b}" for b in blocking]
-        lines += ["Fix them, or accept one with a reason in scripts/gates/dast-rules.conf."]
+    unreached, problem = check_role_only(role_only, reports, lines)
+    if problem:
+        lines.append(problem)
+        return finish(lines, summary_path, 2)
+
+    if blocking or unreached:
+        if blocking:
+            lines += [f"dast gate: FAILED: {len(blocking)} High-risk alert(s) not accepted:"]
+            lines += [f"  {b}" for b in blocking]
+            lines += ["Fix them, or accept one with a reason in scripts/gates/dast-rules.conf."]
+        for name in unreached:
+            lines += [f"dast gate: FAILED: the {name} scan got no 2xx answer from any endpoint only its role may use,",
+                      "  so it did not really run signed in: check its sign-in and the token ZAP sends."]
         return finish(lines, summary_path, 1)
-    lines.append("dast gate: passed: no unaccepted High-risk alerts")
+    lines.append("dast gate: passed: no unaccepted High-risk alerts"
+                 + (", every signed-in scan reached its role's endpoints" if role_only else ""))
     return finish(lines, summary_path, 0)
 
 

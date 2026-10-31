@@ -388,8 +388,10 @@ jobs:
           path: reports/perf/
           if-no-files-found: ignore
 
-      # ZAP baseline (web) and API scan (OpenAPI), signed out; fails on High (scripts/gates/dast-rules.conf).
-      - name: ZAP baseline and API scans, signed out (fail on High)
+      # ZAP baseline (web), and API scans (OpenAPI) signed out, as a Customer and as Staff; fails on High
+      # (scripts/gates/dast-rules.conf) or when a signed-in scan reached none of its role's endpoints. After Locust:
+      # the signed-in scans change the copy's data.
+      - name: ZAP baseline and API scans, signed out and signed in (fail on High)
         run: scripts/gates/dast.sh
       - name: Keep the ZAP reports
         if: ${{ !cancelled() }}
