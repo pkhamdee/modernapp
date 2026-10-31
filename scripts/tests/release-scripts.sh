@@ -19,6 +19,10 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 #   run list   of e2e.yml (sign-off's QA run query): prints $FAKE_QA_RUN, the --jq result (a run's JSON, or null);
 #              of any other workflow (release.sh): prints a run URL
 #   api .../collaborators/<user>/permission: prints $FAKE_ROLE, the --jq .role_name result (default admin)
+#   api .../rulesets, .../deployment-branch-policies: print $FAKE_RULESETS, $FAKE_BRANCH_POLICIES (GitHub's JSON;
+#              FAKE_NO_ENVIRONMENT=1: the environment doesn't exist, 404); api <path> --method <M>: a write, its
+#              body kept as $GH_STATE/api-<M>-<path with / as _>
+#   (only the calls these scripts make; gh's own --jq is not emulated beyond that)
 #   release view/create/edit, pr list/create/edit: against $GH_STATE (a Release's notes, a PR's body)
 mkdir -p "$work/bin" "$work/gh-state"
 cat >"$work/bin/gh" <<'GH'
@@ -27,7 +31,17 @@ echo "gh $*" >>"$GH_LOG"
 arg() { local name=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$name" ] && { echo "$2"; return; }; shift; done; }
 case "$1 $2" in
   "run list") if [[ " $* " == *" e2e.yml "* ]]; then echo "${FAKE_QA_RUN:-null}"; else echo "https://github.com/test/run/1"; fi ;;
-  "api "*) [[ "$2" != */permission ]] || echo "${FAKE_ROLE:-admin}" ;;
+  "api "*)
+    if [[ " $* " == *" --method "* ]]; then # a write: its JSON body (stdin) kept as $GH_STATE/api-<METHOD>-<path>
+      method=$(arg --method "$@"); path=${2//\//_}
+      if [[ " $* " == *" --input - "* ]]; then cat >"$GH_STATE/api-$method-$path"; else : >"$GH_STATE/api-$method-$path"; fi
+      echo '{}'
+    elif [[ "$2" == */permission ]]; then echo "${FAKE_ROLE:-admin}"
+    elif [[ "$2" == */rulesets ]]; then echo "${FAKE_RULESETS:-[]}"
+    elif [[ "$2" == */deployment-branch-policies ]]; then
+      [ -z "${FAKE_NO_ENVIRONMENT:-}" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+      none='{"total_count":0,"branch_policies":[]}'; echo "${FAKE_BRANCH_POLICIES:-$none}"
+    fi ;;
   "release view") [ -f "$GH_STATE/release-$3" ] || { echo "release not found" >&2; exit 1; }
     echo "https://github.com/test/releases/tag/$3" ;;
   "release create") cp "$(arg --notes-file "$@")" "$GH_STATE/release-$3"; echo "https://github.com/test/releases/tag/$3" ;;
@@ -428,6 +442,80 @@ finishes_interrupted_sign_off() {
     && [ -e "$GH_STATE/release-v0.3.0" ] && [ -e "$GH_STATE/pr-promote_prod-0.3.0" ]
 }
 check "sign-off.sh interrupted half-way is finished by running it again" finishes_interrupted_sign_off
+
+# --- scripts/protect-main.sh (main's ruleset and the release environment; applied by a maintainer) ---
+
+repo_api=repos/pkhamdee/modernapp
+protect() { (cd "$root" && scripts/protect-main.sh "$@") >"$work/out" 2>&1; }
+# sent <METHOD path>: the JSON bodies printed under that request in a --dry-run's output, as a JSON array
+sent() { awk -v h="$1" '$0 == h { on = 1; next } /^[^ {}[\]]/ { on = 0 } on' "$work/out" | jq -s .; }
+writes() { grep -c -- ' --method ' "$GH_LOG" || true; }
+# The required checks: every job a pull request runs in ci-release.yml, by its name (the check's context).
+required_checks='[
+  "SAST (Semgrep, fail on ERROR)",
+  "dependency scan (Trivy, fail on critical)",
+  "eshop-api (lint, test)",
+  "eshop-node-api (lint, test)",
+  "eshop-web (lint, build)",
+  "repo rules (manifests, workflows, scripts, e2e)",
+  "thirdparty-mock (lint, type-check)"
+]'
+
+dry_run_prints_and_changes_nothing() {
+  rm -f "$GH_STATE"/*; : >"$GH_LOG"
+  FAKE_NO_ENVIRONMENT=1 protect --dry-run || return 1
+  local ruleset env policies
+  ruleset=$(sent "POST $repo_api/rulesets"); env=$(sent "PUT $repo_api/environments/release")
+  policies=$(sent "POST $repo_api/environments/release/deployment-branch-policies")
+  [ "$(writes)" = 0 ] && [ -z "$(ls "$GH_STATE")" ] \
+    && jq -e --argjson checks "$required_checks" 'length == 1 and (.[0] |
+         .name == "Protect main" and .target == "branch" and .enforcement == "active"
+         and .conditions.ref_name.include == ["refs/heads/main"]
+         and .bypass_actors == [{"actor_id": null, "actor_type": "DeployKey", "bypass_mode": "always"}]
+         and ([.rules[].type] | sort) == ["deletion", "non_fast_forward", "pull_request", "required_status_checks"]
+         and (.rules[] | select(.type == "pull_request") | .parameters.required_approving_review_count == 0
+              and .parameters.dismiss_stale_reviews_on_push == false and .parameters.require_last_push_approval == false)
+         and (.rules[] | select(.type == "required_status_checks") | .parameters
+              | ([.required_status_checks[].context] | sort) == $checks
+              and all(.required_status_checks[]; .integration_id == 15368)))' <<<"$ruleset" >/dev/null \
+    && jq -e '. == [{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}]' \
+      <<<"$env" >/dev/null \
+    && jq -e 'sort_by(.name) == [{"name": "main", "type": "branch"}, {"name": "v*", "type": "tag"}]' \
+      <<<"$policies" >/dev/null
+}
+check "protect-main.sh --dry-run prints main's ruleset (every PR check required, 0 approvals, Flux's deploy key bypasses) and the release environment (main and v* tags only), sending nothing" \
+  dry_run_prints_and_changes_nothing
+
+applies_idempotently() {
+  rm -f "$GH_STATE"/*; : >"$GH_LOG"
+  FAKE_RULESETS='[{"id":7,"name":"Protect release tags","target":"tag"},{"id":42,"name":"Protect main","target":"branch"}]' \
+  FAKE_BRANCH_POLICIES='{"total_count":2,"branch_policies":[{"id":1,"name":"main","type":"branch"},{"id":9,"name":"release/*","type":"branch"}]}' \
+    protect || return 1
+  local s="$GH_STATE/api"
+  jq -e '.name == "Protect main"' "$s-PUT-${repo_api//\//_}_rulesets_42" >/dev/null \
+    && [ ! -e "$s-POST-${repo_api//\//_}_rulesets" ] && [ ! -e "$s-PUT-${repo_api//\//_}_rulesets_7" ] \
+    && [ -e "$s-PUT-${repo_api//\//_}_environments_release" ] \
+    && [ "$(grep -c "api $repo_api/environments/release/deployment-branch-policies --method POST" "$GH_LOG")" = 1 ] \
+    && jq -e '. == {"name": "v*", "type": "tag"}' \
+      "$s-POST-${repo_api//\//_}_environments_release_deployment-branch-policies" >/dev/null \
+    && [ -e "$s-DELETE-${repo_api//\//_}_environments_release_deployment-branch-policies_9" ] \
+    && [ ! -e "$s-DELETE-${repo_api//\//_}_environments_release_deployment-branch-policies_1" ]
+}
+check "protect-main.sh updates an existing ruleset in place and leaves the environment exactly main and v* tags" \
+  applies_idempotently
+
+two_approvals() {
+  protect --dry-run --approvals 2 \
+    && sent "POST $repo_api/rulesets" | jq -e '.[0].rules[] | select(.type == "pull_request") | .parameters
+         | .required_approving_review_count == 2 and .dismiss_stale_reviews_on_push == true
+           and .require_last_push_approval == true' >/dev/null
+}
+check "protect-main.sh --approvals 2 requires two approvals, dismisses stale ones and the last push's approval" \
+  two_approvals
+bad_approvals_refused() {
+  : >"$GH_LOG"; ! protect --approvals two && grep -qF 'usage: scripts/protect-main.sh' "$work/out" && [ ! -s "$GH_LOG" ]
+}
+check "protect-main.sh refuses a malformed --approvals and calls nothing" bad_approvals_refused
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
 echo "all passed"
