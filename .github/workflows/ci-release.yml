@@ -12,9 +12,14 @@
 #   - push tag vX.Y.Z                 -> lint + test only: a release is tagged by the "Sign off release candidate"
 #                                        workflow, which copies the candidate's images and publishes the Release
 #   - workflow_dispatch               -> no input, on main: rebuild, gate and push every service as main-<sha>
-#                                        input version=0.0.0-test.N: dry run of the release build on any
-#                                        branch; pushes every service as that pre-release tag; no promotion PR
+#                                        input version=0.0.0-test.N: dry run of the release build; builds, gates
+#                                        and scans on any branch, but pushes every service as that pre-release tag
+#                                        only from main (the `release` environment); no promotion PR
 #                                        (never deployed: no environment can be pinned to it)
+# Jobs that use the Docker Hub token or PROMOTION_TOKEN (push, promote-qa) run in environment `release`, deployable
+# only from main and v* tags (scripts/protect-main.sh), so a run from another branch never gets those secrets.
+# The jobs a pull request runs are main's required checks, by name: renaming one means re-running
+# scripts/protect-main.sh (docs/git-workflow.md, "Protecting main").
 # Image pipeline (ADR 0007): plan -> build (matrix) -> gate (temporary copy + gates) -> scan (matrix) -> push.
 # A failure anywhere before `push` means no image is pushed.
 #
@@ -38,7 +43,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release dry run: build and push every service as this pre-release tag (0.0.0-test.N). Empty = rebuild main-<sha> (main only)."
+        description: "Release dry run: build every service and (from main only) push it as this pre-release tag (0.0.0-test.N). Empty = rebuild main-<sha> (main only)."
         required: false
         default: ""
 
@@ -423,10 +428,13 @@ jobs:
           exit-code: "1"
 
   # Pushes every image only when every build, the temporary copy (and its gates) and every scan passed.
+  # Environment `release` (scripts/protect-main.sh) deploys only from main and v* tags, so its DOCKERHUB_TOKEN is out
+  # of reach of a run from any other branch, where a modified copy of this workflow could misuse it.
   push:
     name: push images
     needs: [plan, gate, scan]
     runs-on: ubuntu-24.04-arm
+    environment: release
     permissions:
       contents: read
     outputs:
@@ -439,7 +447,8 @@ jobs:
       - name: Load the images
         run: for archive in "$RUNNER_TEMP"/images/image-*/image.tar; do docker load --input "$archive"; done
       # Docker Hub repositories are created public on first push. Needs the repo variable DOCKERHUB_USERNAME and
-      # the secret DOCKERHUB_TOKEN (a Docker Hub access token with Read & Write); see docs/setup.md.
+      # the `release` environment's secret DOCKERHUB_TOKEN (a Docker Hub access token with Read & Write); see
+      # docs/setup.md, "Release secrets".
       - uses: docker/login-action@v4
         with:
           registry: docker.io
@@ -462,13 +471,15 @@ jobs:
   # A release candidate's images are pushed (every gate passed): open the QA promotion PR. Merging it is QA's
   # approval, and Flux then deploys the candidate to eshop-qa. Never for main pushes or dry runs (plan.promote is
   # empty). The GitHub Release is published later, by sign-off, for the plain vX.Y.Z tag.
-  # Uses the repo secret PROMOTION_TOKEN (fine-grained PAT, docs/setup.md "Promotion token"), not GITHUB_TOKEN: a
-  # PR opened with GITHUB_TOKEN triggers no workflow, so its required checks would never run.
+  # Uses the secret PROMOTION_TOKEN of environment `release` (fine-grained PAT, docs/setup.md "Promotion token"; the
+  # environment deploys only from main and v* tags), not GITHUB_TOKEN: a PR opened with GITHUB_TOKEN triggers no
+  # workflow, so its required checks would never run.
   promote-qa:
     name: open the QA promotion PR
     needs: [plan, sast, deps, gate, scan, push]
     if: needs.plan.outputs.promote == 'qa'
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: read
     env:
@@ -479,7 +490,7 @@ jobs:
           PROMOTION_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
         run: |
           if [ -z "$PROMOTION_TOKEN" ]; then
-            echo "::error::Repository secret PROMOTION_TOKEN is missing, so the QA promotion PR can't be opened" \
+            echo "::error::Secret PROMOTION_TOKEN (environment release) is missing, so the QA promotion PR can't be opened" \
               "(the images are pushed). Create it as described in docs/setup.md, \"Promotion token\", then re-run" \
               "this job; or open the PR yourself: scripts/promotion-pr.sh qa $VERSION"
             exit 1

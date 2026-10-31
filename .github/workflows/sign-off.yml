@@ -10,8 +10,10 @@
 # publishes the GitHub Release and opens the prod promotion PR. Re-running it after a failure finishes the job.
 #
 # Pushing vX.Y.Z runs ci-release.yml, whose `plan` skips a plain release tag (scripts/check-release-tag.sh): nothing
-# is built. Writes use the repo secret PROMOTION_TOKEN (docs/setup.md, "Promotion token") so the tag and the PR
-# trigger their workflows (a PR opened with GITHUB_TOKEN would get no checks); the workflow's own token only reads.
+# is built. Writes use the secret PROMOTION_TOKEN (docs/setup.md, "Promotion token") so the tag and the PR trigger
+# their workflows (a PR opened with GITHUB_TOKEN would get no checks); the workflow's own token only reads.
+# PROMOTION_TOKEN and DOCKERHUB_TOKEN are secrets of environment `release`, which deploys only from main and v* tags
+# (scripts/protect-main.sh): a copy of this workflow dispatched from another branch never gets them.
 name: Sign off release candidate
 run-name: Sign off ${{ inputs.version }}
 
@@ -33,6 +35,7 @@ jobs:
   sign-off:
     name: sign off ${{ inputs.version }}
     runs-on: ubuntu-latest
+    environment: release # its secrets; deployable from main (and v* tags) only
     permissions:
       actions: read # the QA runs of e2e.yml
       contents: read
@@ -49,7 +52,7 @@ jobs:
           PROMOTION_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
         run: |
           if [ -z "$PROMOTION_TOKEN" ]; then
-            echo "::error::Repository secret PROMOTION_TOKEN is missing, so sign-off can't push the release tag or open" \
+            echo "::error::Secret PROMOTION_TOKEN (environment release) is missing, so sign-off can't push the release tag or open" \
               "the prod promotion PR. Create it as described in docs/setup.md, \"Promotion token\", then run this again."
             exit 1
           fi
