@@ -484,8 +484,8 @@ gh secret list --repo pkhamdee/modernapp                                # neithe
 
 The variable `DOCKERHUB_USERNAME` stays a repository variable (not secret). An environment secret overrides a
 repository secret of the same name, so the order above never leaves CI without a token. A run from another branch
-that reaches one of these jobs fails with "Branch ... is not allowed to deploy to release"; a release dry run
-therefore pushes only from `main`.
+that reaches one of these jobs fails with "Branch ... is not allowed to deploy to release"; so a release dry run
+pushes only from `main` (from another branch `plan` skips the push, with a notice).
 
 ## Temporary copy (release gate)
 

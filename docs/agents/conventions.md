@@ -270,7 +270,7 @@ Agents are denied these; ask the user, giving the exact command:
 required checks (the jobs `ci-release.yml` runs on a pull request, by `name:`) must pass. Renaming or adding such a
 job changes the required checks: say so in the PR, since a maintainer must re-run `scripts/protect-main.sh`. Jobs
 that need `DOCKERHUB_TOKEN` or `PROMOTION_TOKEN` must declare `environment: release`; that environment deploys only
-from `main` and `v*` tags, so those jobs fail on any other branch (a release dry run pushes only from `main`).
+from `main` and `v*` tags, so those jobs fail on any other branch (a release dry run from another branch skips them: `plan`'s `push` output).
 `scripts/release.sh X.Y.0-rc.1` on an existing `release/N.x` merges `origin/main` into it first and refuses while the
 branch has commits not on `main` by patch-id (`git cherry`).
 

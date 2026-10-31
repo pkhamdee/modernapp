@@ -139,7 +139,8 @@ release tags. Pushes to `release/*` lint and test only.
 Manual runs: Actions → CI / Release → Run workflow on `main` without input rebuilds, gates and pushes every service as
 `main-<sha>`; with `version` = `0.0.0-test.N` it is a **release dry run**: every service built, gated, scanned and
 pushed as that tag, exactly as for a candidate, but no promotion PR and never deployable. It pushes only from `main`
-([The release environment](#the-release-environment)). A version's images are pushed once: the push job refuses
+([The release environment](#the-release-environment)): from another branch it builds, gates and scans, then skips
+the push with a notice. A version's images are pushed once: the push job refuses
 when any `<service>:<version>` already exists (`scripts/check-new-images.sh`), so a re-run of an old candidate's CI
 can't replace images QA tested, and a dry run needs a new `N` each time.
 
