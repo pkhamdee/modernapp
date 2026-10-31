@@ -46,10 +46,11 @@ async function staff() {
   return (await json('POST', '/api/auth/staff/sign-in', { body: { username, password } })).token
 }
 
-const roles = { customer, staff }
 const role = process.argv[2]
-if (!roles[role]) fail(`usage: dast-session.mjs ${Object.keys(roles).join('|')}`)
-const token = await roles[role]()
+let token
+if (role === 'customer') token = await customer()
+else if (role === 'staff') token = await staff()
+else fail('usage: dast-session.mjs customer|staff')
 const me = await json('GET', '/api/auth/me', { token })
 if (me.role.toLowerCase() !== role) fail(`the ${role} session has role ${me.role}`)
 process.stdout.write(`${token}\n`)
