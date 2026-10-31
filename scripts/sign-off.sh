@@ -8,7 +8,8 @@
 #   - SIGN_OFF_ACTOR is a maintainer of $REPO (repo role admin or maintain);
 #   - tag vX.Y.Z-rc.N is on origin (annotated);
 #   - origin/main pins eshop-qa to exactly that candidate and apps-qa is not suspended (scripts/pin-release.sh qa);
-#   - the latest completed QA run of it on main, "E2E qa X.Y.Z-rc.N" (e2e.yml), passed. That run checked of the
+#   - the latest completed QA run of it on main, "E2E qa X.Y.Z-rc.N" (e2e.yml), created since main last changed
+#     QA's pin (older runs tested an earlier deployment), passed. That run checked of the
 #     cluster that QA served the candidate before and after the test (e2e/check-serving.sh), which a hosted runner
 #     can't ask itself;
 #   - every candidate image $IMAGE_REGISTRY/<service>:X.Y.Z-rc.N (.github/services.json) exists, and any X.Y.Z image
@@ -82,12 +83,20 @@ main() {
   fi
   [ "$qa" = "$candidate" ] || refuse "eshop-qa is pinned to $qa on main, not $candidate: QA must be running the candidate it signs off"
 
+  # Only runs created since main last changed QA's pin (on main's first-parent line, so a promotion PR counts from
+  # its merge): after rc.1 -> rc.2 -> rc.1, a run of rc.1 from before rc.2 tested an earlier deployment of it.
+  local pinned_at
+  pinned_at=$(TZ=UTC git log -1 --first-parent -m -G '# release-pin(-until)?: qa$' \
+    --date=format-local:%Y-%m-%dT%H:%M:%SZ --format=%cd origin/main -- clusters/local)
+  [ -n "$pinned_at" ] || refuse "can't find the commit on main that pinned eshop-qa"
   local run conclusion qa_run
   run=$(gh_read run list --repo "$repo" --workflow e2e.yml --branch main --event workflow_dispatch --status completed \
-    --limit 100 --json databaseId,displayTitle,conclusion,url \
-    --jq "[.[] | select(.displayTitle == \"E2E qa $candidate\")] | first") || refuse "could not list QA runs"
+    --limit 100 --json databaseId,displayTitle,conclusion,url,createdAt \
+    --jq "[.[] | select(.displayTitle == \"E2E qa $candidate\" and .createdAt >= \"$pinned_at\")] | first") \
+    || refuse "could not list QA runs"
   if [ -z "$run" ] || [ "$run" = null ]; then
-    refuse "no completed QA run of $candidate on main (\"E2E qa $candidate\"): run e2e/run-on-actions.sh qa $candidate"
+    refuse "no completed QA run of $candidate on main since eshop-qa was pinned to it ($pinned_at)" \
+      "(\"E2E qa $candidate\"): run e2e/run-on-actions.sh qa $candidate"
   fi
   conclusion=$(jq -r .conclusion <<<"$run")
   qa_run=$(jq -r .url <<<"$run")

@@ -18,7 +18,7 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
 # Fake gh: logs every call and keeps GitHub's state (Releases, PRs) as files in $GH_STATE.
-#   run list   of e2e.yml (sign-off's QA run query): prints $FAKE_QA_RUN, the --jq result (a run's JSON, or null);
+#   run list   of e2e.yml (sign-off's QA run query): applies its --jq to $FAKE_QA_RUNS (the runs, newest first);
 #              of any other workflow (release.sh): prints a run URL
 #   api .../collaborators/<user>/permission: prints $FAKE_ROLE, the --jq .role_name result (default admin)
 #   api .../rulesets, .../deployment-branch-policies: print $FAKE_RULESETS, $FAKE_BRANCH_POLICIES (GitHub's JSON;
@@ -32,7 +32,7 @@ cat >"$work/bin/gh" <<'GH'
 echo "gh $*" >>"$GH_LOG"
 arg() { local name=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$name" ] && { echo "$2"; return; }; shift; done; }
 case "$1 $2" in
-  "run list") if [[ " $* " == *" e2e.yml "* ]]; then echo "${FAKE_QA_RUN:-null}"; else echo "https://github.com/test/run/1"; fi ;;
+  "run list") if [[ " $* " == *" e2e.yml "* ]]; then jq "$(arg --jq "$@")" <<<"${FAKE_QA_RUNS:-[]}"; else echo "https://github.com/test/run/1"; fi ;;
   "api "*)
     if [[ " $* " == *" --method "* ]]; then # a write: its JSON body (stdin) kept as $GH_STATE/api-<METHOD>-<path>
       method=$(arg --method "$@"); path=${2//\//_}
@@ -298,10 +298,13 @@ check "promotion-pr.sh refuses a dry-run version" dry_run_refused
 services=$(jq -r '.[].service' "$root/.github/services.json")
 fake_digest() { echo "sha256:$(echo "$1" | git hash-object --stdin)$(echo "x$1" | git hash-object --stdin | cut -c1-24)"; }
 image() { echo "$REGISTRY/docker.io/pkhamdee/$1/$2"; } # the fake registry's file for image <service> tag <tag>
-passed_qa_run='{"conclusion":"success","databaseId":7,"displayTitle":"E2E qa 0.3.0-rc.1","url":"https://github.com/test/actions/runs/7"}'
+# QA runs of e2e.yml as `gh run list --json` gives them (newest first). Main pins QA to 0.3.0-rc.1 in a commit made
+# at $pinned_at (sign_off_setup); this run of it passed after that.
+pinned_at=2026-10-30T00:00:00Z
+passed_qa_run='{"conclusion":"success","createdAt":"2026-10-30T01:00:00Z","databaseId":7,"displayTitle":"E2E qa 0.3.0-rc.1","url":"https://github.com/test/actions/runs/7"}'
 
 # A fresh origin where candidate v0.3.0-rc.1 is tagged on release/0.x, main pins QA to it, and the registry holds
-# its images. QA's run of it passed ($FAKE_QA_RUN), and the person signing off is a maintainer ($FAKE_ROLE).
+# its images. QA's run of it passed ($FAKE_QA_RUNS), and the person signing off is a maintainer ($FAKE_ROLE).
 sign_off_setup() {
   clone=$(fresh "$1")
   rm -f "$GH_STATE"/*
@@ -310,9 +313,9 @@ sign_off_setup() {
   git -C "$clone" push -q origin refs/tags/v0.3.0-rc.1
   rc_commit=$(git -C "$clone" rev-parse 'v0.3.0-rc.1^{commit}')
   (cd "$clone" && scripts/pin-release.sh qa 0.3.0-rc.1 >/dev/null 2>&1)
-  git -C "$clone" commit -qam "eshop-qa: deploy v0.3.0-rc.1"
+  GIT_COMMITTER_DATE=$pinned_at git -C "$clone" commit -qam "eshop-qa: deploy v0.3.0-rc.1"
   git -C "$clone" push -q origin HEAD:main
-  export REGISTRY="$work/$1/registry" FAKE_QA_RUN=$passed_qa_run
+  export REGISTRY="$work/$1/registry" FAKE_QA_RUNS="[$passed_qa_run]"
   for svc in $services; do mkdir -p "$(dirname "$(image "$svc" x)")"; fake_digest "$svc" >"$(image "$svc" 0.3.0-rc.1)"; done
 }
 sign_off() { (cd "$clone" && SIGN_OFF_ACTOR=qa-person scripts/sign-off.sh "$@") >"$work/out" 2>&1; }
@@ -355,14 +358,21 @@ qa_suspended_refused() {
 check "sign-off.sh refuses while apps-qa is suspended on main" qa_suspended_refused
 
 no_qa_run_refused() {
-  sign_off_refused 'no completed QA run of 0.3.0-rc.1 on main ("E2E qa 0.3.0-rc.1")' 0.3.0-rc.1 \
+  sign_off_refused 'no completed QA run of 0.3.0-rc.1 on main since eshop-qa was pinned to it' 0.3.0-rc.1 \
+    && grep -qF '("E2E qa 0.3.0-rc.1"): run e2e/run-on-actions.sh qa 0.3.0-rc.1' "$work/out" \
     && grep -qF 'gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch --status completed' "$GH_LOG" \
-    && grep -qF 'select(.displayTitle == "E2E qa 0.3.0-rc.1")' "$GH_LOG"
+    && grep -qF '.displayTitle == "E2E qa 0.3.0-rc.1"' "$GH_LOG"
 }
-FAKE_QA_RUN=null check "sign-off.sh refuses a candidate with no completed QA run on main (the documented query)" \
+FAKE_QA_RUNS="[]" check "sign-off.sh refuses a candidate with no completed QA run on main (the documented query)" \
   no_qa_run_refused
-FAKE_QA_RUN=${passed_qa_run/success/failure} check "sign-off.sh refuses when the latest QA run did not pass" \
+failed_qa_run=${passed_qa_run/success/failure}
+failed_qa_run=${failed_qa_run/T01:00/T02:00}
+FAKE_QA_RUNS="[$failed_qa_run, $passed_qa_run]" check "sign-off.sh refuses when the latest QA run did not pass" \
   sign_off_refused 'did not pass (failure): https://github.com/test/actions/runs/7' 0.3.0-rc.1
+# rc.1 -> rc.2 -> rc.1: a run of rc.1 from before main last pinned QA to it tested an earlier deployment of it.
+stale_qa_run=${passed_qa_run/2026-10-30T01:00/2026-10-29T23:00}
+FAKE_QA_RUNS="[$stale_qa_run]" check "sign-off.sh ignores QA runs created before main last changed QA's pin" \
+  sign_off_refused "no completed QA run of 0.3.0-rc.1 on main since eshop-qa was pinned to it ($pinned_at)" 0.3.0-rc.1
 
 missing_image_refused() {
   mv "$(image eshop-sync-master 0.3.0-rc.1)" "$work/held"

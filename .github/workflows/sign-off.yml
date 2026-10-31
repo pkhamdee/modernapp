@@ -4,8 +4,9 @@
 # The decisions and steps are all in scripts/sign-off.sh (tested by scripts/tests/release-scripts.sh); this file only
 # supplies tokens and tools. It refuses, changing nothing, unless the person running it is a maintainer (repo role
 # admin or maintain), main pins eshop-qa to exactly that candidate (not suspended), and the latest completed QA run
-# of it on main ("E2E qa X.Y.Z-rc.N", e2e.yml) passed. That run asked the cluster that QA served the candidate
-# before and after the test; this hosted runner can't reach the cluster, so the passing run stands in for it.
+# of it on main ("E2E qa X.Y.Z-rc.N", e2e.yml), created since main last changed QA's pin, passed. That run asked the
+# cluster that QA served the candidate before and after the test; this hosted runner can't reach the cluster, so the
+# passing run stands in for it.
 # Then: copies the candidate's images to X.Y.Z by digest (never rebuilt), tags vX.Y.Z on the candidate's commit,
 # publishes the GitHub Release and opens the prod promotion PR. Re-running it after a failure finishes the job.
 #
@@ -59,6 +60,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: main
+          fetch-depth: 0 # main's history: when QA's pin last changed (older QA runs don't count)
           token: ${{ secrets.PROMOTION_TOKEN }} # git push of the release tag and the promotion branch
       - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
         with:

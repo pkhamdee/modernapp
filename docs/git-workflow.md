@@ -216,12 +216,13 @@ The run refuses unless QA is serving exactly that candidate, asked of the cluste
 not suspended and Ready, applied revision `vX.Y.Z-rc.N@sha1:…`, every Deployment in `eshop-qa` rolled out with
 `X.Y.Z-rc.N` images), before and again after the test. It is named **`E2E qa X.Y.Z-rc.N`**, and its summary records
 the version, revision, images and the test code's commit. Sign-off finds the latest completed run of that name on
-`main`:
+`main` created since `main` last changed QA's pin (`<pinned-at>`, UTC: the commit on `main` that last changed a
+`# release-pin: qa` line). An older run tested an earlier deployment (rc.1 → rc.2 → rc.1 needs a new run of rc.1):
 
 ```bash
 gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch \
-  --status completed --limit 100 --json databaseId,displayTitle,conclusion,url \
-  --jq '[.[] | select(.displayTitle == "E2E qa X.Y.Z-rc.N")] | first'
+  --status completed --limit 100 --json databaseId,displayTitle,conclusion,url,createdAt \
+  --jq '[.[] | select(.displayTitle == "E2E qa X.Y.Z-rc.N" and .createdAt >= "<pinned-at>")] | first'
 ```
 
 The same check works for prod (`e2e/run-on-actions.sh prod X.Y.Z`, run `E2E prod X.Y.Z`); without a version it is
@@ -240,7 +241,8 @@ supplies tokens and tools; the decisions are `scripts/sign-off.sh`. It **refuses
 
 - it runs from `main` and was started by a maintainer (repo role admin or maintain);
 - `vX.Y.Z-rc.N` exists, and `main` pins `eshop-qa` to exactly that candidate, not suspended;
-- the latest completed QA run of it on `main` passed (no run, or a newer failed or cancelled one, refuses);
+- the latest completed QA run of it on `main`, created since `main` last changed QA's pin, passed (no such run,
+  or a newer failed or cancelled one, refuses);
 - every candidate image exists, and no `X.Y.Z` image exists with another digest;
 - `vX.Y.Z` doesn't exist, unless an earlier sign-off of this same candidate made it.
 
