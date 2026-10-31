@@ -1,0 +1,84 @@
+# Sign off a release candidate (docs/git-workflow.md, "Releasing"; ADR 0007): Actions -> Sign off release candidate ->
+# Run workflow, on main, with the candidate's version X.Y.Z-rc.N. Or: gh workflow run sign-off.yml --ref main -f version=X.Y.Z-rc.N
+#
+# The decisions and steps are all in scripts/sign-off.sh (tested by scripts/tests/release-scripts.sh); this file only
+# supplies tokens and tools. It refuses, changing nothing, unless the person running it is a maintainer (repo role
+# admin or maintain), main pins eshop-qa to exactly that candidate (not suspended), and the latest completed QA run
+# of it on main ("E2E qa X.Y.Z-rc.N", e2e.yml) passed. That run asked the cluster that QA served the candidate
+# before and after the test; this hosted runner can't reach the cluster, so the passing run stands in for it.
+# Then: copies the candidate's images to X.Y.Z by digest (never rebuilt), tags vX.Y.Z on the candidate's commit,
+# publishes the GitHub Release and opens the prod promotion PR. Re-running it after a failure finishes the job.
+#
+# Pushing vX.Y.Z runs ci-release.yml, whose `plan` skips a plain release tag (scripts/check-release-tag.sh): nothing
+# is built. Writes use the repo secret PROMOTION_TOKEN (docs/setup.md, "Promotion token") so the tag and the PR
+# trigger their workflows (a PR opened with GITHUB_TOKEN would get no checks); the workflow's own token only reads.
+name: Sign off release candidate
+run-name: Sign off ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release candidate to sign off, X.Y.Z-rc.N (QA must be running it and its QA run must have passed)"
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: sign-off # one sign-off at a time; never cancel one half-way
+  cancel-in-progress: false
+
+jobs:
+  sign-off:
+    name: sign off ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read # the QA runs of e2e.yml
+      contents: read
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          echo "::error::Sign-off runs only from main (this run: $REF): another branch's copy of this workflow could skip its checks."
+          exit 1
+      - name: Check PROMOTION_TOKEN
+        env:
+          PROMOTION_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
+        run: |
+          if [ -z "$PROMOTION_TOKEN" ]; then
+            echo "::error::Repository secret PROMOTION_TOKEN is missing, so sign-off can't push the release tag or open" \
+              "the prod promotion PR. Create it as described in docs/setup.md, \"Promotion token\", then run this again."
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          token: ${{ secrets.PROMOTION_TOKEN }} # git push of the release tag and the promotion branch
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
+        with:
+          version: v0.22.1
+      # crane reads the Docker credentials this writes. Needs the repo variable DOCKERHUB_USERNAME and the secret
+      # DOCKERHUB_TOKEN (Read & Write), as CI's push job does.
+      - uses: docker/login-action@v4
+        with:
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Sign off
+        shell: bash # -eo pipefail: a refusal fails the step despite the tee
+        env:
+          VERSION: ${{ inputs.version }}
+          SIGN_OFF_ACTOR: ${{ github.triggering_actor }}
+          REPO: ${{ github.repository }}
+          IMAGE_REGISTRY: docker.io/${{ vars.DOCKERHUB_USERNAME }}
+          SIGN_OFF_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SIGN_OFF_READ_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          scripts/sign-off.sh "$VERSION" | tee "$RUNNER_TEMP/sign-off.log"
+          { echo "### Signed off $VERSION"; echo; echo '```'; cat "$RUNNER_TEMP/sign-off.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
