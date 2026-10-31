@@ -1,12 +1,12 @@
-# Namespace-wide baseline for every eShop namespace (eshop-dev, eshop-prod, thirdparty):
-# deny all ingress and egress, then allow DNS to CoreDNS. Included by deploy/apps/dev, deploy/apps/prod
-# and deploy/thirdparty.
+# Namespace-wide baseline for every eShop namespace (eshop-dev, eshop-qa, eshop-prod, thirdparty):
+# deny all ingress and egress, then allow DNS to CoreDNS. Included by deploy/apps/dev, deploy/apps/qa,
+# deploy/apps/prod and deploy/thirdparty.
 #
 # Adding a service: give it a `network-policy.yaml` next to its Deployment (in its base folder) selecting
 # its pods by `app.kubernetes.io/name`, listing its arrows from the reference architecture:
 #   - ingress: who may call it (Gateway = kube-system pods `app.kubernetes.io/name: traefik`; same-namespace
-#     callers by podSelector only, so eshop-dev never reaches eshop-prod; thirdparty components select
-#     callers with a namespaceSelector on kubernetes.io/metadata.name In [eshop-dev, eshop-prod]);
+#     callers by podSelector only, so environments never reach each other; thirdparty components select
+#     callers with a namespaceSelector on kubernetes.io/metadata.name In [eshop-dev, eshop-qa, eshop-prod]);
 #   - egress: whom it calls (target pod + container port).
 # An arrow needs BOTH ends: the caller's egress and the callee's ingress. Kubelet probes are allowed by
 # kube-router (k3s) without a rule; anything else not listed is refused.

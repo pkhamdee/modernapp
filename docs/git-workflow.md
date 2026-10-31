@@ -155,17 +155,27 @@ kubectl -n eshop-prod get deploy -o wide                    # images :X.Y.Z
 curl -k https://prod.eshop.localhost/api/product-categories
 ```
 
+### QA (`eshop-qa`)
+
+`eshop-qa` (`https://qa.eshop.localhost`) is pinned exactly like prod, to one **release candidate** (`vX.Y.Z-rc.N`): the lines ending in `# release-pin: qa` in `clusters/local/qa-release.yaml` (GitRepository `eshop-qa`, `spec.ref`, and Kustomization `apps-qa`'s `spec.images`). It moves only when a **QA promotion PR** changes that pin and is merged; merging is QA's approval. Its manifests come from `deploy/apps/qa` as it is in the candidate's tag, a copy of the prod overlay with QA's namespace, hostname, Samba share and Enterprise database. Its PostgreSQL keeps its data from one candidate to the next, as prod's does.
+
+**No release yet.** A tag carries its own overlay (below), and `deploy/apps/qa` first appears in the first release candidate cut after #74 landed, so QA cannot run `v0.2.0` or any earlier tag. Until the first QA promotion, `apps-qa` is suspended by a line ending in `# release-pin-until: qa`, and the pin holds `0.2.0` only as a placeholder (`scripts/pin-release.sh qa` prints it and says QA is not deployed). The first QA promotion is the same one-command edit as any other: `scripts/pin-release.sh qa X.Y.Z-rc.N` sets the pin **and deletes the suspend line**, so merging it deploys QA for the first time. Everything else QA needs (namespace, Gateway listener, certificate name, thirdparty accounts, NetworkPolicies) is shared infrastructure that follows `main`, already in place.
+
+To check what QA runs: `scripts/pin-release.sh qa`, `flux get kustomization apps-qa` (`Applied revision: vX.Y.Z-rc.N@sha1:...`), `kubectl -n eshop-qa get deploy -o wide`.
+
 ### Promotion and rollback
 
-A promotion PR changes **only the pin**. The edit is mechanical, and the same for a person or for CI:
+A promotion PR changes **only the pin**. The edit is mechanical, and the same for a person or for CI, for prod or QA:
 
 ```bash
 git checkout -b promote/prod-X.Y.Z origin/main
 scripts/pin-release.sh prod X.Y.Z           # rewrites every `# release-pin: prod` line to "X.Y.Z"
 git commit -am "eshop-prod: promote vX.Y.Z" # then push and open a PR into main
+
+scripts/pin-release.sh qa X.Y.Z-rc.N        # a QA promotion: the same edit for `# release-pin: qa`
 ```
 
-`scripts/pin-release.sh <env> <version>` accepts only an exact `X.Y.Z` or `X.Y.Z-rc.N` (never a range, never a `0.0.0-test.N` dry run), rewrites the value on every line ending in `# release-pin: <env>` in `clusters/local/*.yaml` and prints the new pin; without a version it prints the current pin and fails if the lines are missing, disagree or hold anything but an exact version. CI's `repo rules` job runs it for every pinned environment (`scripts/validate-manifests.sh`), so a hand edit that misses a line fails the PR. Without the script, the edit is the same: replace the quoted version on each of those lines, nothing else.
+`scripts/pin-release.sh <env> <version>` accepts only an exact `X.Y.Z` or `X.Y.Z-rc.N` (never a range, never a `0.0.0-test.N` dry run), rewrites the value on every line ending in `# release-pin: <env>` in `clusters/local/*.yaml`, deletes any line ending in `# release-pin-until: <env>` (the suspend of an environment with no release yet) and prints the new pin; without a version it prints the current pin and fails if the lines are missing, disagree or hold anything but an exact version. CI's `repo rules` job runs it for every pinned environment (`scripts/validate-manifests.sh`), so a hand edit that misses a line fails the PR. Without the script, the edit is the same: replace the quoted version on each of those lines, nothing else.
 
 Before opening the PR, check that the release exists: tag `vX.Y.Z` is pushed and every service's `X.Y.Z` image is on Docker Hub (`docker manifest inspect docker.io/pkhamdee/<service>:X.Y.Z`). A pin to a missing tag leaves `eshop-release` not Ready and prod on its previous release; a missing image leaves that one Deployment's new pod in `ImagePullBackOff` while the old pod keeps serving. Either way, fix it with another promotion PR.
 
@@ -173,7 +183,7 @@ Once merged, Flux applies it within a minute or two; `flux reconcile kustomizati
 
 **Rollback** is a promotion PR back to an earlier release (`scripts/pin-release.sh prod <earlier X.Y.Z>`), reviewed and merged the same way. It moves the manifests and images back but **never the data**: eshop-api migrates the database forwards on start-up and nothing migrates it backwards. A rollback is therefore safe **only when the schema is compatible**: the earlier release must work with the database as the later one left it. In practice that means no migration between the two releases removed, renamed or retyped anything the earlier release reads or writes (`git diff vEARLIER..vLATER -- services/eshop-api/src/Eshop.Data/Migrations`). If it did, roll forward instead: fix on the release branch, tag the next patch and promote that.
 
-A release tag also carries **its own overlay**: the environment's manifests come from `deploy/apps/<env>` as it is in that tag, not from `main`. So an environment can be pinned (or rolled back) only to a release whose tag already contains that environment's overlay and the settings it needs: for prod, `v0.2.0` or later. Releases before `v0.2.0` used the old names and can never be rolled back to (docs/setup.md, "Moving to eShop"). Likewise, a fix to an overlay reaches the environment only with the next release that contains it.
+A release tag also carries **its own overlay**: the environment's manifests come from `deploy/apps/<env>` as it is in that tag, not from `main`. So an environment can be pinned (or rolled back) only to a release whose tag already contains that environment's overlay and the settings it needs: for prod, `v0.2.0` or later; for QA, the first release candidate cut after #74 or later ([QA](#qa-eshop-qa)). Releases before `v0.2.0` used the old names and can never be rolled back to (docs/setup.md, "Moving to eShop"). Likewise, a fix to an overlay reaches the environment only with the next release that contains it.
 
 ### Releasing
 
@@ -193,7 +203,7 @@ Things to know:
 - **Wait for every image.** Services finish building at different times; promote once the tag's CI run has finished (`gh run list --workflow ci-release.yml --branch vX.Y.Z`).
 - **A bad release** is fixed by the next patch (tags are immutable) and a promotion PR, or by a rollback PR when the schema allows ([Promotion and rollback](#promotion-and-rollback)).
 - **Release dry run** without a tag: Actions → CI / Release → Run workflow with `version` = `0.0.0-test.N` (any branch). It builds, scans and pushes every service as that pre-release tag and publishes no Release. It is never deployed.
-- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry to `apps-prod` in `clusters/local/prod-release.yaml` whose `newTag` line ends in `# release-pin: prod` (holding the current pin); its HTTPRoutes are moved to `prod.eshop.localhost` automatically. The entry can land before a release with the service is promoted: an `images:` entry that matches no Deployment in the pinned release changes nothing.
+- **Adding a service** to releases: an entry in `.github/services.json` (and its lint/test job in `plan.needs`) is enough for CI to build it on every tag. To run it in prod, add it to `deploy/apps/prod` resources and an `images:` entry to `apps-prod` in `clusters/local/prod-release.yaml` whose `newTag` line ends in `# release-pin: prod` (holding the current pin); its HTTPRoutes are moved to `prod.eshop.localhost` automatically. Do the same for QA (`deploy/apps/qa`, `apps-qa` in `clusters/local/qa-release.yaml`, `# release-pin: qa`), so QA tests what prod will run. The entry can land before a release with the service is promoted: an `images:` entry that matches no Deployment in the pinned release changes nothing.
 
 ## Why tags rather than branches
 

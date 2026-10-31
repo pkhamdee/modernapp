@@ -1,4 +1,4 @@
-# Arrows: eshop-node-api (eshop-dev, eshop-prod) -> Samba. Samba calls nothing.
+# Arrows: eshop-node-api (eshop-dev, eshop-qa, eshop-prod) -> Samba. Samba calls nothing.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -16,7 +16,7 @@ spec:
             matchExpressions:
               - key: kubernetes.io/metadata.name
                 operator: In
-                values: [eshop-dev, eshop-prod]
+                values: [eshop-dev, eshop-qa, eshop-prod]
           podSelector:
             matchLabels:
               app.kubernetes.io/name: eshop-node-api

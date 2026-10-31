@@ -1,4 +1,4 @@
-# Arrows: eshop-sync-master (eshop-dev, eshop-prod) -> SQL Server; thirdparty-mock (Enterprise
+# Arrows: eshop-sync-master (eshop-dev, eshop-qa, eshop-prod) -> SQL Server; thirdparty-mock (Enterprise
 # admin tool) -> SQL Server. SQL Server calls nothing (the schema sidecar uses localhost in the pod).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -17,7 +17,7 @@ spec:
             matchExpressions:
               - key: kubernetes.io/metadata.name
                 operator: In
-                values: [eshop-dev, eshop-prod]
+                values: [eshop-dev, eshop-qa, eshop-prod]
           podSelector:
             matchLabels:
               app.kubernetes.io/name: eshop-sync-master

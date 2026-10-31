@@ -24,7 +24,7 @@ terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather 
 - **Scripted API checks**: macOS `/bin/bash` 3.2 mangles Thai/multibyte JSON inside `"$(curl -d ...)"`; use Python
   `urllib` for anything with Thai text.
 - **Shared cluster**: the cluster also runs unrelated workloads: only touch namespaces this repo manages
-  (eshop-dev, eshop-prod, thirdparty, gateway, cert-manager, cnpg-system, flux-system).
+  (eshop-dev, eshop-qa, eshop-prod, thirdparty, gateway, cert-manager, cnpg-system, flux-system).
 - **Secrets in output**: decrypt Staff/DB/SMB passwords only inside a script that uses them and never prints them.
   Printing them is blocked for agents and leaks into logs.
 - `gh pr create` can fail with "connection reset by peer" after the push succeeded: check
@@ -200,6 +200,11 @@ eshop-sync-master:
   `clusters/local/prod-release.yaml` and moves only by a promotion PR (`scripts/pin-release.sh prod X.Y.Z`).
   Never rename `eshop-release` or `apps-prod`: Flux would delete and recreate them, and deleting `apps-prod`
   prunes everything it applied, prod's PostgreSQL Cluster (its data) included.
+- **QA** (`eshop-qa`, `qa.eshop.localhost`) has the same shape: overlay `deploy/apps/qa` (a copy of prod's; keep the
+  two in step), pin `clusters/local/qa-release.yaml` (GitRepository `eshop-qa`, Kustomization `apps-qa`, lines
+  `# release-pin: qa`, release candidates `X.Y.Z-rc.N`). Until the first release candidate is promoted, `apps-qa`
+  is suspended by a line ending in `# release-pin-until: qa`, which `scripts/pin-release.sh qa <version>` deletes:
+  no tag before then contains `deploy/apps/qa`. Same naming rule: never rename `eshop-qa` or `apps-qa`.
 - Base Deployments use untagged `docker.io/pkhamdee/<svc>`; tags are set only by the setter markers
   (`# {"$imagepolicy": "<ns>:<policy>:tag"}`) that Flux rewrites (dev, thirdparty), or by the release pin
   (`# release-pin: <env>` lines, changed only with `scripts/pin-release.sh`). Leave the tag values to Flux and the
@@ -208,12 +213,12 @@ eshop-sync-master:
   mixing code with those paths still runs CI.
 - Base HTTPRoutes are dev-shaped (`eshop.localhost`, `sectionName: https`, one parentRef); the prod overlay patches
   every HTTPRoute. Keep prod hostnames out of base.
-- **NetworkPolicies** (default deny in eshop-dev, eshop-prod, thirdparty; enforced by k3s' kube-router): each call
+- **NetworkPolicies** (default deny in eshop-dev, eshop-qa, eshop-prod, thirdparty; enforced by k3s' kube-router): each call
   needs both ends, caller egress and callee ingress. Egress names the container port number (e.g. 8080), not the
   Service port. Gateway = `kube-system` namespace + `app.kubernetes.io/name: traefik`; same-namespace callers by
-  podSelector only (keeps dev and prod apart); thirdparty callees list callers by namespace `In [eshop-dev,
-  eshop-prod]`. Copy `deploy/apps/base/eshop-api/network-policy.yaml`.
-- **Secrets**: one SOPS file per env, `deploy/apps/{dev,prod}/<name>.sops.yaml`, listed in that overlay's
+  podSelector only (keeps environments apart); thirdparty callees list callers by namespace `In [eshop-dev,
+  eshop-qa, eshop-prod]`. Copy `deploy/apps/base/eshop-api/network-policy.yaml`.
+- **Secrets**: one SOPS file per env, `deploy/apps/{dev,qa,prod}/<name>.sops.yaml`, listed in that overlay's
   resources; `.sops.yaml` encrypts only `data`/`stringData`. Pairs that must match: each env's
   `eshop-node-api-smb` with `deploy/thirdparty/samba/samba-accounts.sops.yaml`, and each env's
   `eshop-sync-master-enterprise` with `deploy/thirdparty/mssql/mssql-credentials.sops.yaml`.
@@ -227,11 +232,11 @@ eshop-sync-master:
 
 ## thirdparty
 
-- `deploy/thirdparty` (Flux Kustomization `thirdparty`, namespace `thirdparty`) holds mocks shared by both envs:
+- `deploy/thirdparty` (Flux Kustomization `thirdparty`, namespace `thirdparty`) holds mocks shared by every env:
   thirdparty-mock, Samba (one share per env), SQL Server (one database per env). It follows `main` with its own image
   automation, independent of releases.
-- thirdparty-mock is routed only on `https://eshop.localhost/thirdparty-mock/`, never on `prod.eshop.localhost`;
-  prod's SMS inbox and Enterprise admin (`.../enterprise/prod/`) are reached there too (`e2e/environment.ts`).
+- thirdparty-mock is routed only on `https://eshop.localhost/thirdparty-mock/`, never on `qa.` or `prod.eshop.localhost`;
+  QA's and prod's SMS inbox and Enterprise admin (`.../enterprise/qa/`, `.../enterprise/prod/`) are reached there too (`e2e/environment.ts`).
 - SQL Server is amd64-only and runs under Rosetta with no nodeSelector. Its `schema` sidecar re-applies the schema
   on every start; changing a file in its ConfigMap generator restarts the pod.
 
