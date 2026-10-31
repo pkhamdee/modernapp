@@ -190,7 +190,8 @@ eshop-sync-master:
 
 - **Check manifests before pushing**: `DOCKER_HOST=unix://$HOME/.rd/docker.sock scripts/validate-manifests.sh` (kustomize build + kubeconform, as CI does). Pushes touching only `deploy/**` or `clusters/**` run no CI, so a broken manifest is otherwise found only when Flux fails to apply it.
 - **Adding a service**: base folder `deploy/apps/base/<svc>/` (Deployment, Service, an HTTPRoute if the Gateway routes it, `network-policy.yaml`),
-  an entry in `.github/services.json`, a lint/test job in `ci-release.yml` listed in `plan.needs`. Dev: see the
+  an entry in `.github/services.json`, a lint/test job in `ci-release.yml` listed in `plan.needs`; if Locust or ZAP
+  should reach it, a service in `scripts/gates/temporary-copy/compose.yaml` (and the `gate` job's image list). Dev: see the
   header of `deploy/apps/dev/image-automation.yaml`. Prod: see the header of `deploy/apps/prod/kustomization.yaml`
   and `docs/git-workflow.md` ("Adding a service"). Prod has no image automation of its own; it follows the newest
   release tag via `clusters/local/prod-release.yaml`.
