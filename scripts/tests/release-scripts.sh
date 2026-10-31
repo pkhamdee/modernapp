@@ -103,5 +103,27 @@ git -C "$clone" commit -q --allow-empty -m "eshop-dev: update images [skip ci]"
 git -C "$clone" push -q origin HEAD:main
 check "release.sh refuses a commit with a skip-ci marker" refused 'skip-ci marker' 0.3.0-rc.1
 
+# --- scripts/check-release-tag.sh (CI's plan job, in a full clone with the tag fetched) ---
+
+clone=$(fresh tags)
+git -C "$clone" push -q origin HEAD:refs/heads/release/0.x
+git -C "$clone" fetch -q origin
+git -C "$clone" tag -a v0.3.0-rc.1 -m "Release candidate 0.3.0-rc.1"
+git -C "$clone" tag -a v0.3.0 -m "Release 0.3.0"
+git -C "$clone" tag v0.3.0-rc.2                             # lightweight
+git -C "$clone" tag -a v0.3.0-beta.1 -m "not a candidate"
+git -C "$clone" commit -q --allow-empty -m "on main only"
+git -C "$clone" tag -a v0.4.0-rc.1 -m "Release candidate 0.4.0-rc.1"
+tag_check() { (cd "$clone" && scripts/check-release-tag.sh "$1") >"$work/out" 2>"$work/err"; }
+builds() { tag_check "$1" && [ "$(cat "$work/out")" = "$2" ]; }
+skipped() { tag_check "$1" && [ ! -s "$work/out" ] && grep -qF 'Sign off release candidate' "$work/err"; }
+rejected() { ! tag_check "$1" && grep -qF -- "$2" "$work/err"; }
+
+check "check-release-tag.sh builds an annotated candidate on release/N.x as X.Y.Z-rc.N" builds v0.3.0-rc.1 0.3.0-rc.1
+check "check-release-tag.sh skips a plain vX.Y.Z (sign-off made it; not built)" skipped v0.3.0
+check "check-release-tag.sh rejects a lightweight candidate" rejected v0.3.0-rc.2 lightweight
+check "check-release-tag.sh rejects a tag that is neither" rejected v0.3.0-beta.1 'not vX.Y.Z-rc.N'
+check "check-release-tag.sh rejects a candidate on no release/N.x branch" rejected v0.4.0-rc.1 'release/N.x'
+
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
 echo "all passed"

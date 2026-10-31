@@ -207,6 +207,7 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       version: ${{ steps.select.outputs.version }}
+      promote: ${{ steps.select.outputs.promote }} # qa for a release candidate: open the QA promotion PR after push
     steps:
       - uses: actions/checkout@v7
         with:
@@ -222,22 +223,23 @@ jobs:
         run: |
           all=$(jq -c . .github/services.json)
           version=""
+          promote=""
           if [ "$REF_TYPE" = "tag" ]; then
-            # Enforce the workflow rules: semver name, annotated tag, tagged commit on a release/N.x branch.
+            # Release candidate vX.Y.Z-rc.N (annotated, on a release/N.x branch): build, gate, push, then open the
+            # QA promotion PR. Plain vX.Y.Z: made by sign-off from a candidate's images, so nothing to build.
             git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
-            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH"; exit 1
+            if ! version=$(scripts/check-release-tag.sh "$TAG" 2>"$RUNNER_TEMP/tag-check"); then
+              echo "::error::$(cat "$RUNNER_TEMP/tag-check")"; exit 1
             fi
-            if [ "$(git cat-file -t "$TAG")" != "tag" ]; then
-              echo "::error::Tag '$TAG' is lightweight; release tags must be annotated (git tag -a)"; exit 1
+            if [ -z "$version" ]; then
+              echo "::notice::$(cat "$RUNNER_TEMP/tag-check")"
+              matrix="[]"
+            else
+              matrix="$all"
+              promote=qa
             fi
-            if ! git branch -r --contains "$TAG" | grep -qE '^\s*origin/release/[0-9]+\.x$'; then
-              echo "::error::Tag '$TAG' is not on any release/N.x branch"; exit 1
-            fi
-            version="${TAG#v}"
-            matrix="$all"
           elif [ "$EVENT" = "workflow_dispatch" ] && [ -n "$DRY_RUN_VERSION" ]; then
-            # Only 0.0.0-test.N: never deployed (eshop-prod follows plain X.Y.Z releases only), so a dry run is harmless.
+            # Only 0.0.0-test.N: never deployed (no environment can be pinned to it) and no promotion PR is opened.
             if ! [[ "$DRY_RUN_VERSION" =~ ^0\.0\.0-test\.[0-9]+$ ]]; then
               echo "::error::Dry-run version must be 0.0.0-test.N"; exit 1
             fi
@@ -262,6 +264,7 @@ jobs:
           fi
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "promote=$promote" >> "$GITHUB_OUTPUT"
           echo "Version: ${version:-main-<sha>}; services to build: $(jq -r 'map(.service) | join(", ")' <<<"$matrix")"
 
   # Release gates (ADR 0007): nothing is pushed until every image is built, the temporary copy made from them is
