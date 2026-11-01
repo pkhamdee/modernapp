@@ -16,8 +16,8 @@
 # is built. Writes use the secret PROMOTION_TOKEN (docs/setup.md, "Promotion token") so the tag and the PR trigger
 # their workflows (a PR opened with GITHUB_TOKEN would get no checks); the workflow's own token only reads.
 # PROMOTION_TOKEN and DOCKERHUB_TOKEN are secrets of environment `release`, which deploys only from main and v* tags
-# (scripts/protect-main.sh). The job's `environment:` key also records a GitHub Deployment to `release` of main: the
-# key always does, and nothing reads those (the smoke tests' Deployments are to dev, qa and prod).
+# (scripts/protect-main.sh). `deployment: false`: the job reads the environment's secrets without GitHub recording a
+# deployment to "release" beside the smoke tests' Deployments (scripts/deployment.sh).
 name: Sign off release candidate
 run-name: Sign off at ${{ github.sha }}
 
@@ -36,7 +36,9 @@ jobs:
   sign-off:
     name: sign off
     runs-on: ubuntu-latest
-    environment: release # its secrets; deployable from main (and v* tags) only
+    environment: # its secrets; deployable from main (and v* tags) only
+      name: release
+      deployment: false
     permissions:
       contents: read
       deployments: read # QA's Deployments of the candidate

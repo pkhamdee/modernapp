@@ -363,6 +363,43 @@ npm run report                                       # HTML report of the last r
   Tests for the check, with a fake kubectl: `e2e/check-serving.test.sh`; for the script, with a fake gh:
   `e2e/run-on-actions.test.sh` (both run in CI's `repo rules` job).
 
+### Smoke test email
+
+Each smoke test result on GitHub Actions is emailed (`e2e.yml`'s `notify` job, `scripts/notify.sh`): every QA and
+prod result, and for dev only a failure and the first pass after one (judged from dev's previous Deployment). The
+subject says what happened, e.g. `[eShop] prod v0.3.0: deployed and smoke test passed` or
+`[eShop] qa v0.3.1-rc.1: smoke test FAILED` (also `passed on retry` and `NOT DEPLOYED`); the body links the run and
+its Playwright report artifact (`playwright-report-<env>`). A prod failure names the last release that passed in prod
+and the rollback: `scripts/promotion-pr.sh prod <that version>`, whose PR's commit is
+`scripts/pin-release.sh prod <that version>`, then merge it.
+
+It is sent over SMTP with `curl` (`smtps://smtp.gmail.com:465`, TLS required), from a Gmail account to one address.
+The password is a secret of the `smoke-test` environment, which only `main` can use; the job reads it without
+recording a deployment. **Human**, once, in this order:
+
+1. **The sending account**: a Gmail account for the mails (a separate one, e.g. `eshop.smoke.test@gmail.com`, keeps
+   your own account's password out of CI). Turn on 2-Step Verification for it (Google Account → Security).
+2. **Its app password**: Google Account → Security → 2-Step Verification → App passwords (or
+   <https://myaccount.google.com/apppasswords>); create one named e.g. `eshop smoke test` and copy the 16 letters.
+   Gmail refuses the account's normal password over SMTP.
+3. **The `smoke-test` environment**: `scripts/protect-main.sh --dry-run`, then `scripts/protect-main.sh`
+   ([Protecting main](#protecting-main)); it creates the environment, deployable from `main` only.
+4. **The secret and the variables** (`gh secret set` prompts for the value, so it never lands in shell history):
+
+```sh
+gh secret set SMTP_PASSWORD --env smoke-test --repo pkhamdee/modernapp           # the app password (step 2)
+gh variable set SMTP_USERNAME --body eshop.smoke.test@gmail.com --repo pkhamdee/modernapp   # the sending account
+gh variable set NOTIFY_EMAIL --body you@example.com --repo pkhamdee/modernapp    # who gets them (comma-separated)
+gh secret list --env smoke-test --repo pkhamdee/modernapp && gh variable list --repo pkhamdee/modernapp
+```
+
+Until all three are set, the `notify` job fails on every run, naming what is missing; the smoke test's own job and
+its Deployment are unaffected (the Deployment is finished before `notify` starts, and `notify` may only read
+Deployments). A run dispatched from another branch can't use the environment, so its `notify` job fails the same way.
+To check the setup without waiting for a deploy: `e2e/run-on-actions.sh qa <the version QA serves>` mails the
+result. Mails land in the recipient's inbox from the sending account; if not, look in spam and mark it "not spam"
+once.
+
 ### Cluster runner
 
 The E2E job (`runs-on: eshop-e2e`) runs inside the cluster (ADR 0008). Flux installs Actions Runner Controller
@@ -518,7 +555,7 @@ tags"; git-workflow.md, "Tags"). It pushes only `promote/*` and `sign-off/*` bra
 
 ### Protecting main
 
-`main`'s ruleset and the `release` environment are code: `scripts/protect-main.sh` (what it sets and why:
+`main`'s ruleset and the `release` and `smoke-test` environments are code: `scripts/protect-main.sh` (what it sets and why:
 git-workflow.md, "Protecting main"). **Human** (a repo admin), once after it lands on `main`, and again whenever it
 or the names of ci-release.yml's pull-request jobs change:
 
@@ -526,13 +563,15 @@ or the names of ci-release.yml's pull-request jobs change:
 git checkout main && git pull
 scripts/protect-main.sh --dry-run    # prints every request it would send; reads only
 scripts/protect-main.sh              # creates or updates rulesets "Protect main", "Protect release tags",
-                                     # "Create release tags" and environment "release"
+                                     # "Create release tags" and environments "release"
+                                     # and "smoke-test"
 ```
 
 Check: Settings → Rules → Rulesets → **Protect main** (Active; bypass: Deploy keys; required checks listed),
 **Protect release tags** (no bypass; deletion, update, force-push), **Create release tags** (bypass: Repository
 admin and Maintain roles; creation), and
-Settings → Environments → **release** (Deployment branches and tags: `main`, tag `v*`). Then:
+Settings → Environments → **release** (Deployment branches and tags: `main`, tag `v*`) and **smoke-test**
+(`main` only; [Smoke test email](#smoke-test-email)). Then:
 
 - `git push origin HEAD:main` from a clone is rejected (`GH013: Repository rule violations`);
 - a PR with a failing required check can't be merged;

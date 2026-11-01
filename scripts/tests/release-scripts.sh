@@ -9,8 +9,10 @@
 #   scripts/smoke-targets.sh       the smoke test's targets: what a push to main (promotions and rollbacks
 #                                  included), or a dispatch, tests where
 #   scripts/deployment.sh          the smoke test's Deployments: create, in progress, outcome, superseded, replaced
-#   scripts/protect-main.sh        main's ruleset, the tag rulesets and the release environment (dry run and apply)
-# `gh` and `crane` are fakes on PATH that record their arguments and keep GitHub's and the registry's state in files.
+#   scripts/notify.sh              the smoke test's email: who gets which result, the subject and body, the rollback
+#   scripts/protect-main.sh        main's ruleset, the tag rulesets and the release and smoke-test environments
+#                                  (dry run and apply)
+# `gh`, `crane` and `curl` are fakes on PATH that record their arguments and keep GitHub's and the registry's state in files.
 # Run from anywhere: scripts/tests/release-scripts.sh
 set -euo pipefail
 
@@ -965,6 +967,125 @@ failure_keeps_previous_success() {
 check "deployment.sh finish <id> failure leaves the previous successful Deployment as it is" failure_keeps_previous_success
 rm -rf "$GH_STATE/deployments"
 
+# --- scripts/notify.sh (e2e.yml's notify job: a smoke test's result by email) ---
+
+# Fake curl: logs its arguments to $CURL_LOG, keeps the --config it reads on stdin (the credentials) as
+# $CURL_MAIL.config and the message it would upload (--upload-file) as $CURL_MAIL. Sends nothing.
+cat >"$work/bin/curl" <<'CURL'
+#!/usr/bin/env bash
+echo "curl $*" >>"$CURL_LOG"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --upload-file) cp "$2" "$CURL_MAIL" ;;
+    --config) [ "$2" != - ] || cat >"$CURL_MAIL.config" ;;
+  esac
+  shift
+done
+CURL
+chmod +x "$work/bin/curl"
+export CURL_LOG="$work/curl.log" CURL_MAIL="$work/mail"
+smtp_password=not-a-real-app-password
+# notify <args>: scripts/notify.sh with every SMTP setting (each overridable, '' for missing), the mail it sent (if
+# any) in $CURL_MAIL. Output in $work/out.
+notify() {
+  rm -f "$CURL_MAIL" "$CURL_MAIL.config"; : >"$CURL_LOG"
+  (cd "$root" && SMTP_USERNAME=${SMTP_USERNAME-eshop.smoke@example.com} SMTP_PASSWORD=${SMTP_PASSWORD-$smtp_password} \
+    NOTIFY_EMAIL=${NOTIFY_EMAIL-team@example.com} RUN_URL=$run_url REPORT_URL=$run_url/artifacts/99 \
+    scripts/notify.sh "$@") >"$work/out" 2>&1
+}
+subject() { sed -n 's/^Subject: //p' "$CURL_MAIL" | tr -d '\r'; }
+mailed() { [ -f "$CURL_MAIL" ]; }
+prod_pass_mailed() {
+  rm -rf "$GH_STATE/deployments"
+  local id
+  id=$(started prod v0.3.0) && deployment finish "$id" success "$run_url" https://prod.eshop.localhost
+  notify prod 0.3.0 passed "$id" \
+    && [ "$(subject)" = "[eShop] prod v0.3.0: deployed and smoke test passed" ] \
+    && grep -qF "$run_url/artifacts/99" "$CURL_MAIL" && grep -qF "Run: $run_url" "$CURL_MAIL" \
+    && grep -qF -- '--ssl-reqd' "$CURL_LOG" && grep -qF 'smtps://smtp.gmail.com:465' "$CURL_LOG" \
+    && grep -qF -- '--mail-from eshop.smoke@example.com' "$CURL_LOG" && grep -qF -- '--mail-rcpt team@example.com' "$CURL_LOG" \
+    && grep -qF "eshop.smoke@example.com:$smtp_password" "$CURL_MAIL.config" \
+    && ! grep -qF "$smtp_password" "$CURL_LOG" "$work/out" "$CURL_MAIL"
+}
+check "notify.sh: a prod pass is mailed over SMTPS (Gmail, port 465), \"[eShop] prod v0.3.0: deployed and smoke test passed\", with the run and the Playwright report; the password never on the command line or in the output" \
+  prod_pass_mailed
+qa_failure_mailed() {
+  DETAIL="the Playwright demo failed" notify qa 0.3.1-rc.1 failed \
+    && [ "$(subject)" = "[eShop] qa v0.3.1-rc.1: smoke test FAILED" ] \
+    && grep -qF "the Playwright demo failed" "$CURL_MAIL" && ! grep -qF "Rollback" "$CURL_MAIL"
+}
+check "notify.sh: a QA failure is mailed, \"[eShop] qa v0.3.1-rc.1: smoke test FAILED\", saying why" qa_failure_mailed
+qa_retry_mailed() {
+  printf '%s\n' "desktop: tests/demo.spec.ts › the demo" >"$work/retried.txt"
+  RETRIED_FILE="$work/retried.txt" notify qa 0.3.0-rc.2 retried \
+    && [ "$(subject)" = "[eShop] qa v0.3.0-rc.2: deployed and smoke test passed on retry" ] \
+    && grep -qF -- "- desktop: tests/demo.spec.ts › the demo" "$CURL_MAIL"
+}
+check "notify.sh: a QA pass on retry is mailed as such, naming the tests that passed only on retry" qa_retry_mailed
+qa_not_deployed_mailed() {
+  notify qa 0.3.0-rc.2 not-deployed && [ "$(subject)" = "[eShop] qa v0.3.0-rc.2: NOT DEPLOYED, smoke test FAILED" ]
+}
+check "notify.sh: QA not serving the candidate is mailed as not deployed" qa_not_deployed_mailed
+# Prod: v0.2.0 passed and was replaced by v0.2.1 (inactive now), which passed; v0.3.0 failed; now v0.3.1 fails.
+prod_failure_names_rollback() {
+  rm -rf "$GH_STATE/deployments"
+  local id
+  id=$(started prod v0.2.0) && deployment finish "$id" success "$run_url" https://prod.eshop.localhost
+  id=$(started prod v0.2.1) && deployment finish "$id" success "$run_url" https://prod.eshop.localhost
+  id=$(started prod v0.3.0) && deployment finish "$id" failure "$run_url" https://prod.eshop.localhost "failed"
+  id=$(started prod v0.3.1) && deployment finish "$id" failure "$run_url" https://prod.eshop.localhost "failed"
+  notify prod 0.3.1 failed "$id" \
+    && [ "$(subject)" = "[eShop] prod v0.3.1: smoke test FAILED" ] \
+    && grep -qF "the last release that passed in prod is v0.2.1" "$CURL_MAIL" \
+    && grep -qF "  scripts/promotion-pr.sh prod 0.2.1" "$CURL_MAIL" && grep -qF "scripts/pin-release.sh prod 0.2.1" "$CURL_MAIL"
+}
+check "notify.sh: a prod failure names the last release whose prod Deployment succeeded and the rollback (promotion-pr.sh / pin-release.sh)" \
+  prod_failure_names_rollback
+prod_failure_without_earlier_pass() {
+  rm -rf "$GH_STATE/deployments"
+  notify prod 0.3.0 not-deployed && grep -qF "no earlier release passed in prod" "$CURL_MAIL"
+}
+check "notify.sh: a prod failure with no earlier passing release says there is none to roll back to" \
+  prod_failure_without_earlier_pass
+# Dev: mailed on a failure, and on the first pass after one (dev's previous Deployment with an outcome).
+dev_finished() { # dev_finished <commit> <state> [description]: prints the Deployment's id
+  local id
+  id=$(started dev "$1") && deployment finish "$id" "$2" "$run_url" "$dev_url" ${3:+"$3"} && echo "$id"
+}
+dev_rules() {
+  rm -rf "$GH_STATE/deployments"
+  local a=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  local c=cccccccccccccccccccccccccccccccccccccccc d=dddddddddddddddddddddddddddddddddddddddd id
+  id=$(dev_finished "$a" success) && notify dev "$a" passed "$id" && ! mailed || return 1 # the first ever: no
+  id=$(dev_finished "$b" success) && notify dev "$b" passed "$id" && ! mailed || return 1 # a pass after a pass: no
+  id=$(dev_finished "$c" failure "the Playwright demo failed") && notify dev "$c" failed "$id" \
+    && [ "$(subject)" = "[eShop] dev ccccccc: smoke test FAILED" ] || return 1 # a failure: yes
+  dev_finished "$d" inactive superseded >/dev/null || return 1 # superseded: tested nothing
+  id=$(dev_finished "$d" success) && notify dev "$d" retried "$id" \
+    && [ "$(subject)" = "[eShop] dev ddddddd: deployed and smoke test passed on retry" ] \
+    && grep -qF "previous smoke test, of ccccccc, had failed" "$CURL_MAIL" || return 1 # the first pass after: yes
+  id=$(dev_finished "$a" success) && notify dev "$a" passed "$id" && ! mailed # and the next pass: no
+}
+check "notify.sh: dev is mailed only a failure and the first pass after one (a superseded Deployment skipped)" dev_rules
+missing_setting_fails() {
+  local status=0
+  SMTP_PASSWORD='' notify prod 0.3.0 passed || status=$?
+  [ "$status" = 1 ] && grep -qF 'no SMTP_PASSWORD' "$work/out" && ! mailed && [ ! -s "$CURL_LOG" ] || return 1
+  status=0
+  NOTIFY_EMAIL='' SMTP_USERNAME='' notify dev "$dev_commit" passed || status=$?
+  [ "$status" = 1 ] && grep -qF 'no SMTP_USERNAME NOTIFY_EMAIL' "$work/out" && ! mailed
+}
+check "notify.sh: a missing SMTP setting fails (exit 1, naming it) and sends nothing, even when no email is due" \
+  missing_setting_fails
+notify_refusals() {
+  ! notify prod 0.3.0-rc.1 passed && grep -qF 'usage: scripts/notify.sh' "$work/out" \
+    && ! notify qa 0.3.0-rc.1 green && grep -qF 'usage: scripts/notify.sh' "$work/out" \
+    && ! notify dev main failed && grep -qF 'usage: scripts/notify.sh' "$work/out" && [ ! -s "$CURL_LOG" ]
+}
+check "notify.sh refuses a version its environment doesn't take, an unknown result and a dev target that isn't a commit" \
+  notify_refusals
+rm -rf "$GH_STATE/deployments"
+
 # --- scripts/protect-main.sh (main's ruleset and the release environment; applied by a maintainer) ---
 
 repo_api=repos/pkhamdee/modernapp
@@ -1057,6 +1178,31 @@ bad_approvals_refused() {
   : >"$GH_LOG"; ! protect --approvals two && grep -qF 'usage: scripts/protect-main.sh' "$work/out" && [ ! -s "$GH_LOG" ]
 }
 check "protect-main.sh refuses a malformed --approvals and calls nothing" bad_approvals_refused
+
+# --- scripts/protect-main.sh: the smoke-test environment (SMTP_PASSWORD for e2e.yml's notify job) ---
+
+smoke_test_environment_dry_run() {
+  rm -f "$GH_STATE"/*; : >"$GH_LOG"
+  FAKE_NO_ENVIRONMENT=1 protect --dry-run || return 1
+  [ "$(writes)" = 0 ] \
+    && sent "PUT $repo_api/environments/smoke-test" \
+      | jq -e '. == [{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}]' >/dev/null \
+    && sent "POST $repo_api/environments/smoke-test/deployment-branch-policies" \
+      | jq -e '. == [{"name": "main", "type": "branch"}]' >/dev/null
+}
+check "protect-main.sh --dry-run prints the smoke-test environment, deployable from main only, sending nothing" \
+  smoke_test_environment_dry_run
+smoke_test_environment_applied() {
+  rm -f "$GH_STATE"/*; : >"$GH_LOG"
+  FAKE_BRANCH_POLICIES='{"total_count":2,"branch_policies":[{"id":1,"name":"main","type":"branch"},{"id":9,"name":"release/*","type":"branch"}]}' \
+    protect || return 1
+  local s="$GH_STATE/api-" p=${repo_api//\//_}_environments_smoke-test
+  [ -e "${s}PUT-$p" ] \
+    && ! grep -qF "api $repo_api/environments/smoke-test/deployment-branch-policies --method POST" "$GH_LOG" \
+    && [ -e "${s}DELETE-${p}_deployment-branch-policies_9" ] && [ ! -e "${s}DELETE-${p}_deployment-branch-policies_1" ]
+}
+check "protect-main.sh leaves the smoke-test environment exactly main (keeps main, removes any other policy)" \
+  smoke_test_environment_applied
 
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
 echo "all passed"
