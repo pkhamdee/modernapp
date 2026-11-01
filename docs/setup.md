@@ -351,6 +351,10 @@ npm run report                                       # HTML report of the last r
   `... apps-qa is suspended ...`). The run is named `E2E <environment>[ <version>]` (`E2E qa 0.3.0-rc.1`) and its
   summary lists the version, the applied revision and the images. The job uses this machine's `kubectl` and `jq`
   (the runner inherits the shell's `PATH` and `~/.kube/config`, current context the Rancher Desktop cluster).
+  For dev the check takes a `main` commit (`e2e/check-serving.sh dev <commit>`, short or full): `apps-dev` applied
+  `main@sha1:<commit>` and every Deployment finished rolling out with the images that revision pins. With `--wait`
+  it checks again every 10 s until the environment serves, and after 15 min (`--timeout SECONDS`) refuses with
+  "not deployed", naming the Kustomization to look at (`flux get kustomization apps-<env>`).
   Tests for the check, with a fake kubectl: `e2e/check-serving.test.sh` (run in CI's `repo rules` job).
 
 ## Releasing
