@@ -14,9 +14,15 @@ export default defineConfig({
   // its own Customers, Contract, Auction and Lot (tests/steps.ts), so tests running side by side never share data.
   fullyParallel: true,
   workers: 2,
-  retries: 0,
+  // In the pipeline (CI is set), a failed test runs once more: a pass on the retry counts, but the report keeps the
+  // first attempt's failure, and the run summary names the test (e2e.yml reads results.json). Locally, no retry.
+  retries: process.env.CI ? 1 : 0,
   forbidOnly: !!process.env.CI,
-  reporter: [['list'], ['html', { open: 'never' }]],
+  reporter: [
+    ['list'],
+    ['html', { open: 'never' }],
+    ...(process.env.CI ? [['json', { outputFile: 'results.json' }] as const] : []),
+  ],
   use: {
     baseURL,
     // The local cluster's certificate comes from a self-signed CA.

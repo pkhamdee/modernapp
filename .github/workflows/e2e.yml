@@ -1,16 +1,28 @@
-# Seam 4: the definition-of-done demo as one Playwright browser test against a DEPLOYED environment.
-# Run by hand (Actions -> E2E smoke test -> Run workflow), never on push or PR:
-#   - QA's test of a release candidate: environment `qa`, version `X.Y.Z-rc.N` (required). Sign-off
-#     (docs/git-workflow.md, "QA test run") looks for a passing run of exactly that candidate by its run name.
-#   - the post-release smoke test on prod: environment `prod`, version `X.Y.Z` optional;
-#   - dev (follows main, no version).
+# Seam 4: the definition-of-done demo as one Playwright browser test against a DEPLOYED environment, after every
+# deploy (ADR 0008):
+#   - every push to main: Flux deploys each main commit to eshop-dev (its own image-update commits included), so
+#     the run tests dev at the pushed commit;
+#   - by hand (Actions -> E2E smoke test -> Run workflow, or e2e/run-on-actions.sh [environment] [version]):
+#     QA's test of a release candidate (environment `qa`, version `X.Y.Z-rc.N`, required: sign-off finds the run by
+#     its name, docs/git-workflow.md "QA test run"); prod at `X.Y.Z` (default: prod's pin on main); dev at a main
+#     commit (default: main's head).
+# The first job decides the targets, `<environment> <version or commit>` (scripts/smoke-targets.sh), and the test
+# job runs once per target.
 #
-# Given a version, the job refuses unless the environment is actually serving it, asked of the cluster rather than
-# Git (e2e/check-serving.sh: Flux applied tag vX and every Deployment runs the X images), and checks again after
-# the test, so a passing run tested that version from start to end.
+# Each target is recorded as a GitHub Deployment of that version (tag vX) or commit to that environment
+# (scripts/deployment.sh, the Deployments API, not the job's `environment:` key, which would record main): in
+# progress when the job starts, then success or failure, linked to this run and the environment's URL. The job
+# waits until the environment serves exactly the target, asked of the cluster rather than Git
+# (e2e/check-serving.sh --wait: Flux applied tag vX, or main at the commit, and every Deployment rolled out from it);
+# not serving it after 15 minutes is a failure, "not deployed". It checks again after the test, so a pass tested
+# the target from start to end. Failed tests run once more (playwright.config.ts); a pass on the retry still passes,
+# and the run summary names the test.
 #
-# The run name records what was tested, `E2E <environment>[ <version>]`, e.g. `E2E qa 0.3.0-rc.1`. The latest
-# passing QA run for a version (sign-off's query):
+# One run at a time per environment. A newer dev run cancels the running or waiting one: dev has moved on, so that
+# run's Deployment is marked inactive, "superseded", not failed. QA and prod runs are never cancelled.
+#
+# The run name records what was tested: a push's `E2E push <commit>`, a manual run's `E2E <environment>[ <version>]`,
+# e.g. `E2E qa 0.3.0-rc.1`. The latest passing QA run for a version (sign-off's query):
 #   gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch \
 #     --status completed --limit 100 --json databaseId,displayTitle,conclusion,url \
 #     --jq '[.[] | select(.displayTitle == "E2E qa 0.3.0-rc.1")] | first'
@@ -18,13 +30,13 @@
 # branch's copy of this workflow, which may skip the check.
 #
 # The environments live on a local cluster (https://eshop.localhost, https://qa.eshop.localhost,
-# https://prod.eshop.localhost), which GitHub-hosted runners cannot reach, so the job runs inside that cluster
+# https://prod.eshop.localhost), which GitHub-hosted runners cannot reach, so the test job runs inside that cluster
 # (ADR 0008): `runs-on: eshop-e2e` is the Actions Runner Controller scale set in deploy/infrastructure/runners.
 # ARC starts one runner pod for the job (the stock runner image, Ubuntu) and deletes it afterwards; no runner stays
-# registered while idle. Dispatch from the Actions tab, or `e2e/run-on-actions.sh [environment] [version]`, which
-# checks the version first and follows the run. Or simply run `npm run e2e` on the Mac (docs/setup.md "End-to-end
-# smoke test"); only a run here counts for sign-off. The repository is public: a fork PR could name this runner, so
-# "Require approval for all external contributors" must stay set (docs/setup.md, "Cluster runner").
+# registered while idle. Deciding the targets needs no cluster and runs on a GitHub-hosted runner. Or simply run
+# `npm run e2e` on the Mac (docs/setup.md "End-to-end smoke test"): no retry, nothing recorded; only a run here
+# counts for sign-off. The repository is public: a fork PR could name this runner, so "Require approval for all
+# external contributors" must stay set (docs/setup.md, "Cluster runner").
 #
 # In the pod, kubectl uses the pod's service account, which may only read the apps-<env> Kustomizations, the
 # environments' Deployments, ReplicaSets and Pods, and their Staff Secret eshop-api-staff
@@ -33,9 +45,14 @@
 # sent to Traefik's Service: by /etc/hosts for Node, by a Chromium host-resolver rule for the browser
 # (e2e/environment.ts), since Chromium resolves *.localhost to the pod itself whatever /etc/hosts says.
 name: E2E smoke test
-run-name: E2E ${{ inputs.environment }}${{ inputs.version != '' && format(' {0}', inputs.version) || '' }}
+run-name: >-
+  ${{ github.event_name == 'push' && format('E2E push {0}', github.sha)
+  || format('E2E {0}{1}', inputs.environment, inputs.version != '' && format(' {0}', inputs.version) || '') }}
 
 on:
+  # Every push to main, deploy/** and clusters/** included: Flux's image-update commits are dev deploys too.
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
@@ -44,76 +61,141 @@ on:
         options: [prod, qa, dev]
         default: prod
       version:
-        description: "The version the environment must be serving: qa X.Y.Z-rc.N (required), prod X.Y.Z (optional), dev none"
+        description: "What the environment must be serving: qa X.Y.Z-rc.N (required), prod X.Y.Z (default: its pin on main), dev a main commit (default: main's head)"
         required: false
         default: ""
 
 permissions:
   contents: read
 
-concurrency:
-  group: e2e-${{ inputs.environment }}
-  cancel-in-progress: false
-
 jobs:
+  targets:
+    name: What to test
+    runs-on: ubuntu-latest
+    outputs:
+      targets: ${{ steps.decide.outputs.targets }}
+    steps:
+      # Full history: the push's commits, and origin/main for a dispatch's defaults.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Decide the targets
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+          E2E_ENV: ${{ inputs.environment }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            set -- push "$BEFORE" "$AFTER"
+          else
+            set -- dispatch "$E2E_ENV" ${VERSION:+"$VERSION"}
+          fi
+          if ! scripts/smoke-targets.sh "$@" >targets.txt 2>error.txt; then
+            cat error.txt
+            echo "::error::$(head -n 1 error.txt)"
+            exit 1
+          fi
+          cat targets.txt
+          echo "targets=$(jq -cRn '[inputs | split(" ") | {env: .[0], target: .[1]}]' targets.txt)" >>"$GITHUB_OUTPUT"
+
   e2e:
-    name: Playwright demo (${{ inputs.environment }}${{ inputs.version != '' && format(' {0}', inputs.version) || '' }})
+    name: Playwright demo (${{ matrix.env }} ${{ matrix.target }})
+    needs: targets
+    if: needs.targets.outputs.targets != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.targets.outputs.targets) }}
+    # A newer dev run cancels this one, running or waiting: only the newest dev deploy is worth testing. QA and
+    # prod runs queue instead (though GitHub keeps only the newest of several waiting runs of a group).
+    concurrency:
+      group: e2e-${{ matrix.env }}
+      cancel-in-progress: ${{ matrix.env == 'dev' }}
     runs-on: eshop-e2e
-    timeout-minutes: 25
+    # Up to 15 minutes waiting for the deploy, ~8 testing, a few installing.
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      deployments: write # the Deployment of the target (scripts/deployment.sh)
     defaults:
       run:
         working-directory: e2e
     env:
-      E2E_ENV: ${{ inputs.environment }}
-      E2E_BASE_URL: ${{ inputs.environment == 'dev' && 'https://eshop.localhost' || format('https://{0}.eshop.localhost', inputs.environment) }}
-      VERSION: ${{ inputs.version }}
+      E2E_ENV: ${{ matrix.env }}
+      TARGET: ${{ matrix.target }}
+      # The Deployment's ref: the version's tag, or the dev commit.
+      REF: ${{ matrix.env == 'dev' && matrix.target || format('v{0}', matrix.target) }}
+      E2E_BASE_URL: ${{ matrix.env == 'dev' && 'https://eshop.localhost' || format('https://{0}.eshop.localhost', matrix.env) }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      GH_TOKEN: ${{ github.token }}
+      # Why the job failed, for the Deployment's description: the step that fails writes it.
+      OUTCOME: ${{ github.workspace }}/outcome.txt
       STAFF_USERNAME: ${{ secrets.E2E_STAFF_USERNAME }}
       STAFF_PASSWORD: ${{ secrets.E2E_STAFF_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
-      - name: Record what this run tests
+      # The stock runner image has neither gh nor kubectl: the versions below, checked against their published
+      # SHA-256.
+      - name: Install gh and kubectl
+        working-directory: ${{ runner.temp }}
+        env:
+          GH_VERSION: 2.103.3
+          KUBECTL_VERSION: v1.36.2 # k3s v1.36 (docs/setup.md)
         run: |
-          tested="none given, not checked"
-          [ -z "$VERSION" ] || tested="\`$VERSION\`"
+          case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; *) echo "::error::no binaries for $(uname -m)"; exit 1 ;; esac
+          mkdir -p bin
+          gh_file="gh_${GH_VERSION}_linux_$arch.tar.gz"
+          gh_url="https://github.com/cli/cli/releases/download/v$GH_VERSION"
+          curl -fsSLO "$gh_url/$gh_file"
+          curl -fsSL "$gh_url/gh_${GH_VERSION}_checksums.txt" | grep " $gh_file\$" | sha256sum -c -
+          tar -xzf "$gh_file" && install -m 0755 "${gh_file%.tar.gz}/bin/gh" bin/gh && rm -rf "$gh_file" "${gh_file%.tar.gz}"
+          url="https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/$arch/kubectl"
+          curl -fsSLo kubectl "$url"
+          echo "$(curl -fsSL "$url.sha256")  kubectl" | sha256sum -c -
+          install -m 0755 kubectl bin/kubectl && rm kubectl
+          echo "$RUNNER_TEMP/bin" >>"$GITHUB_PATH"
+      # The Deployment exists from here on, and the last step always finishes it. A run cancelled while waiting
+      # for its turn never got here, so it leaves no Deployment behind.
+      #
+      # Superseded: the cancelled run finishes its own Deployment as inactive (the last step runs on
+      # cancellation), but that's best effort: a runner pod that is killed, or a cancelled run whose last step
+      # fails, would leave it in progress for ever. So each run also marks every other in-progress Deployment of
+      # its environment inactive, superseded: runs of one environment never overlap (the concurrency group), so any
+      # other still in progress belongs to a run that is gone. That one always holds.
+      - name: Record the Deployment of ${{ matrix.target }} to ${{ matrix.env }}
+        id: deployment
+        working-directory: .
+        run: |
+          id=$(scripts/deployment.sh start "$E2E_ENV" "$REF" "$RUN_URL" "$E2E_BASE_URL")
+          echo "id=$id" >>"$GITHUB_OUTPUT"
+          scripts/deployment.sh supersede "$E2E_ENV" "$id"
           {
-            echo "## E2E smoke test: $E2E_ENV${VERSION:+ $VERSION}"
+            echo "## E2E smoke test: $E2E_ENV $TARGET"
             echo
             echo "| | |"
             echo "|---|---|"
             echo "| Environment | \`$E2E_ENV\` ($E2E_BASE_URL) |"
-            echo "| Version | $tested |"
+            echo "| Target | \`$TARGET\` (Deployment $id of \`$REF\`) |"
             echo "| Test code | \`$GITHUB_SHA\` ($GITHUB_REF_NAME) |"
           } >>"$GITHUB_STEP_SUMMARY"
-          if [ "$E2E_ENV" = qa ] && [ -z "$VERSION" ]; then
-            echo "::error::A QA run needs the release candidate QA is serving: version X.Y.Z-rc.N"
-            exit 1
-          fi
-      # The stock runner image has no kubectl: the cluster's version, checked against its published SHA-256.
-      - name: Install kubectl
-        working-directory: ${{ runner.temp }}
-        env:
-          KUBECTL_VERSION: v1.36.2 # k3s v1.36 (docs/setup.md)
-        run: |
-          case "$(uname -m)" in x86_64) arch=amd64 ;; aarch64) arch=arm64 ;; *) echo "::error::no kubectl for $(uname -m)"; exit 1 ;; esac
-          url="https://dl.k8s.io/release/$KUBECTL_VERSION/bin/linux/$arch/kubectl"
-          curl -fsSLo kubectl "$url"
-          echo "$(curl -fsSL "$url.sha256")  kubectl" | sha256sum -c -
-          mkdir -p bin && install -m 0755 kubectl bin/kubectl && rm kubectl
-          echo "$RUNNER_TEMP/bin" >>"$GITHUB_PATH"
       - name: Send the eShop hostnames to Traefik
         run: |
           gateway=traefik.kube-system.svc.cluster.local
           ip=$(getent ahostsv4 "$gateway" | awk 'NR == 1 { print $1 }')
           [ -n "$ip" ] || { echo "::error::cannot resolve $gateway"; exit 1; }
           echo "$ip eshop.localhost qa.eshop.localhost prod.eshop.localhost" | sudo tee -a /etc/hosts
-      # Refuse unless the cluster serves exactly this version (stderr says why not).
-      - name: Check ${{ inputs.environment }} is serving ${{ inputs.version }}
-        if: ${{ inputs.version != '' }}
+      # Wait (up to 15 minutes) until the cluster serves exactly this target; stderr says what it's waiting for.
+      - name: Wait until ${{ matrix.env }} serves ${{ matrix.target }}
         run: |
-          if ! ./check-serving.sh "$E2E_ENV" "$VERSION" >serving.txt 2>&1; then
-            cat serving.txt
-            echo "::error::$(tail -n 1 serving.txt)"
-            { echo; echo "**Refused**: $(tail -n 1 serving.txt)"; } >>"$GITHUB_STEP_SUMMARY"
+          status=0
+          ./check-serving.sh --wait "$E2E_ENV" "$TARGET" 2>&1 >serving.txt | tee waiting.txt || status=$?
+          if [ "$status" -ne 0 ]; then
+            tail -n 1 waiting.txt >"$OUTCOME"
+            echo "::error::$(cat "$OUTCOME")"
+            { echo; echo "**Not serving it**: $(cat "$OUTCOME")"; } >>"$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           cat serving.txt
@@ -128,30 +210,63 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
       - name: Run the demo
-        run: npm run e2e
-      # The environment must not have moved during the test (a promotion merged meanwhile): otherwise the pass
-      # proves nothing about this version.
-      - name: Check ${{ inputs.environment }} still serves ${{ inputs.version }}
-        if: ${{ inputs.version != '' }}
+        run: npm run e2e || { echo "the Playwright demo failed" >"$OUTCOME"; exit 1; }
+      # A test that failed and then passed on its retry: the run passes, but says so.
+      - name: Name the tests that passed only on retry
+        if: ${{ !cancelled() && hashFiles('e2e/results.json') != '' }}
         run: |
-          if ! ./check-serving.sh "$E2E_ENV" "$VERSION" >serving-after.txt 2>&1; then
+          jq -r '.. | objects | select(has("specs")) | .specs[] as $spec | $spec.tests[]
+                 | select(.status == "flaky") | "\(.projectName): \($spec.file) › \($spec.title)"' results.json >retried.txt
+          [ -s retried.txt ] || exit 0
+          echo "::warning::$(wc -l <retried.txt | tr -d ' ') test(s) passed only on retry: $(paste -sd ';' retried.txt)"
+          {
+            echo
+            echo "**Passed only on retry** (the first failure is in the Playwright report):"
+            sed 's/^/- /' retried.txt
+          } >>"$GITHUB_STEP_SUMMARY"
+      # The environment must not have moved during the test (a deploy landed meanwhile): otherwise the pass proves
+      # nothing about this target.
+      - name: Check ${{ matrix.env }} still serves ${{ matrix.target }}
+        run: |
+          if ! ./check-serving.sh "$E2E_ENV" "$TARGET" >serving-after.txt 2>&1; then
             cat serving-after.txt
-            echo "::error::Changed during the test: $(tail -n 1 serving-after.txt)"
+            echo "changed during the test: $(tail -n 1 serving-after.txt)" >"$OUTCOME"
+            echo "::error::$(cat "$OUTCOME")"
             { echo; echo "**Changed during the test**: $(tail -n 1 serving-after.txt)"; } >>"$GITHUB_STEP_SUMMARY"
             exit 1
           fi
           if ! diff -q serving.txt serving-after.txt >/dev/null; then
             diff serving.txt serving-after.txt || true
-            echo "::error::$E2E_ENV was redeployed during the test"
+            echo "$E2E_ENV was redeployed during the test" >"$OUTCOME"
+            echo "::error::$(cat "$OUTCOME")"
             { echo; echo "**Redeployed during the test**"; } >>"$GITHUB_STEP_SUMMARY"
             exit 1
           fi
-          { echo; echo "Still serving $VERSION after the test."; } >>"$GITHUB_STEP_SUMMARY"
+          { echo; echo "Still serving $TARGET after the test."; } >>"$GITHUB_STEP_SUMMARY"
       - name: Upload the Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.env }}
           # The report carries no traces in CI (see playwright.config.ts) and never the Staff password.
-          path: e2e/playwright-report
+          path: |
+            e2e/playwright-report
+            e2e/results.json
           retention-days: 14
+      # The outcome, whatever happened above: success, failure (and why), or inactive when cancelled. A cancelled
+      # dev run was superseded by a newer one; a cancelled QA or prod run was cancelled by hand.
+      - name: Record the outcome on the Deployment
+        if: ${{ always() && steps.deployment.outputs.id != '' }}
+        working-directory: .
+        env:
+          ID: ${{ steps.deployment.outputs.id }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          retried=
+          [ ! -s e2e/retried.txt ] || retried=$(wc -l <e2e/retried.txt | tr -d ' ')
+          case "$JOB_STATUS" in
+            success) set -- success "passed${retried:+, $retried test(s) only on retry}" ;;
+            failure) set -- failure "$(cat "$OUTCOME" 2>/dev/null || echo "the smoke test job failed")" ;;
+            *) if [ "$E2E_ENV" = dev ]; then set -- inactive superseded; else set -- inactive cancelled; fi ;;
+          esac
+          scripts/deployment.sh finish "$ID" "$1" "$RUN_URL" "$E2E_BASE_URL" "$2"

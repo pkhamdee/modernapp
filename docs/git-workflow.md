@@ -6,6 +6,7 @@ in [ADR 0007](adr/0007-release-gates-in-ci-and-promotion-prs.md); the one-off hu
 
 ```
 issue/* ── PR (required checks) ──► main ── CI: gates, scan, push main-<sha> ──► Flux ──► eshop-dev
+                                     │  smoke test of dev at the pushed commit (Deployment) ◄─┘
                                      │
          scripts/release.sh X.Y.Z-rc.N (tag on release/N.x)
                                      ▼
@@ -144,6 +145,26 @@ the push with a notice. A version's images are pushed once: the push job refuses
 when any `<service>:<version>` already exists (`scripts/check-new-images.sh`), so a re-run of an old candidate's CI
 can't replace images QA tested, and a dry run needs a new `N` each time.
 
+### Dev's smoke test
+
+Every push to `main`, Flux's image-update commits included, starts the **E2E smoke test** (`.github/workflows/e2e.yml`,
+[ADR 0008](adr/0008-smoke-tests-on-deploy-reported-as-deployments.md)) for `eshop-dev` at the pushed commit, on the
+runner inside the cluster; nobody dispatches it. The run:
+
+1. records a GitHub **Deployment** of that commit to `dev`, in progress (`scripts/deployment.sh`; Code → Deployments,
+   or `gh api repos/pkhamdee/modernapp/deployments?environment=dev`);
+2. waits until `eshop-dev` serves the commit (`e2e/check-serving.sh --wait dev <commit>`: `apps-dev` applied
+   `main@sha1:<commit>` and every Deployment rolled out from it), for up to 15 minutes, else fails as "not deployed";
+3. runs Playwright against `https://eshop.localhost`, retrying a failed test once (a pass on the retry passes, and the
+   run summary names the test; the Playwright report keeps the first failure), then checks dev still serves the
+   commit;
+4. marks the Deployment success or failure, linked to the run and `https://eshop.localhost`.
+
+Only the newest dev deploy is tested: a newer push cancels a run still waiting or testing, and its Deployment becomes
+inactive, "superseded" (not failed). A code change is tested twice: at the merge commit, still on the previous
+images, and at Flux's image-update commit once CI has pushed the new ones, which supersedes the first run if it is
+still going. The run is named `E2E push <commit>`. What a push tests is decided by `scripts/smoke-targets.sh`.
+
 ## Releasing
 
 A release goes **release candidate → QA promotion → QA test run → sign-off → prod promotion**, each a separate,
@@ -214,12 +235,13 @@ docs/setup.md "Cluster runner"); the script starts the workflow and follows it:
 e2e/run-on-actions.sh qa X.Y.Z-rc.N      # workflow "E2E smoke test", environment qa, version X.Y.Z-rc.N
 ```
 
-The run refuses unless QA is serving exactly that candidate, asked of the cluster (`e2e/check-serving.sh`: `apps-qa`
-not suspended and Ready, applied revision `vX.Y.Z-rc.N@sha1:…`, every Deployment in `eshop-qa` rolled out with
-`X.Y.Z-rc.N` images), before and again after the test. It is named **`E2E qa X.Y.Z-rc.N`**, and its summary records
-the version, revision, images and the test code's commit. Sign-off finds the latest completed run of that name on
-`main` created since `main` last changed QA's pin (`<pinned-at>`, UTC: the commit on `main` that last changed a
-`# release-pin: qa` line). An older run tested an earlier deployment (rc.1 → rc.2 → rc.1 needs a new run of rc.1):
+The run waits (up to 15 minutes, then fails) until QA is serving exactly that candidate, asked of the cluster
+(`e2e/check-serving.sh --wait`: `apps-qa` not suspended and Ready, applied revision `vX.Y.Z-rc.N@sha1:…`, every
+Deployment in `eshop-qa` rolled out with `X.Y.Z-rc.N` images), and checks again after the test. Like dev's
+automatic run, it retries a failed test once and records a Deployment of `vX.Y.Z-rc.N` to `qa`. It is named
+**`E2E qa X.Y.Z-rc.N`**, and its summary records the version, revision, images and the test code's commit.
+Sign-off finds the latest completed run of that name on `main` created since `main` last changed QA's pin
+(`<pinned-at>`, UTC: the commit on `main` that last changed a `# release-pin: qa` line). An older run tested an earlier deployment (rc.1 → rc.2 → rc.1 needs a new run of rc.1):
 
 ```bash
 gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch \
@@ -227,8 +249,8 @@ gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event w
   --jq '[.[] | select(.displayTitle == "E2E qa X.Y.Z-rc.N" and .createdAt >= "<pinned-at>")] | first'
 ```
 
-The same check works for prod (`e2e/run-on-actions.sh prod X.Y.Z`, run `E2E prod X.Y.Z`); without a version it is
-the plain smoke test (`e2e/run-on-actions.sh`, `e2e/run-on-actions.sh dev`).
+The same works for prod (`e2e/run-on-actions.sh prod X.Y.Z`, run `E2E prod X.Y.Z`); without a version it tests
+prod's pin on `main` (`e2e/run-on-actions.sh`) or dev at `main`'s head (`e2e/run-on-actions.sh dev`).
 
 ### 5. Sign-off
 
