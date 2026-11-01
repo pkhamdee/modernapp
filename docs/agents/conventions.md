@@ -273,9 +273,13 @@ Agents are denied these; ask the user, giving the exact command:
   public repository's fork PR could otherwise run on the cluster's runner;
 - creating or renewing secrets: `PROMOTION_TOKEN` and `DOCKERHUB_TOKEN` are secrets of the `release` environment
   (`gh secret set <NAME> --env release`; `docs/setup.md`, "Release secrets"), not repo secrets;
-- applying `scripts/protect-main.sh` (main's ruleset, the `v*` tag rulesets and the `release` environment) or changing any repo setting;
+- the smoke test's email settings (`docs/setup.md`, "Smoke test email"): the Gmail sending account and its app
+  password, secret `SMTP_PASSWORD` of the `smoke-test` environment (`gh secret set SMTP_PASSWORD --env smoke-test`)
+  and repository variables `SMTP_USERNAME` and `NOTIFY_EMAIL` (`gh variable set`). Agents never set them and never
+  send a real email: `scripts/notify.sh` is tested with a fake `curl` in `scripts/tests/release-scripts.sh`;
+- applying `scripts/protect-main.sh` (main's ruleset, the `v*` tag rulesets, the `release` and `smoke-test` environments) or changing any repo setting;
   give the user `scripts/protect-main.sh --dry-run` first. Test `scripts/release.sh`, `scripts/check-release-tag.sh`,
-  `scripts/pin-release.sh`, `scripts/promotion-pr.sh`, `scripts/sign-off.sh`, `scripts/check-new-images.sh` and `scripts/protect-main.sh` with
+  `scripts/pin-release.sh`, `scripts/promotion-pr.sh`, `scripts/sign-off.sh`, `scripts/check-new-images.sh`, `scripts/notify.sh` and `scripts/protect-main.sh` with
   `scripts/tests/release-scripts.sh` (throwaway local repos, fake `gh`), never against GitHub.
 
 `main` is protected (`docs/git-workflow.md`, "Protecting main"): agents never push to it; every change is a PR whose
