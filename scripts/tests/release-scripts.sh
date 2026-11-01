@@ -82,13 +82,25 @@ CRANE
 chmod +x "$work/bin/gh" "$work/bin/crane"
 export PATH="$work/bin:$PATH" GH_LOG="$work/gh.log" GH_STATE="$work/gh-state" CRANE_LOG="$work/crane.log"
 
+# This checkout's clusters/local with the pins as they were before QA's first release candidate (prod on 0.2.0,
+# apps-qa suspended), whatever main pins now: promotions change the live pins, and the tests must not change with them.
+clusters="$work/clusters"
+cp -R "$root/clusters/local" "$clusters"
+for f in "$clusters"/*.yaml; do
+  sed -E 's|: "?[^" #]*"? +(# release-pin: [a-z]+)$|: "0.2.0" \1|' "$f" >"$f.pins" && mv "$f.pins" "$f"
+done
+if ! grep -q ' # release-pin-until: qa$' "$clusters/qa-release.yaml"; then
+  awk '{ print } /^  name: apps-qa$/ { found = 1 } found && /^spec:$/ { print "  suspend: true # release-pin-until: qa"; found = 0 }' \
+    "$clusters/qa-release.yaml" >"$clusters/qa-release.yaml.pins" && mv "$clusters/qa-release.yaml.pins" "$clusters/qa-release.yaml"
+fi
+
 failures=0
 check() { # check <description> <command...>: passes when the command succeeds
   local what=$1; shift
   if "$@"; then echo "ok   $what"; else echo "FAIL $what"; sed 's/^/     /' "$work/out" 2>/dev/null; failures=$((failures + 1)); fi
 }
 
-# A fresh origin with one commit on main holding this checkout's scripts and clusters/local; prints a clone's path.
+# A fresh origin with one commit on main holding this checkout's scripts and $clusters; prints a clone's path.
 fresh() {
   local dir="$work/$1"
   git init -q --bare -b main "$dir/origin.git"
@@ -96,7 +108,7 @@ fresh() {
   mkdir -p "$dir/seed/clusters" "$dir/seed/.github"
   cp -R "$root/scripts" "$dir/seed/"
   cp "$root/.github/services.json" "$dir/seed/.github/"
-  cp -R "$root/clusters/local" "$dir/seed/clusters/"
+  cp -R "$clusters" "$dir/seed/clusters/local"
   git -C "$dir/seed" add -A
   git -C "$dir/seed" commit -qm "initial"
   git -C "$dir/seed" push -q origin main
@@ -245,10 +257,10 @@ check "check-release-tag.sh rejects a candidate on no release/N.x branch" reject
 
 # --- scripts/pin-release.sh (the pins in clusters/local) ---
 
-mkdir -p "$work/pins" && cp "$root"/clusters/local/*.yaml "$work/pins/"
+mkdir -p "$work/pins" && cp "$clusters"/*.yaml "$work/pins/"
 pin() { PIN_DIR="$work/pins" "$root/scripts/pin-release.sh" "$@" >"$work/out" 2>&1; }
 suspended_until_first_release() {
-  # QA has no release yet on this checkout's main: suspended until the first candidate is pinned; prod never is.
+  # QA has no release yet in $clusters: suspended until the first candidate is pinned; prod never is.
   pin --suspended qa && ! pin --suspended prod \
     && pin qa 0.3.0-rc.1 && ! pin --suspended qa && pin qa && [ "$(cat "$work/out")" = 0.3.0-rc.1 ]
 }
@@ -368,7 +380,7 @@ check "sign-off.sh refuses a candidate QA is not running (main pins QA to anothe
 
 qa_suspended_refused() {
   # main pins QA to the candidate but still suspends apps-qa: QA runs nothing.
-  sed 's/"0.2.0" # release-pin: qa$/"0.3.0-rc.1" # release-pin: qa/' "$root/clusters/local/qa-release.yaml" \
+  sed 's/"0.2.0" # release-pin: qa$/"0.3.0-rc.1" # release-pin: qa/' "$clusters/qa-release.yaml" \
     >"$clone/clusters/local/qa-release.yaml"
   git -C "$clone" commit -qam "suspend QA"
   git -C "$clone" push -q origin HEAD:main
