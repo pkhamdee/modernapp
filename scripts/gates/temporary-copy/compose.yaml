@@ -1,0 +1,131 @@
+# The temporary copy of eShop (ADR 0007): what the release gates (Locust, ZAP) test before any image is pushed.
+# Started and thrown away by scripts/gates/temporary-copy.sh, in CI and on this Mac alike; see that script.
+#
+#   eshop-web, eshop-api, eshop-node-api, PostgreSQL and thirdparty-mock, behind a `gateway` that routes like the
+#   cluster's HTTPRoutes (/api, /images, /thirdparty-mock, everything else to eshop-web), on plain HTTP.
+#   No sync master and no SQL Server: Locust and ZAP never exercise the Enterprise sync, and SQL Server is amd64-only.
+#
+# The four eShop images are parameters, so the copy runs exactly the images CI has just built:
+#   ESHOP_WEB_IMAGE, ESHOP_API_IMAGE, ESHOP_NODE_API_IMAGE, THIRDPARTY_MOCK_IMAGE
+# (default: the temporary-copy/<service>:local images that `temporary-copy.sh build` makes from this checkout).
+#
+# The Staff account and the readiness check's Node image come from temporary-copy/defaults.env, exported by
+# temporary-copy.sh (run `docker compose` through it, or with `--env-file defaults.env`).
+# Every value below is throwaway and exists only inside the copy: the database password, the token signing key and
+# the Staff account are not secrets and are never used anywhere else.
+name: ${TEMPORARY_COPY_PROJECT:-eshop-temporary-copy}
+
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+
+services:
+  postgres:
+    image: postgres:18.6-alpine3.23
+    environment:
+      POSTGRES_USER: eshop
+      POSTGRES_PASSWORD: temporary-copy
+      POSTGRES_DB: eshop
+    # Data lives in the container only (no named volume): `down` throws it away.
+    tmpfs: [/var/lib/postgresql]
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "eshop", "-d", "eshop"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  thirdparty-mock:
+    <<: *hardened
+    image: ${THIRDPARTY_MOCK_IMAGE:-temporary-copy/thirdparty-mock:local}
+    # The mock Enterprise System admin tool (/enterprise/) needs SQL Server, which the copy leaves out; the SMS,
+    # ID Verification and Credit Check mocks don't.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  eshop-node-api:
+    <<: *hardened
+    image: ${ESHOP_NODE_API_IMAGE:-temporary-copy/eshop-node-api:local}
+    # A folder in the container stands in for the SMB share; the demo Product photos are published into it at startup.
+    environment:
+      IMAGE_STORE: folder
+      IMAGE_FOLDER: /tmp/images
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/healthz/ready').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  eshop-api:
+    <<: *hardened
+    image: ${ESHOP_API_IMAGE:-temporary-copy/eshop-api:local}
+    environment:
+      ConnectionStrings__Eshop: Host=postgres;Database=eshop;Username=eshop;Password=temporary-copy;GSS Encryption Mode=Disable
+      # Migrations and the same demo data as dev (catalog, Branches) are applied at startup, as in the cluster.
+      Database__MigrateOnStartup: "true"
+      Auth__SigningKey: temporary-copy-signing-key-not-a-secret-0123456789
+      ThirdParty__BaseUrl: http://thirdparty-mock:8080/
+      ImageService__BaseUrl: http://eshop-node-api:8080/
+      # Throwaway Staff account, provisioned at startup; exists only in this copy.
+      Staff__Accounts__0__Username: ${TEMPORARY_COPY_STAFF_USERNAME:?run through temporary-copy.sh (defaults.env)}
+      Staff__Accounts__0__Password: ${TEMPORARY_COPY_STAFF_PASSWORD:?run through temporary-copy.sh (defaults.env)}
+      Staff__Accounts__0__DisplayName: พนักงานสาธิต
+      # Serves /openapi/v1.json (outside /api, so not through the gateway) for the ZAP API scan (dast.sh). Only here.
+      OpenApi__Enabled: "true"
+    # The chiseled image has no shell or HTTP client for a healthcheck: ready.mjs checks /healthz/ready instead.
+    depends_on:
+      postgres: { condition: service_healthy }
+      thirdparty-mock: { condition: service_healthy }
+      eshop-node-api: { condition: service_healthy }
+
+  eshop-web:
+    <<: *hardened
+    image: ${ESHOP_WEB_IMAGE:-temporary-copy/eshop-web:local}
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # Stand-in for the Gateway (Traefik + HTTPRoutes): one origin for the web app, /api, /images and the mock.
+  gateway:
+    image: caddy:2.11.7-alpine
+    read_only: true
+    tmpfs: [/tmp]
+    command: ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
+    environment:
+      XDG_CONFIG_HOME: /tmp/config
+      XDG_DATA_HOME: /tmp/data
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    ports:
+      # The copy is reached at http://localhost:${TEMPORARY_COPY_PORT} from the host (Locust, ZAP, a browser).
+      - "127.0.0.1:${TEMPORARY_COPY_PORT:-8090}:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/gateway-healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      eshop-web: { condition: service_healthy }
+      eshop-api: { condition: service_started }
+
+  # Not a part of the copy: the check `temporary-copy.sh up` runs inside the copy's network once everything has
+  # started (`docker compose run ready`). See ready.mjs.
+  ready:
+    profiles: [check]
+    image: ${TEMPORARY_COPY_NODE_IMAGE:?run through temporary-copy.sh (defaults.env)}
+    read_only: true
+    cap_drop: [ALL]
+    volumes:
+      - ./ready.mjs:/ready/ready.mjs:ro
+      - ./gateway-client.mjs:/ready/gateway-client.mjs:ro
+    environment:
+      READY_TIMEOUT_SECONDS: ${TEMPORARY_COPY_TIMEOUT_SECONDS:-180}
+      STAFF_USERNAME: ${TEMPORARY_COPY_STAFF_USERNAME:?run through temporary-copy.sh (defaults.env)}
+      STAFF_PASSWORD: ${TEMPORARY_COPY_STAFF_PASSWORD:?run through temporary-copy.sh (defaults.env)}
+    command: ["node", "/ready/ready.mjs"]

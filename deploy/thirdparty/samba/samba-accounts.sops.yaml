@@ -1,7 +1,5 @@
 # SMB account passwords of the mock Samba (deploy/thirdparty/samba/samba.yaml), one account per environment:
-# eshopdev / eshopprod must equal the password in deploy/apps/<env>/eshop-node-api-smb.sops.yaml.
-# Temporary: the third key is the prod account of releases up to v0.1.x (the release's own SOPS file holds the
-# same password); delete it once prod runs v0.2.0 or later (docs/setup.md).
+# eshopdev / eshopqa / eshopprod must equal the password in deploy/apps/<env>/eshop-node-api-smb.sops.yaml.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -10,7 +8,7 @@ type: Opaque
 stringData:
     eshopdev: ENC[AES256_GCM,data:/KJWpk8uSLo05y+cAsDwRelfz0IACsDaKcdquUv+lgiacnv/g7EOzeJF/7kTTzl7,iv:fommBZlMVXP70S7Jh2XdOQOMlE+JrfmjIDCdncMr1kw=,tag:vAYpnBNvX5qZzKr7j3qZdA==,type:str]
     eshopprod: ENC[AES256_GCM,data:czMSr2aeNMSK/3VUogbFGot52fOlWXG7Qhqtn01IYr6Kc8O4fRp+U/wFDav+9szU,iv:mJaloyaxOx6GTTh/qlazBDD1ci1sOdRCyLwuAlge1tE=,tag:u5xhaHkkQ2XTbxZsdwxf5Q==,type:str]
-    sphoneprod: ENC[AES256_GCM,data:9IUb2TT1NYgKhr4Wr4JxB8Q4KDIOWLTGzoDeA68wPS0=,iv:DjafjJRXTboToYOcAw0QoY+z58eqSDCr64hn9MKyNX8=,tag:s0vKSgIA/LoOCkVxdDefCw==,type:str]
+    eshopqa: ENC[AES256_GCM,data:pBZk+zwofLDTzVbmHjG9Thc/BbuET4HvNzIhAziZUJE=,iv:t39DLTmAWprqkREENepuaPovt0lUpY7RDo91cnFVBLs=,tag:GQaHph51e6F+hDhTGtxVcA==,type:str]
 sops:
     age:
         - enc: |
@@ -23,6 +21,6 @@ sops:
             -----END AGE ENCRYPTED FILE-----
           recipient: age1mfq6dc0wrlwaedn2r2dwm96j3j4wg2ze4axed9zdz7vzuraddfssnuh2vh
     encrypted_regex: ^(data|stringData)$
-    lastmodified: "2026-10-30T11:49:50Z"
-    mac: ENC[AES256_GCM,data:dEBBRqu7iTuTKXxMF0yY53vuISSSRcZDZPBIdkzNDG/lA7F5sfQUWGfOgJqagWH2I5nHnYQOOe1f/IXyJk/qbGEc0HAoWOYArKZTd7OqvGdoU6fEBdwAOMzLwkn2B/i8i4zc5WZkhKexjQ3dSW30b4RjXgEc0MSufqKHRZH5q+w=,iv:WGJRMnQ42J1vyCKCUXN5NF8MG2s+whEnL3TdxNFBQ+I=,tag:rGgNnVOD6whSaQkNabzh1A==,type:str]
+    lastmodified: "2026-10-31T14:36:37Z"
+    mac: ENC[AES256_GCM,data:IVfltVLOQopRil84bcVsXDaFmZB6IBGdqaFs3gGFNoKI2EVZ6Bml8BSknSzGe/6WdBXbp5SViQE5hGq78J4Rd9c6066jNLfz7KCCFnSqjM8yLybalgsZDFNZ9efUH8PwIvcAdDGvQ5j3gzbY9v6ffqsuxMeCFje4a3bcgxULmro=,iv:sY1zLFrpNI0DDGpVFWdQupio75TftR3kdRqtDkhVrv4=,tag:6DzYb3z4wp1mTKWRceC/Uw==,type:str]
     version: 3.13.3

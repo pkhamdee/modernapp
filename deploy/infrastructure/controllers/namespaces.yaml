@@ -9,16 +9,16 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: eshop-prod
+  name: eshop-qa
   labels:
     eshop.io/gateway-access: "true"
 ---
-# Temporary: prod's namespace in releases up to v0.1.x, where prod keeps running until v0.2.0 is out (#50).
-# Delete it once prod runs v0.2.0 or later (docs/setup.md, "Moving to eShop"); Flux then prunes it.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: sphone-prod
+  name: eshop-prod
+  labels:
+    eshop.io/gateway-access: "true"
 ---
 apiVersion: v1
 kind: Namespace

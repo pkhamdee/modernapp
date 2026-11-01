@@ -1,4 +1,4 @@
-# Shared mocked third parties in the `thirdparty` namespace, used by both eshop-dev and eshop-prod:
+# Shared mocked third parties in the `thirdparty` namespace, used by eshop-dev, eshop-qa and eshop-prod:
 # thirdparty-mock (SMS, later ID Verification and Credit Check), Samba (image share), SQL Server
 # (Enterprise System). One folder per component under deploy/thirdparty/.
 apiVersion: kustomize.toolkit.fluxcd.io/v1

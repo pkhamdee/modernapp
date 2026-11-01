@@ -1,0 +1,70 @@
+# eshop-qa = one release candidate, pinned here: its manifests (deploy/apps/qa at tag vX.Y.Z-rc.N) and its
+# X.Y.Z-rc.N images. Same shape as prod-release.yaml.
+#
+# The pin is the lines ending in `# release-pin: qa`; they always hold the same exact version. QA moves only when
+# a QA promotion PR changes them and is merged (merging is QA's approval). Nothing follows tags automatically.
+#
+#   scripts/pin-release.sh qa                 # the pinned release candidate
+#   scripts/pin-release.sh qa X.Y.Z-rc.N      # the QA promotion PR's only edit (docs/git-workflow.md, "Promotion and rollback")
+#
+# NO RELEASE YET: apps-qa is suspended (the line ending in `# release-pin-until: qa`) and the pin holds 0.2.0 only
+# as a placeholder. A release tag carries its own overlay, and no tag before the first release candidate cut after
+# #74 contains deploy/apps/qa, so QA cannot run v0.2.0. The first QA promotion (scripts/pin-release.sh qa
+# X.Y.Z-rc.N) pins that candidate and deletes the suspend line in the same edit; Flux then deploys QA for the first
+# time. Until then everything else QA needs (namespace, gateway listener and certificate name, thirdparty
+# accounts and databases) is already in place from main.
+#
+# Object names here are what Flux tracks: renaming eshop-qa or apps-qa makes Flux delete and recreate it, and
+# deleting apps-qa prunes everything it applied in eshop-qa, the PostgreSQL Cluster (QA's data) included.
+# apps-qa comes first: `flux build|diff kustomization apps-qa --kustomization-file` reads documents in order
+# as Kustomizations until the name matches.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps-qa
+  namespace: flux-system
+spec:
+  suspend: true # release-pin-until: qa
+  dependsOn:
+    - name: infra-configs
+  interval: 10m
+  retryInterval: 1m
+  timeout: 5m
+  path: ./deploy/apps/qa
+  prune: true
+  wait: true
+  # deploy/apps/qa as it is in the pinned release-candidate tag.
+  sourceRef:
+    kind: GitRepository
+    name: eshop-qa
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  # The pinned release candidate's images (deploy/apps/qa has no tags). Every QA service needs a line here.
+  images:
+    - name: docker.io/pkhamdee/eshop-api
+      newTag: "0.2.0" # release-pin: qa
+    - name: docker.io/pkhamdee/eshop-web
+      newTag: "0.2.0" # release-pin: qa
+    - name: docker.io/pkhamdee/eshop-node-api
+      newTag: "0.2.0" # release-pin: qa
+    - name: docker.io/pkhamdee/eshop-sync-master
+      newTag: "0.2.0" # release-pin: qa
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: eshop-qa
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: ssh://git@github.com/pkhamdee/modernapp
+  secretRef:
+    name: flux-system
+  ref:
+    # An exact version selects exactly tag vX.Y.Z or vX.Y.Z-rc.N.
+    semver: "0.2.0" # release-pin: qa
+  ignore: |
+    /*
+    !/deploy/

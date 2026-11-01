@@ -1,18 +1,33 @@
 # CI and tag-based releases. See docs/git-workflow.md.
-#   - push / PR to main or release/*  -> lint + test every service
-#   - push to main                    -> also build changed services for arm64, Trivy scan,
+#   - push / PR to main or release/*  -> lint + test every service; SAST and dependency-scan gates (scripts/gates)
+#                                        (PRs stop here: no image, no temporary copy)
+#   - push to main                    -> also build changed services for arm64, start the temporary copy from them
+#                                        (unchanged services: their newest main build), gates, Trivy scan, then
 #                                        push docker.io/pkhamdee/<service>:main-<sha>[-<unix-ts>]
 #                                        (Flux image automation deploys the newest to eshop-dev)
-#   - push tag vX.Y.Z                 -> lint + test, validate the tag, build EVERY service, scan,
-#                                        push docker.io/pkhamdee/<service>:X.Y.Z, then publish the GitHub Release
-#                                        (Flux then runs tag vX.Y.Z with the X.Y.Z images in eshop-prod)
-#   - workflow_dispatch               -> no input, on main: rebuild and push every service as main-<sha>
-#                                        input version=0.0.0-test.N: dry run of the release build on any
-#                                        branch; pushes every service as that pre-release tag, no GitHub Release
-#                                        (never deployed: eshop-prod follows plain X.Y.Z releases only)
+#   - push tag vX.Y.Z-rc.N            -> lint + test, validate the tag (release candidate: annotated, on release/N.x),
+#                                        build EVERY service, temporary copy, gates, scan, push
+#                                        docker.io/pkhamdee/<service>:X.Y.Z-rc.N, then open the QA promotion PR
+#                                        (scripts/promotion-pr.sh, with PROMOTION_TOKEN); merging it deploys eshop-qa
+#   - push tag vX.Y.Z                 -> lint + test only: a release is tagged by the "Sign off release candidate"
+#                                        workflow, which copies the candidate's images and publishes the Release
+#   - workflow_dispatch               -> no input, on main: rebuild, gate and push every service as main-<sha>
+#                                        input version=0.0.0-test.N: dry run of the release build; builds, gates
+#                                        and scans every service on any branch. From main it then pushes each as
+#                                        that pre-release tag (never deployed: no environment can be pinned to it);
+#                                        from another branch it skips the push with a notice (the `release`
+#                                        environment deploys only from main). Never a promotion PR.
+# Jobs that use the Docker Hub token or PROMOTION_TOKEN (push, promote-qa) run in environment `release`, deployable
+# only from main and v* tags (scripts/protect-main.sh), so a run from another branch never gets those secrets.
+# The jobs a pull request runs are main's required checks, by name: renaming one means re-running
+# scripts/protect-main.sh (docs/git-workflow.md, "Protecting main").
+# Image pipeline (ADR 0007): plan -> build (matrix) -> gate (temporary copy + gates) -> scan (matrix) -> push.
+# A failure anywhere before `push` means no image is pushed.
 #
 # Adding a service: add a lint/test job below and to `plan.needs`, and an entry in
 # .github/services.json (build context, Dockerfile, source paths). Release builds pick it up automatically.
+# If it belongs in the temporary copy, add it to scripts/gates/temporary-copy/compose.yaml and to the gate job's
+# image list.
 name: CI / Release
 
 on:
@@ -29,7 +44,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release dry run: build and push every service as this pre-release tag (0.0.0-test.N). Empty = rebuild main-<sha> (main only)."
+        description: "Release dry run: build every service and (from main only) push it as this pre-release tag (0.0.0-test.N). Empty = rebuild main-<sha> (main only)."
         required: false
         default: ""
 
@@ -52,7 +67,9 @@ jobs:
       - uses: actions/setup-dotnet@v6
         with:
           global-json-file: services/eshop-api/global.json
-      - run: dotnet restore
+      # Locked mode: the committed packages.lock.json files are what the dependency-scan gate scans, so a
+      # package change without its regenerated lock file fails here.
+      - run: dotnet restore --locked-mode
       - name: Lint
         run: dotnet format --verify-no-changes --no-restore
       - name: Build
@@ -123,6 +140,34 @@ jobs:
       - name: Test
         run: npm test
 
+  # Security gates (ADR 0007): scripts in scripts/gates run their tool from a pinned image, the same way locally
+  # (docs/setup.md, "Developing"). They run on every PR, push and tag; the reports are kept as artifacts.
+  sast:
+    name: SAST (Semgrep, fail on ERROR)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/gates/sast.sh
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: sast-report
+          path: reports/sast/
+          if-no-files-found: ignore
+
+  deps:
+    name: dependency scan (Trivy, fail on critical)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: scripts/gates/deps.sh
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: deps-report
+          path: reports/deps/
+          if-no-files-found: ignore
+
   # Mechanical rules no service job covers. Not in plan.needs: a release tag never waits on it.
   # Pushes that only touch deploy/** or clusters/** run no CI (see `on`), so manifests are checked on the PR.
   repo-rules:
@@ -154,16 +199,24 @@ jobs:
             exit 1
           fi
       - name: ShellCheck
-        run: shellcheck scripts/*.sh e2e/*.sh
+        run: shellcheck scripts/*.sh scripts/lib/*.sh scripts/gates/*.sh scripts/tests/*.sh e2e/*.sh
+      # The release scripts (release, tag check, promotion PR, sign-off, image check, protection) against throwaway
+      # local repos and fake gh and crane (no GitHub, no registry).
+      - name: Release scripts
+        run: scripts/tests/release-scripts.sh
+      # The served-version check e2e.yml (and so sign-off) relies on, against a fake kubectl.
+      - name: e2e/check-serving.sh tests
+        run: e2e/check-serving.test.sh
 
-  # Decides what to build, after every service's lint/test passed:
-  #   - tag vX.Y.Z: validate the tag (semver, annotated, on a release/N.x branch); build every service as X.Y.Z.
+  # Decides what to build, after every service's lint/test and the SAST and dependency-scan gates passed:
+  #   - tag vX.Y.Z-rc.N: validate the tag (scripts/check-release-tag.sh: annotated, on a release/N.x branch); build
+  #     every service as X.Y.Z-rc.N, and promote=qa. Tag vX.Y.Z: build nothing (sign-off made it).
   #   - workflow_dispatch with `version`: release dry run; build every service as that pre-release tag.
   #   - main: build services whose `paths` changed since the previous push, tagged main-<sha>. Everything is
   #     rebuilt when the push has no usable base (first push, force push), when this workflow or services.json
   #     changes, or on workflow_dispatch without `version`.
   plan:
-    needs: [eshop-api, eshop-web, thirdparty-mock, eshop-node-api]
+    needs: [eshop-api, eshop-web, thirdparty-mock, eshop-node-api, sast, deps]
     if: >-
       (github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))
       || github.event_name == 'workflow_dispatch'
@@ -171,6 +224,8 @@ jobs:
     outputs:
       matrix: ${{ steps.select.outputs.matrix }}
       version: ${{ steps.select.outputs.version }}
+      promote: ${{ steps.select.outputs.promote }} # qa for a release candidate: open the QA promotion PR after push
+      push: ${{ steps.select.outputs.push }} # false for a dry run off main: build, gate and scan, push nothing
     steps:
       - uses: actions/checkout@v7
         with:
@@ -186,27 +241,35 @@ jobs:
         run: |
           all=$(jq -c . .github/services.json)
           version=""
+          promote=""
+          push=true
           if [ "$REF_TYPE" = "tag" ]; then
-            # Enforce the workflow rules: semver name, annotated tag, tagged commit on a release/N.x branch.
+            # Release candidate vX.Y.Z-rc.N (annotated, on a release/N.x branch): build, gate, push, then open the
+            # QA promotion PR. Plain vX.Y.Z: made by sign-off from a candidate's images, so nothing to build.
             git fetch --force origin "refs/tags/${TAG}:refs/tags/${TAG}"
-            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::Tag '$TAG' is not vMAJOR.MINOR.PATCH"; exit 1
+            if ! version=$(scripts/check-release-tag.sh "$TAG" 2>"$RUNNER_TEMP/tag-check"); then
+              echo "::error::$(cat "$RUNNER_TEMP/tag-check")"; exit 1
             fi
-            if [ "$(git cat-file -t "$TAG")" != "tag" ]; then
-              echo "::error::Tag '$TAG' is lightweight; release tags must be annotated (git tag -a)"; exit 1
+            if [ -z "$version" ]; then
+              echo "::notice::$(cat "$RUNNER_TEMP/tag-check")"
+              matrix="[]"
+            else
+              matrix="$all"
+              promote=qa
             fi
-            if ! git branch -r --contains "$TAG" | grep -qE '^\s*origin/release/[0-9]+\.x$'; then
-              echo "::error::Tag '$TAG' is not on any release/N.x branch"; exit 1
-            fi
-            version="${TAG#v}"
-            matrix="$all"
           elif [ "$EVENT" = "workflow_dispatch" ] && [ -n "$DRY_RUN_VERSION" ]; then
-            # Only 0.0.0-test.N: never deployed (eshop-prod follows plain X.Y.Z releases only), so a dry run is harmless.
-            if ! [[ "$DRY_RUN_VERSION" =~ ^0\.0\.0-test\.[0-9]+$ ]]; then
+            # Only 0.0.0-test.N: never deployed (no environment can be pinned to it) and no promotion PR is opened.
+            . scripts/lib/versions.sh
+            if ! is_dry_run "$DRY_RUN_VERSION"; then
               echo "::error::Dry-run version must be 0.0.0-test.N"; exit 1
             fi
             version="$DRY_RUN_VERSION"
             matrix="$all"
+            if [ "$REF" != "refs/heads/main" ]; then
+              # The push needs environment `release`, which deploys only from main: stop cleanly before it.
+              echo "::notice::Dry run from $REF: builds, gates and scans every service; pushes nothing (only a dry run from main pushes)"
+              push=false
+            fi
           elif [ "$REF" != "refs/heads/main" ]; then
             echo "::notice::main-<sha> images are only built from main"
             matrix="[]"
@@ -224,12 +287,18 @@ jobs:
               ' .github/services.json)
             fi
           fi
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          { echo "matrix=$matrix"; echo "version=$version"; echo "promote=$promote"; echo "push=$push"; } >> "$GITHUB_OUTPUT"
           echo "Version: ${version:-main-<sha>}; services to build: $(jq -r 'map(.service) | join(", ")' <<<"$matrix")"
 
-  images:
-    name: image ${{ matrix.service }}
+  # Release gates (ADR 0007): nothing is pushed until every image is built, the temporary copy made from them is
+  # healthy and Locust and ZAP pass against it, and Trivy finds no critical vulnerability in any image.
+  #   build (matrix) -> gate -> scan (matrix) -> push -> promote-qa (release candidates only)
+  # Images travel between these jobs as artifacts (docker archives), never through the registry. Pull requests
+  # never get here (plan doesn't run for them).
+
+  # Builds each image natively for arm64 (the Apple Silicon cluster) and hands it on as an artifact; pushes nothing.
+  build:
+    name: build ${{ matrix.service }}
     needs: [plan]
     if: needs.plan.outputs.matrix != '[]'
     runs-on: ubuntu-24.04-arm # native arm64 build for the Apple Silicon cluster
@@ -247,15 +316,13 @@ jobs:
       - id: tags
         run: |
           if [ -n "$VERSION" ]; then
-            # Release (X.Y.Z; Flux moves eshop-prod to the newest) or dry run (0.0.0-test.N; never deployed).
+            # Release candidate (X.Y.Z-rc.N; a QA promotion PR follows) or dry run (0.0.0-test.N; never deployed).
             echo "list=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
-            echo "scan=${IMAGE}:${VERSION}" >> "$GITHUB_OUTPUT"
           else
             sha=$(git rev-parse --short=7 HEAD)
             ts=$(git show -s --format=%ct HEAD)
             # main-<sha> for humans; main-<sha>-<commit-ts> is what Flux's eshop-dev ImagePolicy orders by.
             echo "list=${IMAGE}:main-${sha},${IMAGE}:main-${sha}-${ts}" >> "$GITHUB_OUTPUT"
-            echo "scan=${IMAGE}:main-${sha}" >> "$GITHUB_OUTPUT"
           fi
       - uses: docker/setup-buildx-action@v4
       - name: Build
@@ -264,7 +331,8 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           platforms: linux/arm64
-          load: true
+          # A docker archive for the artifact (`docker load` in gate and push; Trivy reads it as it is).
+          outputs: type=docker,dest=${{ runner.temp }}/image/image.tar
           tags: ${{ steps.tags.outputs.list }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
@@ -272,42 +340,235 @@ jobs:
             org.opencontainers.image.version=${{ needs.plan.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-      - name: Scan (fail on critical)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      - name: Record the image's tags
+        env:
+          TAGS: ${{ steps.tags.outputs.list }}
+        run: tr , '\n' <<<"$TAGS" > "$RUNNER_TEMP/image/tags.txt"
+      - uses: actions/upload-artifact@v7
         with:
-          image-ref: ${{ steps.tags.outputs.scan }}
-          severity: CRITICAL
-          exit-code: "1"
+          name: image-${{ matrix.service }}
+          path: ${{ runner.temp }}/image/
+          retention-days: 1
+          if-no-files-found: error
+
+  # The temporary copy of eShop from the images just built (scripts/gates/temporary-copy.sh, the same script and
+  # Compose file as on this Mac). On a main push that rebuilt only some services, the others run their newest main
+  # build from Docker Hub, as eshop-dev does. The gates against the copy run here, before any scan or push.
+  gate:
+    name: temporary copy and gates
+    needs: [plan, build]
+    runs-on: ubuntu-24.04-arm # the images are arm64
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: image-*
+          path: ${{ runner.temp }}/images
+      - name: Load the images just built
+        run: for archive in "$RUNNER_TEMP"/images/image-*/image.tar; do docker load --input "$archive"; done
+      - name: Choose the copy's images
+        env:
+          REGISTRY: docker.io/${{ vars.DOCKERHUB_USERNAME }}
+        run: |
+          # Built by this run: its first tag. Not rebuilt (main push): the newest main build, as eshop-dev runs.
+          for service in eshop-web eshop-api eshop-node-api thirdparty-mock; do
+            tags="$RUNNER_TEMP/images/image-$service/tags.txt"
+            if [ -f "$tags" ]; then
+              image=$(head -n 1 "$tags")
+            else
+              image=$(scripts/gates/latest-main-image.sh "$REGISTRY/$service")
+            fi
+            variable=$(tr 'a-z-' 'A-Z_' <<<"$service")_IMAGE
+            echo "$variable=$image" >> "$GITHUB_ENV"
+            echo "$service: $image"
+          done
+      - name: Start the temporary copy (healthy, seeded)
+        run: scripts/gates/temporary-copy.sh up
+
+      # The gates against the copy, each a script in scripts/gates/ run on the copy's Compose network (gateway:8080),
+      # each failing the job (so nothing is pushed): Locust, then ZAP. A new gate is one more step here.
+
+      # Locust: ~50 Customers for 60 s; fails on p95 > 500 ms or > 1% errors (scripts/gates/perf/locust.conf).
+      - name: Performance gate (Locust)
+        run: scripts/gates/perf.sh
+      - name: Keep the performance report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: perf-report
+          path: reports/perf/
+          if-no-files-found: ignore
+
+      # ZAP baseline (web), and API scans (OpenAPI) signed out, as a Customer and as Staff; fails on High
+      # (scripts/gates/dast-rules.conf) or when a signed-in scan reached none of its role's endpoints. After Locust:
+      # the signed-in scans change the copy's data.
+      - name: ZAP baseline and API scans, signed out and signed in (fail on High)
+        run: scripts/gates/dast.sh
+      - name: Keep the ZAP reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: dast-report
+          path: reports/dast/
+          if-no-files-found: ignore
+
+      - name: Stop the temporary copy
+        if: always()
+        run: scripts/gates/temporary-copy.sh down
+      - name: Keep the copy's status and logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: temporary-copy-report
+          path: reports/temporary-copy/
+          if-no-files-found: ignore
+
+  # Trivy on every image built (scripts/gates/image-scan.sh, from its archive), after the gates against the copy passed.
+  scan:
+    name: scan ${{ matrix.service }}
+    needs: [plan, gate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: image-${{ matrix.service }}
+          path: ${{ runner.temp }}/image-${{ matrix.service }}
+      - name: Scan (fail on critical)
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: scripts/gates/image-scan.sh "$RUNNER_TEMP/image-$SERVICE/image.tar"
+      - uses: actions/upload-artifact@v7
+        if: ${{ !cancelled() }}
+        with:
+          name: image-scan-report-${{ matrix.service }}
+          path: reports/image-scan/
+          if-no-files-found: ignore
+
+  # Pushes every image only when every build, the temporary copy (and its gates) and every scan passed, and, for a
+  # version, only when none of its images exists yet (scripts/check-new-images.sh).
+  # Environment `release` (scripts/protect-main.sh) deploys only from main and v* tags, so its DOCKERHUB_TOKEN is out
+  # of reach of a run from any other branch, where a modified copy of this workflow could misuse it.
+  push:
+    name: push images
+    needs: [plan, gate, scan]
+    if: needs.plan.outputs.push == 'true' # a dry run from another branch stops after the scan (plan says why)
+    runs-on: ubuntu-24.04-arm
+    environment: release
+    permissions:
+      contents: read
+    outputs:
+      images: ${{ steps.push.outputs.images }} # every tag pushed, as image:tag@sha256:digest, one per line
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: image-*
+          path: ${{ runner.temp }}/images
+      - name: Load the images
+        run: for archive in "$RUNNER_TEMP"/images/image-*/image.tar; do docker load --input "$archive"; done
       # Docker Hub repositories are created public on first push. Needs the repo variable DOCKERHUB_USERNAME and
-      # the secret DOCKERHUB_TOKEN (a Docker Hub access token with Read & Write); see docs/setup.md.
+      # the `release` environment's secret DOCKERHUB_TOKEN (a Docker Hub access token with Read & Write); see
+      # docs/setup.md, "Release secrets".
       - uses: docker/login-action@v4
         with:
           registry: docker.io
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # A version (X.Y.Z-rc.N, 0.0.0-test.N) is pushed once: never overwrite a candidate QA may have tested.
+      # main-<sha>-<ts> tags are unique per commit and need no check.
+      - uses: actions/checkout@v7
+        if: needs.plan.outputs.version != ''
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
+        if: needs.plan.outputs.version != ''
+        with:
+          version: v0.22.1
+      - name: Refuse to overwrite ${{ needs.plan.outputs.version }}
+        if: needs.plan.outputs.version != ''
+        run: |
+          # shellcheck disable=SC2046 # one image per line, no spaces
+          scripts/check-new-images.sh $(cat "$RUNNER_TEMP"/images/image-*/tags.txt)
       - name: Push
-        env:
-          TAGS: ${{ steps.tags.outputs.list }}
+        id: push
         run: |
-          for tag in ${TAGS//,/ }; do docker push "$tag"; done
+          pushed="$RUNNER_TEMP/pushed.txt"
+          : > "$pushed"
+          for tags in "$RUNNER_TEMP"/images/image-*/tags.txt; do
+            while read -r tag; do
+              docker push "$tag" | tee "$RUNNER_TEMP/push.log"
+              digest=$(grep -oE 'digest: sha256:[0-9a-f]{64}' "$RUNNER_TEMP/push.log" | cut -d' ' -f2 | tail -n 1)
+              echo "${tag}${digest:+@$digest}" >> "$pushed"
+            done < "$tags"
+          done
+          { echo "images<<PUSHED"; cat "$pushed"; echo "PUSHED"; } >> "$GITHUB_OUTPUT"
 
-  # Publishes the GitHub Release only after every service's X.Y.Z image was built, scanned and pushed.
-  release:
-    if: github.ref_type == 'tag'
-    needs: [plan, images]
+  # A release candidate's images are pushed (every gate passed): open the QA promotion PR. Merging it is QA's
+  # approval, and Flux then deploys the candidate to eshop-qa. Never for main pushes or dry runs (plan.promote is
+  # empty). The GitHub Release is published later, by sign-off, for the plain vX.Y.Z tag.
+  # Uses the secret PROMOTION_TOKEN of environment `release` (fine-grained PAT, docs/setup.md "Promotion token"; the
+  # environment deploys only from main and v* tags), not GITHUB_TOKEN: a PR opened with GITHUB_TOKEN triggers no
+  # workflow, so its required checks would never run.
+  promote-qa:
+    name: open the QA promotion PR
+    needs: [plan, sast, deps, gate, scan, push]
+    if: needs.plan.outputs.promote == 'qa'
     runs-on: ubuntu-latest
+    environment: release
     permissions:
-      contents: write
+      contents: read
+    env:
+      VERSION: ${{ needs.plan.outputs.version }}
     steps:
-      - name: Publish GitHub Release
+      - name: Check PROMOTION_TOKEN
         env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.ref_name }}
-          VERSION: ${{ needs.plan.outputs.version }}
-          SERVICES: ${{ needs.plan.outputs.matrix }}
-          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          PROMOTION_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
         run: |
-          images=$(jq -r --arg owner "$DOCKERHUB_USERNAME" --arg v "$VERSION" \
-            '.[] | "- `docker.io/\($owner)/\(.service):\($v)`"' <<<"$SERVICES")
-          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes --title "$TAG" \
-            --notes "$(printf 'Images (deployed to eshop-prod by Flux):\n%s\n' "$images")"
+          if [ -z "$PROMOTION_TOKEN" ]; then
+            echo "::error::Secret PROMOTION_TOKEN (environment release) is missing, so the QA promotion PR can't be opened" \
+              "(the images are pushed). Create it as described in docs/setup.md, \"Promotion token\", then re-run" \
+              "this job; or open the PR yourself: scripts/promotion-pr.sh qa $VERSION"
+            exit 1
+          fi
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          token: ${{ secrets.PROMOTION_TOKEN }} # git push of the promotion branch
+      - name: Open the QA promotion PR
+        env:
+          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
+          PROMOTION_IMAGES: ${{ needs.push.outputs.images }}
+          TAG: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}
+          TAG_URL: ${{ github.server_url }}/${{ github.repository }}/tree/${{ github.ref_name }}
+          SAST: ${{ needs.sast.result }}
+          DEPS: ${{ needs.deps.result }}
+          GATE: ${{ needs.gate.result }}
+          SCAN: ${{ needs.scan.result }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          PROMOTION_DETAILS=$(cat <<EOF
+          ### Gates
+
+          Every gate passed before any image was pushed ([CI run]($RUN_URL); reports are its artifacts):
+
+          | Gate | Result |
+          |---|---|
+          | SAST (Semgrep, fail on ERROR) | $SAST |
+          | Dependency scan (Trivy, fail on critical) | $DEPS |
+          | Temporary copy from these images, and the gates against it (Locust, ZAP) | $GATE |
+          | Image scan (Trivy, fail on critical) | $SCAN |
+
+          Candidate: [$TAG]($TAG_URL). After merging, run the QA Playwright suite against https://qa.eshop.localhost,
+          then sign it off (docs/git-workflow.md, "Releasing").
+          EOF
+          )
+          export PROMOTION_DETAILS
+          scripts/promotion-pr.sh qa "$VERSION"

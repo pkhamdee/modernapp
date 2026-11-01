@@ -1,0 +1,11 @@
+# Paths the SAST gate (scripts/gates/sast.sh) skips inside its targets. This file replaces Semgrep's default
+# ignore list, so unlike the default it keeps test code in the scan.
+node_modules/
+bin/
+obj/
+dist/
+TestResults/
+playwright-report/
+test-results/
+reports/
+*.min.js

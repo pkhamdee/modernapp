@@ -1,8 +1,9 @@
 # The single entry point (ADR-0002), one hostname per environment on the same Gateway and port 443:
 #   https://eshop.localhost       -> eshop-dev   (listener `https`; any namespace labelled eshop.io/gateway-access: "true")
+#   https://qa.eshop.localhost    -> eshop-qa    (listener `https-qa`; only the eshop-qa namespace)
 #   https://prod.eshop.localhost  -> eshop-prod  (listener `https-prod`; only the eshop-prod namespace)
-# Apps attach HTTPRoutes with parentRefs {name: eshop, namespace: gateway, sectionName: https}; the prod overlay
-# rewrites sectionName to https-prod and the hostname to prod.eshop.localhost.
+# Apps attach HTTPRoutes with parentRefs {name: eshop, namespace: gateway, sectionName: https}; the qa and prod
+# overlays rewrite sectionName to https-qa / https-prod and the hostname to qa. / prod.eshop.localhost.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -12,6 +13,7 @@ spec:
   secretName: eshop-localhost-tls
   dnsNames:
     - eshop.localhost
+    - qa.eshop.localhost
     - prod.eshop.localhost
   privateKey:
     algorithm: ECDSA
@@ -42,6 +44,20 @@ spec:
           selector:
             matchLabels:
               eshop.io/gateway-access: "true"
+    - name: https-qa
+      protocol: HTTPS
+      port: 443
+      hostname: qa.eshop.localhost
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: eshop-localhost-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              kubernetes.io/metadata.name: eshop-qa
     - name: https-prod
       protocol: HTTPS
       port: 443
@@ -60,6 +76,13 @@ spec:
       protocol: HTTP
       port: 80
       hostname: eshop.localhost
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: http-qa
+      protocol: HTTP
+      port: 80
+      hostname: qa.eshop.localhost
       allowedRoutes:
         namespaces:
           from: Same
@@ -82,9 +105,12 @@ spec:
     - name: eshop
       sectionName: http
     - name: eshop
+      sectionName: http-qa
+    - name: eshop
       sectionName: http-prod
   hostnames:
     - eshop.localhost
+    - qa.eshop.localhost
     - prod.eshop.localhost
   rules:
     - filters:

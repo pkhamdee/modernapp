@@ -19,6 +19,17 @@
 	root * /srv
 	encode zstd gzip
 
+	# Security headers on every response (the ZAP gate, scripts/gates/dast.sh, checks them). The app loads only
+	# its own files: no inline scripts or styles (Vite emits none), photos from /images and blob: previews (Staff
+	# Handover), API calls to /api, never framed. offline.html has its own, looser policy below.
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=()"
+	}
+
 	# Kubernetes probes.
 	handle /healthz {
 		log_skip
@@ -47,6 +58,9 @@
 	@pwa path /sw.js /offline.html /manifest.webmanifest
 	handle @pwa {
 		header Cache-Control "no-cache"
+		# The offline page carries its own styles inline, as nothing else may be reachable when it shows, and its
+		# retry button's onclick="location.reload()" is allowed by its hash (change both together).
+		header /offline.html Content-Security-Policy "default-src 'self'; script-src 'unsafe-hashes' 'sha256-9gOBGqEQINNDuds+tkXbNzih6klbz+KeCyxEj4KRLeM='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 		file_server
 	}
 
