@@ -207,6 +207,9 @@ jobs:
       # The served-version check e2e.yml (and so sign-off) relies on, against a fake kubectl.
       - name: e2e/check-serving.sh tests
         run: e2e/check-serving.test.sh
+      # Dispatching the smoke test to the cluster's runner, against a fake gh.
+      - name: e2e/run-on-actions.sh tests
+        run: e2e/run-on-actions.test.sh
 
   # Decides what to build, after every service's lint/test and the SAST and dependency-scan gates passed:
   #   - tag vX.Y.Z-rc.N: validate the tag (scripts/check-release-tag.sh: annotated, on a release/N.x branch); build
