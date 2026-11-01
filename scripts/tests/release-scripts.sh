@@ -1032,5 +1032,30 @@ bad_approvals_refused() {
 }
 check "protect-main.sh refuses a malformed --approvals and calls nothing" bad_approvals_refused
 
+# --- scripts/protect-main.sh: the smoke-test environment (SMTP_PASSWORD for e2e.yml's notify job) ---
+
+smoke_test_environment_dry_run() {
+  rm -f "$GH_STATE"/*; : >"$GH_LOG"
+  FAKE_NO_ENVIRONMENT=1 protect --dry-run || return 1
+  [ "$(writes)" = 0 ] \
+    && sent "PUT $repo_api/environments/smoke-test" \
+      | jq -e '. == [{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}]' >/dev/null \
+    && sent "POST $repo_api/environments/smoke-test/deployment-branch-policies" \
+      | jq -e '. == [{"name": "main", "type": "branch"}]' >/dev/null
+}
+check "protect-main.sh --dry-run prints the smoke-test environment, deployable from main only, sending nothing" \
+  smoke_test_environment_dry_run
+smoke_test_environment_applied() {
+  rm -f "$GH_STATE"/*; : >"$GH_LOG"
+  FAKE_BRANCH_POLICIES='{"total_count":2,"branch_policies":[{"id":1,"name":"main","type":"branch"},{"id":9,"name":"release/*","type":"branch"}]}' \
+    protect || return 1
+  local s="$GH_STATE/api-" p=${repo_api//\//_}_environments_smoke-test
+  [ -e "${s}PUT-$p" ] \
+    && ! grep -qF "api $repo_api/environments/smoke-test/deployment-branch-policies --method POST" "$GH_LOG" \
+    && [ -e "${s}DELETE-${p}_deployment-branch-policies_9" ] && [ ! -e "${s}DELETE-${p}_deployment-branch-policies_1" ]
+}
+check "protect-main.sh leaves the smoke-test environment exactly main (keeps main, removes any other policy)" \
+  smoke_test_environment_applied
+
 [ "$failures" -eq 0 ] || { echo "$failures failed"; exit 1; }
 echo "all passed"
