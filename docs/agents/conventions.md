@@ -242,7 +242,9 @@ eshop-sync-master:
   needs a rule in `runner-rbac.yaml` (Secrets only by name). In the pod, Chromium resolves every `*.localhost` to
   the pod itself and ignores `/etc/hosts`: hostnames reach Traefik through `--host-resolver-rules`
   (`e2e/playwright.config.ts`), Node through `/etc/hosts` (`e2e.yml`). The ARC charts (controller and scale set)
-  share one pinned version; change both together. `.github/actionlint.yaml` lists the `eshop-e2e` label.
+  share one pinned version; change both together. The runner image `ghcr.io/actions/actions-runner:X.Y.Z` is pinned
+  and Flux keeps it current (`deploy/infrastructure/runners/image-automation.yaml`, commits "runners: update
+  images"): leave the tag to Flux; to hold a version, set it and remove the `$imagepolicy` marker. `.github/actionlint.yaml` lists the `eshop-e2e` label.
 
 ## thirdparty
 

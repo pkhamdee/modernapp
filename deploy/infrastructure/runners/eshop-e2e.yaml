@@ -51,7 +51,8 @@ spec:
         serviceAccountName: eshop-e2e-runner
         containers:
           # The chart's stock image (Ubuntu, passwordless sudo). The workflow installs what it lacks: Node,
-          # kubectl, Chromium and its libraries. `latest` because GitHub stops accepting old runner versions.
+          # kubectl, Chromium and its libraries. Pinned to a runner release, which Flux keeps current
+          # (image-automation.yaml): GitHub stops accepting old runner versions.
           - name: runner
-            image: ghcr.io/actions/actions-runner:latest
+            image: ghcr.io/actions/actions-runner:2.338.0 # {"$imagepolicy": "arc-runners:actions-runner"}
             command: ["/home/runner/run.sh"]
