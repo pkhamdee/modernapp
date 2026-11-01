@@ -22,7 +22,7 @@
 # --force: dev's Deployment of <commit> was <state>" to the tag message. Candidates tagging the branch head are not
 # checked: they bring in nothing from main.
 #
-# The release itself (plain vX.Y.Z) is not cut here: the "Sign off release candidate" workflow tags it on the
+# The release itself (plain vX.Y.Z) is not cut here: sign-off (merging the sign-off PR, sign-off.yml) tags it on the
 # signed-off candidate's commit, so this script refuses X.Y.Z and points there.
 #
 # Refuses a candidate for a version already released, and when the commit to tag carries a GitHub skip-ci marker:
@@ -41,7 +41,7 @@ force=false
 version=${1:-}
 if is_release "$version"; then
   echo "scripts/release.sh no longer tags a release: cut a release candidate (scripts/release.sh $version-rc.N)," \
-    "promote it to QA, then sign it off with the \"Sign off release candidate\" workflow, which tags v$version" \
+    "promote it to QA; once QA passes, merging its sign-off PR \"Sign off v$version-rc.N\" tags v$version" \
     "(docs/git-workflow.md, \"Releasing\")." >&2
   exit 2
 fi

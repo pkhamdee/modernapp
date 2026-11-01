@@ -6,9 +6,8 @@
 #     that environment at the newly pinned version, both environments if both pins moved. A push changing nothing
 #     but pins doesn't test dev, whose deploy it didn't change; a still-suspended environment is not tested;
 #   - by hand (Actions -> E2E smoke test -> Run workflow, or e2e/run-on-actions.sh [environment] [version]):
-#     QA's test of a release candidate (environment `qa`, version `X.Y.Z-rc.N`, required: sign-off finds the run by
-#     its name, docs/git-workflow.md "QA test run"); prod at `X.Y.Z` (default: prod's pin on main); dev at a main
-#     commit (default: main's head).
+#     QA's test of a release candidate (environment `qa`, version `X.Y.Z-rc.N`, required), e.g. to test it again;
+#     prod at `X.Y.Z` (default: prod's pin on main); dev at a main commit (default: main's head).
 # The first job decides the targets, `<environment> <version or commit>` (scripts/smoke-targets.sh), and the test
 # job runs once per target.
 #
@@ -26,12 +25,12 @@
 # run's Deployment is marked inactive, "superseded", not failed. QA and prod runs are never cancelled.
 #
 # The run name records what was tested: a push's `E2E push <commit>`, a manual run's `E2E <environment>[ <version>]`,
-# e.g. `E2E qa 0.3.0-rc.1`. The latest passing QA run for a version (sign-off's query):
-#   gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch \
-#     --status completed --limit 100 --json databaseId,displayTitle,conclusion,url \
-#     --jq '[.[] | select(.displayTitle == "E2E qa 0.3.0-rc.1")] | first'
-# and its conclusion must be "success". `--branch main` matters: a run dispatched from another branch runs that
-# branch's copy of this workflow, which may skip the check.
+# e.g. `E2E qa 0.3.0-rc.1`.
+#
+# After a run on main that tested QA, the last job keeps the sign-off PRs in line with QA (scripts/sign-off-pr.sh):
+# QA's Deployment of the candidate it runs succeeded -> the PR "Sign off vX.Y.Z-rc.N" (merging it is the sign-off,
+# sign-off.yml); an open sign-off PR for another candidate, or for one whose latest QA test failed, is closed with a
+# comment. Sign-off goes by QA's Deployments, never by run names.
 #
 # The environments live on a local cluster (https://eshop.localhost, https://qa.eshop.localhost,
 # https://prod.eshop.localhost), which GitHub-hosted runners cannot reach, so the test job runs inside that cluster
@@ -274,3 +273,49 @@ jobs:
             *) if [ "$E2E_ENV" = dev ]; then set -- inactive superseded; else set -- inactive cancelled; fi ;;
           esac
           scripts/deployment.sh finish "$ID" "$1" "$RUN_URL" "$E2E_BASE_URL" "$2"
+
+  # The sign-off PR (scripts/sign-off-pr.sh), after a run on main that tested QA, whatever its outcome: a pass opens
+  # "Sign off vX.Y.Z-rc.N"; a failure, or QA's pin having moved, closes the sign-off PRs that no longer hold. It reads
+  # QA's state afresh from main and the Deployments, so running it again changes nothing. A hosted runner: it needs
+  # no cluster, only GitHub and the registry. PROMOTION_TOKEN (environment `release`, main and v* tags only) opens the
+  # PR so that its checks run; the `environment:` key also records a Deployment to `release` of main, which nothing
+  # reads (the smoke tests' Deployments are to dev, qa and prod).
+  sign-off-pr:
+    name: Sign-off PR
+    needs: [targets, e2e]
+    if: ${{ always() && github.ref == 'refs/heads/main' && contains(needs.targets.outputs.targets, '"env":"qa"') }}
+    runs-on: ubuntu-latest
+    environment: release
+    concurrency:
+      group: sign-off-pr
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      deployments: read # QA's Deployments
+      actions: read # the run's Playwright report artifact
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0 # when main last changed QA's pin
+          token: ${{ secrets.PROMOTION_TOKEN }} # git push of the sign-off branch
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
+        with:
+          version: v0.22.1
+      - name: Open or close sign-off PRs
+        env:
+          REPO: ${{ github.repository }}
+          IMAGE_REGISTRY: docker.io/${{ vars.DOCKERHUB_USERNAME }}
+          SIGN_OFF_READ_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PROMOTION_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret PROMOTION_TOKEN (environment release) is missing, so the sign-off PR can't be opened." \
+              "Create it as described in docs/setup.md, \"Promotion token\", then re-run this job."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          set -o pipefail
+          scripts/sign-off-pr.sh | tee "$RUNNER_TEMP/sign-off-pr.log"
+          { echo "### Sign-off PR"; echo; echo '```'; cat "$RUNNER_TEMP/sign-off-pr.log"; echo '```'; } >>"$GITHUB_STEP_SUMMARY"

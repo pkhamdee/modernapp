@@ -3,7 +3,8 @@
 #   scripts/release.sh             cuts release-candidate tags
 #   scripts/check-release-tag.sh   CI's decision on a pushed v* tag
 #   scripts/promotion-pr.sh        the promotion PR's branch, pin commit and body
-#   scripts/sign-off.sh            the "Sign off release candidate" workflow: its refusals, the release, re-runs
+#   scripts/sign-off-pr.sh         the sign-off PR: opened on QA's pass, closed when stale
+#   scripts/sign-off.sh            the merged sign-off PR: its refusals, the release, re-runs
 #   scripts/check-new-images.sh    CI's push job: a version's images are never overwritten
 #   scripts/smoke-targets.sh       the smoke test's targets: what a push to main (promotions and rollbacks
 #                                  included), or a dispatch, tests where
@@ -21,30 +22,33 @@ export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 
 # Fake gh: logs every call and keeps GitHub's state (Releases, PRs) as files in $GH_STATE.
-#   run list   of e2e.yml (sign-off's QA run query): applies its --jq to $FAKE_QA_RUNS (the runs, newest first);
-#              of any other workflow (release.sh): prints a run URL
-#   api .../collaborators/<user>/permission: prints $FAKE_ROLE, the --jq .role_name result (default admin)
+#   run list   (release.sh): prints a run URL
 #   api .../rulesets, .../deployment-branch-policies: print $FAKE_RULESETS, $FAKE_BRANCH_POLICIES (GitHub's JSON;
 #              FAKE_NO_ENVIRONMENT=1: the environment doesn't exist, 404); api <path> --method <M>: a write, its
 #              body kept as $GH_STATE/api-<M>-<path with / as _>
 #   api .../deployments[?environment=&ref=&sha=], .../deployments/<id>[/statuses]: GitHub's Deployments as files in
-#              $GH_STATE/deployments, <id>.json (the create body plus its id, numbered from 1) and <id>.statuses
-#              (one status body per line, oldest first); create (--method POST) and list newest first, --jq applied
-#              (strings printed raw, as gh does)
+#              $GH_STATE/deployments, <id>.json (the create body plus its id, numbered from 1, and created_at: now,
+#              or $FAKE_NOW) and <id>.statuses (one status body per line, oldest first); create (--method POST) and
+#              list newest first, --jq applied (strings printed raw, as gh does)
+#   api .../commits/<sha>/pulls, .../pulls/<n>, .../actions/runs/<id>/artifacts: $FAKE_COMMIT_PULLS, $FAKE_PULL,
+#              $FAKE_ARTIFACTS (GitHub's JSON), --jq applied
 #   (only the calls these scripts make; gh's own --jq is not emulated beyond that)
-#   release view/create/edit, pr list/create/edit: against $GH_STATE (a Release's notes, a PR's body)
+#   release view/create/edit, pr list/create/edit/close: against $GH_STATE (a Release's notes, an open PR's body as
+#              pr-<head with / as _>; pr list without --head lists them as {headRefName, url}, --jq applied; a closed
+#              one becomes closed-pr-<head>, its comment comment-<head>)
 mkdir -p "$work/bin" "$work/gh-state"
 cat >"$work/bin/gh" <<'GH'
 #!/usr/bin/env bash
 echo "gh $*" >>"$GH_LOG"
 arg() { local name=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$name" ] && { echo "$2"; return; }; shift; done; }
 case "$1 $2" in
-  "run list") if [[ " $* " == *" e2e.yml "* ]]; then jq "$(arg --jq "$@")" <<<"${FAKE_QA_RUNS:-[]}"; else echo "https://github.com/test/run/1"; fi ;;
+  "run list") echo "https://github.com/test/run/1" ;;
   "api "*)
     deployments="$GH_STATE/deployments" query=${2#*\?}; path=${2%%\?*}; jq_filter=$(arg --jq "$@"); jq_filter=${jq_filter:-.}
     if [[ "$path" == */deployments && " $* " == *" --method POST "* ]]; then # create: the next id, the body kept
       mkdir -p "$deployments"; id=$(( $(find "$deployments" -name '*.json' | wc -l) + 1 ))
-      jq --argjson id "$id" '. + {id: $id}' >"$deployments/$id.json"; jq -r "$jq_filter" "$deployments/$id.json"
+      jq --argjson id "$id" --arg at "${FAKE_NOW:-}" '. + {id: $id, created_at: (if $at != "" then $at else now | todate end)}' \
+        >"$deployments/$id.json"; jq -r "$jq_filter" "$deployments/$id.json"
     elif [[ "$path" =~ /deployments/([0-9]+)/statuses$ && " $* " == *" --method POST "* ]]; then # appended, oldest first
       [ -f "$deployments/${BASH_REMATCH[1]}.json" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
       jq -c . >>"$deployments/${BASH_REMATCH[1]}.statuses"; echo '{}'
@@ -60,11 +64,13 @@ case "$1 $2" in
       jq -r "$jq_filter" "$deployments/${BASH_REMATCH[1]}.json"
     elif [[ "$path" =~ /deployments/([0-9]+)/statuses$ ]]; then # newest first
       cat "$deployments/${BASH_REMATCH[1]}.statuses" 2>/dev/null | jq -s 'reverse' | jq -r "$jq_filter"
+    elif [[ "$path" =~ /commits/[0-9a-f]+/pulls$ ]]; then jq -r "$jq_filter" <<<"${FAKE_COMMIT_PULLS:-[]}"
+    elif [[ "$path" =~ /pulls/[0-9]+$ ]]; then jq -r "$jq_filter" <<<"${FAKE_PULL:-null}"
+    elif [[ "$path" =~ /actions/runs/[0-9]+/artifacts$ ]]; then jq -r "$jq_filter" <<<"${FAKE_ARTIFACTS:-[]}"
     elif [[ " $* " == *" --method "* ]]; then # a write: its JSON body (stdin) kept as $GH_STATE/api-<METHOD>-<path>
       method=$(arg --method "$@"); path=${2//\//_}
       if [[ " $* " == *" --input - "* ]]; then cat >"$GH_STATE/api-$method-$path"; else : >"$GH_STATE/api-$method-$path"; fi
       echo '{}'
-    elif [[ "$2" == */permission ]]; then echo "${FAKE_ROLE:-admin}"
     elif [[ "$2" == */rulesets ]]; then echo "${FAKE_RULESETS:-[]}"
     elif [[ "$2" == */deployment-branch-policies ]]; then
       [ -z "${FAKE_NO_ENVIRONMENT:-}" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
@@ -74,10 +80,17 @@ case "$1 $2" in
     echo "https://github.com/test/releases/tag/$3" ;;
   "release create") cp "$(arg --notes-file "$@")" "$GH_STATE/release-$3"; echo "https://github.com/test/releases/tag/$3" ;;
   "release edit") cp "$(arg --notes-file "$@")" "$GH_STATE/release-$3" ;;
-  "pr list") head=$(arg --head "$@"); [ ! -f "$GH_STATE/pr-${head//\//_}" ] || echo "https://github.com/test/pull/1" ;;
+  "pr list") head=$(arg --head "$@")
+    if [ -n "$head" ]; then [ ! -f "$GH_STATE/pr-${head//\//_}" ] || echo "https://github.com/test/pull/1"
+    else # every open PR, its head from the file name (the heads used here have one /), --jq applied
+      for f in "$GH_STATE"/pr-*; do
+        [ ! -f "$f" ] || { h=${f##*/pr-}; jq -n --arg h "${h/_//}" '{headRefName: $h, url: "https://github.com/test/pull/\($h)"}'; }
+      done | jq -s . | jq -r "$(arg --jq "$@")"
+    fi ;;
   "pr create") head=$(arg --head "$@"); cp "$(arg --body-file "$@")" "$GH_STATE/pr-${head//\//_}"
     echo "https://github.com/test/pull/1" ;;
   "pr edit") ;;
+  "pr close") mv "$GH_STATE/pr-${3//\//_}" "$GH_STATE/closed-pr-${3//\//_}"; arg --comment "$@" >"$GH_STATE/comment-${3//\//_}" ;;
 esac
 GH
 
@@ -194,7 +207,7 @@ next_rc_on_existing_branch() {
 }
 check "release.sh tags the head of an existing release/N.x" next_rc_on_existing_branch
 check "release.sh refuses plain X.Y.Z and points to sign-off" \
-  refused 'Sign off release candidate' 0.3.0
+  refused 'merging its sign-off PR "Sign off v0.3.0-rc.N" tags v0.3.0' 0.3.0
 check "release.sh refuses a malformed version" refused 'usage: scripts/release.sh [--force] X.Y.Z-rc.N' 0.3.0-rc
 check "release.sh refuses a dry-run version (dispatched, never tagged)" \
   refused 'usage: scripts/release.sh [--force] X.Y.Z-rc.N' 0.0.0-test.1
@@ -348,7 +361,7 @@ git -C "$clone" commit -q --allow-empty -m "on main only"
 git -C "$clone" tag -a v0.4.0-rc.1 -m "Release candidate 0.4.0-rc.1"
 tag_check() { (cd "$clone" && scripts/check-release-tag.sh "$1") >"$work/out" 2>"$work/err"; }
 builds() { tag_check "$1" && [ "$(cat "$work/out")" = "$2" ]; }
-skipped() { tag_check "$1" && [ ! -s "$work/out" ] && grep -qF 'Sign off release candidate' "$work/err"; }
+skipped() { tag_check "$1" && [ ! -s "$work/out" ] && grep -qF 'a merged sign-off PR' "$work/err"; }
 rejected() { ! tag_check "$1" && grep -qF -- "$2" "$work/err"; }
 
 check "check-release-tag.sh builds an annotated candidate on release/N.x as X.Y.Z-rc.N" builds v0.3.0-rc.1 0.3.0-rc.1
@@ -430,21 +443,31 @@ wrong_env_refused() {
 }
 check "promotion-pr.sh refuses a candidate for prod and a release for QA (scripts/lib/versions.sh)" wrong_env_refused
 
-# --- scripts/sign-off.sh (the "Sign off release candidate" workflow) ---
+# --- scripts/sign-off-pr.sh and scripts/sign-off.sh (sign-off by PR: e2e.yml opens it, sign-off.yml acts on its merge) ---
 
 services=$(jq -r '.[].service' "$root/.github/services.json")
 fake_digest() { echo "sha256:$(echo "$1" | git hash-object --stdin)$(echo "x$1" | git hash-object --stdin | cut -c1-24)"; }
 image() { echo "$REGISTRY/docker.io/pkhamdee/$1/$2"; } # the fake registry's file for image <service> tag <tag>
-# QA runs of e2e.yml as `gh run list --json` gives them (newest first). Main pins QA to 0.3.0-rc.1 in a commit made
-# at $pinned_at (sign_off_setup); this run of it passed after that.
+# Main pins QA to 0.3.0-rc.1 in a commit made at $pinned_at (sign_off_setup); QA's smoke tests of it run after that.
 pinned_at=2026-10-30T00:00:00Z
-passed_qa_run='{"conclusion":"success","createdAt":"2026-10-30T01:00:00Z","databaseId":7,"displayTitle":"E2E qa 0.3.0-rc.1","url":"https://github.com/test/actions/runs/7"}'
+qa_run=https://github.com/test/actions/runs/7
+qa_site=https://qa.eshop.localhost
+# The run's Playwright report, as `gh api .../actions/runs/7/artifacts` lists it.
+export FAKE_ARTIFACTS='{"artifacts":[{"id":98,"name":"playwright-report-dev"},{"id":99,"name":"playwright-report-qa"}]}'
 
-# A fresh origin where candidate v0.3.0-rc.1 is tagged on release/0.x, main pins QA to it, and the registry holds
-# its images. QA's run of it passed ($FAKE_QA_RUNS), and the person signing off is a maintainer ($FAKE_ROLE).
+# QA's smoke test of a candidate, recorded as e2e.yml does (scripts/deployment.sh), created now (or at $FAKE_NOW):
+# qa_tested <state> [candidate, default 0.3.0-rc.1] [description]. in_progress leaves it running.
+qa_tested() {
+  local id
+  id=$(cd "$clone" && scripts/deployment.sh start qa "v${2:-0.3.0-rc.1}" "$qa_run" "$qa_site")
+  [ "$1" = in_progress ] || (cd "$clone" && scripts/deployment.sh finish "$id" "$1" "$qa_run" "$qa_site" ${3:+"$3"})
+}
+
+# A fresh origin where candidate v0.3.0-rc.1 is tagged on release/0.x, main pins QA to it (at $pinned_at), the
+# registry holds its images, and QA's smoke test of it passed.
 sign_off_setup() {
   clone=$(fresh "$1")
-  rm -f "$GH_STATE"/*
+  rm -rf "${GH_STATE:?}"/*
   git -C "$clone" push -q origin HEAD:refs/heads/release/0.x
   git -C "$clone" tag -a v0.3.0-rc.1 -m "Release candidate 0.3.0-rc.1"
   git -C "$clone" push -q origin refs/tags/v0.3.0-rc.1
@@ -452,89 +475,216 @@ sign_off_setup() {
   (cd "$clone" && scripts/pin-release.sh qa 0.3.0-rc.1 >/dev/null 2>&1)
   GIT_COMMITTER_DATE=$pinned_at git -C "$clone" commit -qam "eshop-qa: deploy v0.3.0-rc.1"
   git -C "$clone" push -q origin HEAD:main
-  export REGISTRY="$work/$1/registry" FAKE_QA_RUNS="[$passed_qa_run]"
+  export REGISTRY="$work/$1/registry"
   for svc in $services; do mkdir -p "$(dirname "$(image "$svc" x)")"; fake_digest "$svc" >"$(image "$svc" 0.3.0-rc.1)"; done
+  qa_tested success
 }
-sign_off() { (cd "$clone" && SIGN_OFF_ACTOR=qa-person scripts/sign-off.sh "$@") >"$work/out" 2>&1; }
+sign_off_pr() { (cd "$clone" && scripts/sign-off-pr.sh) >"$work/out" 2>&1; }
+pin_qa() { # pin_qa <candidate>: tags it (on rc.1's commit) if needed and pins QA to it on main, as a merged promotion
+  git -C "$clone" checkout -q main && git -C "$clone" pull -q --ff-only origin main
+  origin rev-parse -q --verify "refs/tags/v$1" >/dev/null || {
+    git -C "$clone" tag -a "v$1" -m "Release candidate $1" 'v0.3.0-rc.1^{commit}' && git -C "$clone" push -q origin "refs/tags/v$1"
+  }
+  (cd "$clone" && scripts/pin-release.sh qa "$1" >/dev/null 2>&1)
+  git -C "$clone" commit -qam "eshop-qa: deploy v$1" && git -C "$clone" push -q origin HEAD:main
+}
+lists_images() { # lists_images <file> <tag>: names every service's image at <tag> with its candidate's digest
+  local svc
+  for svc in $services; do grep -qF "docker.io/pkhamdee/$svc:$2@$(fake_digest "$svc")" "$1" || return 1; done
+}
 
-# A refused sign-off changes nothing: no ref on origin, no image, no Release, no PR.
+opens_sign_off_pr() {
+  sign_off_setup sign-off-pr
+  : >"$GH_LOG"
+  sign_off_pr || return 1
+  local branch=refs/heads/sign-off/0.3.0-rc.1 record="$work/record"
+  origin show "$branch:releases/0.3.0.md" >"$record" || return 1
+  [ "$(origin log -1 --format=%s "$branch")" = "Sign off v0.3.0-rc.1" ] \
+    && [ "$(origin rev-parse "$branch~1")" = "$(origin rev-parse refs/heads/main)" ] \
+    && [ "$(origin diff --name-only "$branch~1" "$branch")" = releases/0.3.0.md ] \
+    && grep -qxF "Candidate: \`v0.3.0-rc.1\`" "$record" && grep -qF "$rc_commit" "$record" \
+    && lists_images "$record" 0.3.0-rc.1 \
+    && grep -qF "$qa_run" "$record" && grep -qF "$qa_run/artifacts/99" "$record" && grep -qF 'Deployment 1 ' "$record" \
+    && grep -qF 'gh pr create --repo pkhamdee/modernapp --base main --head sign-off/0.3.0-rc.1 --title Sign off v0.3.0-rc.1' "$GH_LOG" \
+    && grep -qF "$qa_run/artifacts/99" "$GH_STATE/pr-sign-off_0.3.0-rc.1" \
+    && grep -qF 'Sign-off PR: https://github.com/test/pull/1' "$work/out"
+}
+check "sign-off-pr.sh opens \"Sign off vX.Y.Z-rc.N\" when QA's Deployment of the candidate it runs succeeded, adding releases/X.Y.Z.md (candidate, digests, run, Playwright report, Deployment)" \
+  opens_sign_off_pr
+opens_once() { # after opens_sign_off_pr: nothing new to say, so no push and no second PR
+  local head
+  head=$(origin rev-parse refs/heads/sign-off/0.3.0-rc.1)
+  : >"$GH_LOG"
+  sign_off_pr && [ "$(origin rev-parse refs/heads/sign-off/0.3.0-rc.1)" = "$head" ] \
+    && ! grep -qE '^gh pr (create|edit)' "$GH_LOG" && grep -qF 'up to date' "$work/out"
+}
+check "sign-off-pr.sh run again opens no second PR and pushes nothing" opens_once
+
+no_pr() { # no_pr <expected message part>: sign-off-pr.sh succeeds, opens no PR and pushes no sign-off branch
+  : >"$GH_LOG"
+  sign_off_pr && grep -qF -- "$1" "$work/out" && ! grep -qE '^gh pr (create|edit)' "$GH_LOG" \
+    && [ -z "$(origin for-each-ref refs/heads/sign-off)" ]
+}
+untested_no_pr() {
+  sign_off_setup sign-off-pr-untested
+  no_deployments
+  no_pr 'no Deployment of v0.3.0-rc.1 to qa since' || return 1
+  qa_tested in_progress
+  no_pr 'in_progress' || return 1
+  no_deployments
+  qa_tested failure "" "the Playwright demo failed"
+  no_pr 'failure'
+}
+check "sign-off-pr.sh opens nothing while QA's Deployment of the candidate is missing, running or failed" untested_no_pr
+stale_test_no_pr() { # rc.1 -> rc.2 -> rc.1: a pass from before main last pinned QA tested an earlier deployment
+  sign_off_setup sign-off-pr-stale
+  no_deployments
+  FAKE_NOW=2026-10-29T23:00:00Z qa_tested success
+  no_pr "no Deployment of v0.3.0-rc.1 to qa since eshop-qa was pinned to it ($pinned_at)"
+}
+check "sign-off-pr.sh ignores QA's Deployments created before main last changed QA's pin" stale_test_no_pr
+released_no_pr() {
+  sign_off_setup sign-off-pr-released
+  git -C "$clone" tag -a v0.3.0 -m "Release 0.3.0" origin/main && git -C "$clone" push -q origin refs/tags/v0.3.0
+  no_pr 'v0.3.0 is already released'
+}
+check "sign-off-pr.sh opens nothing for a version already released" released_no_pr
+
+closes_on_pin_move() {
+  sign_off_setup sign-off-pr-moved
+  sign_off_pr || return 1
+  pin_qa 0.3.0-rc.2
+  : >"$GH_LOG"
+  sign_off_pr && [ -f "$GH_STATE/closed-pr-sign-off_0.3.0-rc.1" ] \
+    && grep -qF 'eshop-qa is pinned to 0.3.0-rc.2 on main' "$GH_STATE/comment-sign-off_0.3.0-rc.1" \
+    && grep -qF 'gh pr close sign-off/0.3.0-rc.1 --repo pkhamdee/modernapp' "$GH_LOG" \
+    && ! grep -q '^gh pr create' "$GH_LOG"
+}
+check "sign-off-pr.sh closes another candidate's sign-off PR, with a comment, once QA's pin moves" closes_on_pin_move
+closes_on_failure() {
+  sign_off_setup sign-off-pr-failed
+  sign_off_pr || return 1
+  qa_tested failure "" "the Playwright demo failed"
+  sign_off_pr && [ -f "$GH_STATE/closed-pr-sign-off_0.3.0-rc.1" ] \
+    && grep -qF "QA's latest smoke test of 0.3.0-rc.1 did not pass (failure: the Playwright demo failed)" \
+      "$GH_STATE/comment-sign-off_0.3.0-rc.1" \
+    && grep -qF "$qa_run" "$GH_STATE/comment-sign-off_0.3.0-rc.1"
+}
+check "sign-off-pr.sh closes the candidate's sign-off PR, with a comment, when QA's test of it fails" closes_on_failure
+reopens_after_new_pass() { # after closes_on_failure: a new pass opens it again
+  qa_tested success
+  : >"$GH_LOG"
+  sign_off_pr && [ -f "$GH_STATE/pr-sign-off_0.3.0-rc.1" ] && grep -q '^gh pr create' "$GH_LOG" \
+    && origin show refs/heads/sign-off/0.3.0-rc.1:releases/0.3.0.md | grep -qF 'Deployment 3 '
+}
+check "sign-off-pr.sh opens it again on QA's next pass, with that Deployment" reopens_after_new_pass
+
+# The sign-off PR merged into main, as GitHub's merge would (its branch was made from main, so a fast-forward), by
+# qa-lead in PR #5; sets $before and $after, the push sign-off.yml sees.
+export FAKE_COMMIT_PULLS='[{"number":5,"merged_at":"2026-10-31T00:00:00Z","html_url":"https://github.com/test/pull/5"}]'
+export FAKE_PULL='{"number":5,"html_url":"https://github.com/test/pull/5","merged_by":{"login":"qa-lead"}}'
+merged() {
+  before=$(origin rev-parse refs/heads/main)
+  origin update-ref refs/heads/main refs/heads/sign-off/0.3.0-rc.1 "$before"
+  after=$(origin rev-parse refs/heads/main)
+  git -C "$clone" checkout -q main && git -C "$clone" pull -q --ff-only origin main
+}
+sign_off() { (cd "$clone" && scripts/sign-off.sh "$before" "$after") >"$work/out" 2>&1; }
+# A sign-off PR for rc.1 opened and merged.
+signed_off_setup() { sign_off_setup "$1" && sign_off_pr && merged; }
+
+# A refused sign-off changes nothing: no ref on origin, no image, no Release, no PR; and it fails, saying why.
 registry_state() { (cd "$REGISTRY" && find . -type f -exec grep -H . {} + | sort); }
-sign_off_refused() { # sign_off_refused <expected message part> <sign-off.sh args...>
-  local expected=$1; shift
+sign_off_refused() { # sign_off_refused <expected message part>
   refs_before; registry_state >"$work/registry"; : >"$GH_LOG"; : >"$CRANE_LOG"
-  ! sign_off "$@" && grep -qF -- "$expected" "$work/out" && refs_unchanged \
+  ! sign_off && grep -qF -- "Sign-off refused: $1" "$work/out" && refs_unchanged \
     && [ "$(registry_state)" = "$(cat "$work/registry")" ] \
     && ! grep -qE '^gh (release (create|edit)|pr (create|edit))' "$GH_LOG" && ! grep -q '^crane copy' "$CRANE_LOG"
 }
 
-sign_off_setup sign-off-refusals
-FAKE_ROLE="write" check "sign-off.sh refuses someone who is not a maintainer (admin or maintain)" \
-  sign_off_refused 'qa-person is not a maintainer' 0.3.0-rc.1
-check "sign-off.sh refuses a version that is not a release candidate" \
-  sign_off_refused 'usage: scripts/sign-off.sh X.Y.Z-rc.N' 0.3.0
-check "sign-off.sh refuses a candidate whose tag is not on origin" \
-  sign_off_refused 'release candidate v0.3.0-rc.9 is not on origin' 0.3.0-rc.9
+signed_off_setup sign-off-refusals
+nothing_to_sign_off() {
+  local saved=$before
+  before=$after; : >"$GH_LOG"
+  sign_off && grep -qF 'no release record' "$work/out" && [ ! -s "$GH_LOG" ]
+  local status=$?
+  before=$saved
+  return $status
+}
+check "sign-off.sh does nothing for a push that adds or changes no releases/*.md" nothing_to_sign_off
+FAKE_COMMIT_PULLS='[]' check "sign-off.sh refuses a record that no merged PR brought in (who signed off is unknown)" \
+  sign_off_refused "no merged pull request brought in $after"
 
-git -C "$clone" tag -a v0.3.0-rc.2 -m "Release candidate 0.3.0-rc.2" 'v0.3.0-rc.1^{commit}'
-git -C "$clone" push -q origin refs/tags/v0.3.0-rc.2
-check "sign-off.sh refuses a candidate QA is not running (main pins QA to another)" \
-  sign_off_refused 'eshop-qa is pinned to 0.3.0-rc.1 on main, not 0.3.0-rc.2' 0.3.0-rc.2
-
+qa_moved_refused() {
+  pin_qa 0.3.0-rc.2
+  sign_off_refused 'eshop-qa is pinned to 0.3.0-rc.2 on main, not 0.3.0-rc.1'
+  local refused=$?
+  git -C "$clone" reset -q --hard HEAD~1 && git -C "$clone" push -q --force origin HEAD:main
+  return $refused
+}
+check "sign-off.sh refuses when main pins QA to another candidate" qa_moved_refused
 qa_suspended_refused() {
-  # main pins QA to the candidate but still suspends apps-qa: QA runs nothing.
+  # main pins QA to the candidate but suspends apps-qa again: QA runs nothing.
   sed 's/"0.2.0" # release-pin: qa$/"0.3.0-rc.1" # release-pin: qa/' "$clusters/qa-release.yaml" \
     >"$clone/clusters/local/qa-release.yaml"
-  git -C "$clone" commit -qam "suspend QA"
-  git -C "$clone" push -q origin HEAD:main
-  sign_off_refused 'eshop-qa has no release yet on main (apps-qa is suspended)' 0.3.0-rc.1
+  git -C "$clone" commit -qam "suspend QA" && git -C "$clone" push -q origin HEAD:main
+  sign_off_refused 'eshop-qa has no release yet on main (apps-qa is suspended)'
   local refused=$?
-  git -C "$clone" reset -q --hard HEAD~1
-  git -C "$clone" push -q --force origin HEAD:main
+  git -C "$clone" reset -q --hard HEAD~1 && git -C "$clone" push -q --force origin HEAD:main
   return $refused
 }
 check "sign-off.sh refuses while apps-qa is suspended on main" qa_suspended_refused
-
-no_qa_run_refused() {
-  sign_off_refused 'no completed QA run of 0.3.0-rc.1 on main since eshop-qa was pinned to it' 0.3.0-rc.1 \
-    && grep -qF '("E2E qa 0.3.0-rc.1"): run e2e/run-on-actions.sh qa 0.3.0-rc.1' "$work/out" \
-    && grep -qF 'gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch --status completed' "$GH_LOG" \
-    && grep -qF '.displayTitle == "E2E qa 0.3.0-rc.1"' "$GH_LOG"
+no_qa_deployment_refused() {
+  no_deployments
+  sign_off_refused "no Deployment of v0.3.0-rc.1 to qa since eshop-qa was pinned to it ($pinned_at)" \
+    && grep -qF 'gh api repos/pkhamdee/modernapp/deployments?environment=qa&ref=v0.3.0-rc.1' "$GH_LOG" || return 1
+  FAKE_NOW=2026-10-29T23:00:00Z qa_tested success # before the pin change: an earlier deployment
+  sign_off_refused "no Deployment of v0.3.0-rc.1 to qa since eshop-qa was pinned to it ($pinned_at)"
 }
-FAKE_QA_RUNS="[]" check "sign-off.sh refuses a candidate with no completed QA run on main (the documented query)" \
-  no_qa_run_refused
-failed_qa_run=${passed_qa_run/success/failure}
-failed_qa_run=${failed_qa_run/T01:00/T02:00}
-FAKE_QA_RUNS="[$failed_qa_run, $passed_qa_run]" check "sign-off.sh refuses when the latest QA run did not pass" \
-  sign_off_refused 'did not pass (failure): https://github.com/test/actions/runs/7' 0.3.0-rc.1
-# rc.1 -> rc.2 -> rc.1: a run of rc.1 from before main last pinned QA to it tested an earlier deployment of it.
-stale_qa_run=${passed_qa_run/2026-10-30T01:00/2026-10-29T23:00}
-FAKE_QA_RUNS="[$stale_qa_run]" check "sign-off.sh ignores QA runs created before main last changed QA's pin" \
-  sign_off_refused "no completed QA run of 0.3.0-rc.1 on main since eshop-qa was pinned to it ($pinned_at)" 0.3.0-rc.1
+check "sign-off.sh refuses without QA's Deployment of the candidate since main last changed QA's pin" no_qa_deployment_refused
+latest_failed_refused() {
+  qa_tested success && qa_tested failure "" "the Playwright demo failed"
+  sign_off_refused "QA's latest Deployment of 0.3.0-rc.1 is failure (the Playwright demo failed): $qa_run" || return 1
+  qa_tested in_progress
+  sign_off_refused "QA's latest Deployment of 0.3.0-rc.1 is in_progress"
+}
+check "sign-off.sh refuses unless QA's latest Deployment of the candidate succeeded (failed, still running)" \
+  latest_failed_refused
+no_deployments
+qa_tested success
 
 missing_image_refused() {
   mv "$(image eshop-sync-master 0.3.0-rc.1)" "$work/held"
-  sign_off_refused 'candidate image docker.io/pkhamdee/eshop-sync-master:0.3.0-rc.1 is missing' 0.3.0-rc.1
+  sign_off_refused 'candidate image docker.io/pkhamdee/eshop-sync-master:0.3.0-rc.1 is missing'
   local refused=$?
   mv "$work/held" "$(image eshop-sync-master 0.3.0-rc.1)"
   return $refused
 }
 check "sign-off.sh refuses when a candidate image is missing (copies none)" missing_image_refused
-
 other_release_image_refused() {
   echo sha256:other >"$(image eshop-web 0.3.0)"
-  sign_off_refused 'docker.io/pkhamdee/eshop-web:0.3.0 already exists with a different digest' 0.3.0-rc.1
+  sign_off_refused 'docker.io/pkhamdee/eshop-web:0.3.0 already exists with a different digest'
   local refused=$?
   rm "$(image eshop-web 0.3.0)"
   return $refused
 }
 check "sign-off.sh refuses to overwrite a release image with another digest" other_release_image_refused
-
 released_refused() {
   git -C "$clone" tag -a v0.3.0 -m "Release 0.3.0" origin/main # not this candidate's commit, not a sign-off
   git -C "$clone" push -q origin refs/tags/v0.3.0
-  sign_off_refused 'v0.3.0 already exists and is not a sign-off of v0.3.0-rc.1' 0.3.0-rc.1
+  sign_off_refused 'v0.3.0 already exists and is not a sign-off of v0.3.0-rc.1'
 }
 check "sign-off.sh refuses when vX.Y.Z already exists (released otherwise)" released_refused
+
+wrong_record_refused() {
+  sign_off_setup sign-off-wrong-record
+  before=$(origin rev-parse refs/heads/main)
+  mkdir -p "$clone/releases" && printf '# Release 0.4.0\n\nCandidate: %s\n' "\`v0.3.0-rc.1\`" >"$clone/releases/0.4.0.md"
+  git -C "$clone" add releases && git -C "$clone" commit -qm "Sign off" && git -C "$clone" push -q origin HEAD:main
+  after=$(origin rev-parse refs/heads/main)
+  sign_off_refused 'releases/0.4.0.md names candidate 0.3.0-rc.1, which is not a candidate of 0.4.0'
+}
+check "sign-off.sh refuses a record whose candidate is not of its version" wrong_record_refused
 
 same_digests() { # every service's 0.3.0 image exists with its candidate's digest
   local svc
@@ -542,57 +692,54 @@ same_digests() { # every service's 0.3.0 image exists with its candidate's diges
     [ -f "$(image "$svc" 0.3.0)" ] && [ "$(cat "$(image "$svc" 0.3.0)")" = "$(fake_digest "$svc")" ] || return 1
   done
 }
-lists_images() { # lists_images <file>: names every 0.3.0 image with its digest
-  local svc
-  for svc in $services; do grep -qF "docker.io/pkhamdee/$svc:0.3.0@$(fake_digest "$svc")" "$1" || return 1; done
-}
 signs_off() {
-  sign_off_setup sign-off
+  signed_off_setup sign-off || return 1
   : >"$GH_LOG"; : >"$CRANE_LOG"
-  sign_off 0.3.0-rc.1 || return 1
+  sign_off || return 1
   local release="$GH_STATE/release-v0.3.0" pr="$GH_STATE/pr-promote_prod-0.3.0"
   [ "$(origin cat-file -t refs/tags/v0.3.0)" = tag ] \
     && [ "$(origin rev-parse 'refs/tags/v0.3.0^{commit}')" = "$rc_commit" ] \
-    && origin cat-file tag refs/tags/v0.3.0 | grep -qF 'Signed off from v0.3.0-rc.1 by @qa-person' \
+    && origin cat-file tag refs/tags/v0.3.0 | grep -qF 'Signed off from v0.3.0-rc.1 by @qa-lead' \
+    && origin cat-file tag refs/tags/v0.3.0 | grep -qF 'https://github.com/test/pull/5' \
     && same_digests \
     && grep -qE '^crane copy docker.io/pkhamdee/eshop-api@sha256:[0-9a-f]+ docker.io/pkhamdee/eshop-api:0.3.0$' "$CRANE_LOG" \
-    && lists_images "$release" \
-    && grep -qF 'https://github.com/test/actions/runs/7' "$release" && grep -qF '@qa-person' "$release" \
+    && lists_images "$release" 0.3.0 \
+    && grep -qF "$qa_run" "$release" && grep -qF '@qa-lead' "$release" && grep -qF 'https://github.com/test/pull/5' "$release" \
     && grep -qF 'gh release create v0.3.0 --repo pkhamdee/modernapp --verify-tag' "$GH_LOG" \
     && [ "$(origin log -1 --format=%s refs/heads/promote/prod-0.3.0)" = "eshop-prod: deploy v0.3.0" ] \
     && [ "$(origin show refs/heads/promote/prod-0.3.0:clusters/local/prod-release.yaml | grep -c '"0.3.0" # release-pin: prod$')" -ge 2 ] \
-    && lists_images "$pr" && grep -qF 'https://github.com/test/actions/runs/7' "$pr" && grep -qF '@qa-person' "$pr" \
+    && lists_images "$pr" 0.3.0 && grep -qF "$qa_run" "$pr" && grep -qF '@qa-lead' "$pr" \
     && grep -qF 'https://github.com/test/releases/tag/v0.3.0' "$pr" \
     && grep -qF 'Promotion PR: https://github.com/test/pull/1' "$work/out"
 }
-check "sign-off.sh tags vX.Y.Z on the candidate's commit, copies its images by digest, publishes the Release and opens the prod promotion PR" \
+check "sign-off.sh on the merged sign-off PR tags vX.Y.Z on the candidate's commit (naming the merger), copies its images by digest, publishes the Release and opens the prod promotion PR" \
   signs_off
-
 signs_off_again() { # after signs_off: the same sign-off again finds every step done and updates the Release and PR
   local tag_object
   tag_object=$(origin rev-parse refs/tags/v0.3.0)
   git -C "$clone" checkout -q main
   : >"$GH_LOG"; : >"$CRANE_LOG"
-  sign_off 0.3.0-rc.1 \
+  sign_off \
     && [ "$(origin rev-parse refs/tags/v0.3.0)" = "$tag_object" ] && same_digests \
     && ! grep -q '^crane copy' "$CRANE_LOG" \
     && grep -q '^gh release edit v0.3.0' "$GH_LOG" && ! grep -q '^gh release create' "$GH_LOG" \
     && grep -q '^gh pr edit' "$GH_LOG" && ! grep -q '^gh pr create' "$GH_LOG"
 }
-check "sign-off.sh run again changes no tag or image and updates the Release and the PR" signs_off_again
-
+check "sign-off.sh run again (a re-run of the job) changes no tag or image and updates the Release and the PR" \
+  signs_off_again
 finishes_interrupted_sign_off() {
-  sign_off_setup sign-off-interrupted
-  FAKE_CRANE_FAIL_COPY=docker.io/pkhamdee/eshop-web sign_off 0.3.0-rc.1 && return 1
+  signed_off_setup sign-off-interrupted || return 1
+  FAKE_CRANE_FAIL_COPY=docker.io/pkhamdee/eshop-web sign_off && return 1
   grep -qF 'copy to docker.io/pkhamdee/eshop-web:0.3.0 failed' "$work/out" || return 1
   # Stopped while copying images: no tag, Release or PR names images that don't exist.
   [ -z "$(origin tag -l v0.3.0)" ] && [ ! -e "$GH_STATE/release-v0.3.0" ] || return 1
   git -C "$clone" checkout -q main
-  sign_off 0.3.0-rc.1 && same_digests \
+  sign_off && same_digests \
     && [ "$(origin rev-parse 'refs/tags/v0.3.0^{commit}')" = "$rc_commit" ] \
     && [ -e "$GH_STATE/release-v0.3.0" ] && [ -e "$GH_STATE/pr-promote_prod-0.3.0" ]
 }
 check "sign-off.sh interrupted half-way is finished by running it again" finishes_interrupted_sign_off
+no_deployments
 
 # --- scripts/check-new-images.sh (CI's push job, before pushing a version's images) ---
 
