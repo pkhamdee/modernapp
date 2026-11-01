@@ -84,6 +84,7 @@ Bootstrap installs Flux, commits `clusters/local/flux-system/` to `main` if it c
 
 ```sh
 flux get kustomizations          # flux-system, infra-controllers, infra-configs, thirdparty, apps-dev, apps-prod: Ready
+                                 # infra-runners: Ready once its GitHub token exists ("Cluster runner")
                                  # apps-qa: SUSPENDED True until the first release candidate is promoted to QA
 kubectl get gateway -n gateway   # eshop, PROGRAMMED True
 curl -k https://eshop.localhost/api/product-categories   # catalog JSON from eshop-api
@@ -330,17 +331,20 @@ npm run report                                       # HTML report of the last r
 - **Staff credentials** come from the environment's SOPS Secret (`deploy/apps/<env>/eshop-api-staff.sops.yaml`),
   decrypted at run time by `global-setup.ts` with `sops` and the age key (`SOPS_AGE_KEY_FILE`, default
   `~/.config/sops/age/keys.txt`) into the test process's environment only; it is never printed or written to the
-  report. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|qa|prod` overrides the environment name
+  report. On the cluster's runner (in a pod: `KUBERNETES_SERVICE_HOST` is set) they come instead from the Secret
+  `eshop-<env>/eshop-api-staff` that Flux applied, read with `kubectl` as the pod's service account; no age key is
+  in the cluster. Or set `STAFF_USERNAME` / `STAFF_PASSWORD` yourself. `E2E_ENV=dev|qa|prod` overrides the environment name
   derived from the host (`qa.` → qa, `prod.` → prod, otherwise dev); it picks the Enterprise database in the admin tool and the Secret.
 - The certificate is self-signed; the test accepts it.
-- **GitHub Actions**: `e2e/run-on-actions.sh [prod|qa|dev] [version]` (default `prod`, no version) runs
-  `.github/workflows/e2e.yml` on GitHub Actions with the job on this machine, which GitHub-hosted runners can't
-  reach. The repository is public, so no runner stays registered: the script registers an ephemeral runner
-  (label `eshop-e2e` only), dispatches the workflow to it, follows the run (the Playwright report is a run
-  artifact) and unregisters the runner when it ends. It needs `gh` logged in as a repo admin, and `sops` with the
-  age key: the job decrypts the Staff account itself, so no Staff secrets are stored in GitHub. Workflow runs
-  from outside contributors' pull requests always wait for approval (repo setting), so nobody else's workflow
-  can reach a runner here unreviewed.
+- **GitHub Actions**: `e2e/run-on-actions.sh [prod|qa|dev] [version]` (default `prod`, no version) starts
+  `.github/workflows/e2e.yml` from `main` and follows the run (the Playwright report is a run artifact). The job
+  runs on the runner inside the cluster, which GitHub-hosted runners can't reach ([Cluster runner](#cluster-runner));
+  nothing is registered on this machine. It needs `gh` logged in with write access. Starting it from the Actions
+  tab works too. In the runner pod, `*.eshop.localhost` goes to Traefik's Service
+  (`traefik.kube-system.svc.cluster.local`): Node finds it in `/etc/hosts` (a workflow step), Chromium through a
+  host-resolver rule (`e2e/environment.ts`), because Chromium answers `*.localhost` with loopback itself.
+  `E2E_GATEWAY_HOST` sets that target anywhere, e.g. `KUBERNETES_SERVICE_HOST=x E2E_GATEWAY_HOST=192.168.64.2 npm run e2e:prod`
+  tries the in-cluster mode from the Mac.
 - **QA's test of a release candidate** is `e2e/run-on-actions.sh qa X.Y.Z-rc.N`: only such a run counts for
   sign-off (git-workflow.md, "QA test run"). Given a version (required for `qa`, optional `X.Y.Z` for `prod`, none
   for `dev`), the run refuses unless the environment is actually serving it, checked against the cluster by
@@ -349,9 +353,69 @@ npm run report                                       # HTML report of the last r
   the check here first, so `e2e/run-on-actions.sh qa 0.3.0-rc.1` while QA serves something else stops at once:
   `eshop-qa is not serving 0.3.0-rc.1: apps-qa applied v0.3.0-rc.2@sha1:...` (while QA has no release yet:
   `... apps-qa is suspended ...`). The run is named `E2E <environment>[ <version>]` (`E2E qa 0.3.0-rc.1`) and its
-  summary lists the version, the applied revision and the images. The job uses this machine's `kubectl` and `jq`
-  (the runner inherits the shell's `PATH` and `~/.kube/config`, current context the Rancher Desktop cluster).
-  Tests for the check, with a fake kubectl: `e2e/check-serving.test.sh` (run in CI's `repo rules` job).
+  summary lists the version, the applied revision and the images. In the job, `kubectl` (installed by the workflow)
+  acts as the runner pod's service account. Tests for the check, with a fake kubectl: `e2e/check-serving.test.sh`;
+  for the script, with a fake gh: `e2e/run-on-actions.test.sh` (both run in CI's `repo rules` job).
+
+### Cluster runner
+
+The E2E job (`runs-on: eshop-e2e`) runs inside the cluster (ADR 0008). Flux installs Actions Runner Controller
+(`deploy/infrastructure/controllers/actions-runner-controller.yaml`, namespace `arc-systems`, watching only
+`arc-runners`) and the runner scale set `eshop-e2e` (`deploy/infrastructure/runners`, Kustomization `infra-runners`):
+0 runners while idle, at most 1, one runner pod per job, deleted after it. A listener pod in `arc-systems` waits for
+queued jobs. The runner pod's service account `eshop-e2e-runner` may only get the Kustomizations `apps-dev`,
+`apps-qa`, `apps-prod`, read Deployments, ReplicaSets and Pods in `eshop-dev`, `eshop-qa`, `eshop-prod`, and get each
+one's Staff Secret `eshop-api-staff` (`runner-rbac.yaml`). The token below is not given to runner pods (they get a
+one-job registration instead).
+
+ARC registers the scale set with a GitHub token, the Secret `arc-runners/eshop-e2e-github`. Until it exists no job
+can run: the scale set has no listener, and `infra-runners` may show not Ready. Nothing depends on `infra-runners`,
+so the apps deploy as usual meanwhile.
+
+**Human**, once (and again before the token expires), in this order:
+
+1. github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
+   Name `modernapp eshop-e2e runner`; resource owner `pkhamdee`; expiration 90 days (or what you accept);
+   **Repository access**: Only select repositories → `pkhamdee/modernapp`; **Repository permissions**:
+   Administration **Read and write** (Metadata read-only is added by itself). Nothing else.
+2. Put it in a SOPS Secret without it ever touching the disk in plain text: write the file with a placeholder,
+   encrypt it, then replace the placeholder in `sops`' editor:
+
+   ```sh
+   cat >deploy/infrastructure/runners/eshop-e2e-github.sops.yaml <<'EOF'
+   # GitHub token of the eshop-e2e runner scale set (docs/setup.md, "Cluster runner"): a fine-grained token for
+   # pkhamdee/modernapp only, Administration read and write. Renew: sops deploy/infrastructure/runners/eshop-e2e-github.sops.yaml
+   apiVersion: v1
+   kind: Secret
+   metadata:
+     name: eshop-e2e-github
+     namespace: arc-runners
+   type: Opaque
+   stringData:
+     github_token: placeholder
+   EOF
+   sops --encrypt --in-place deploy/infrastructure/runners/eshop-e2e-github.sops.yaml
+   SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops deploy/infrastructure/runners/eshop-e2e-github.sops.yaml   # paste the token
+   ```
+
+3. In `deploy/infrastructure/runners/kustomization.yaml`, uncomment `- eshop-e2e-github.sops.yaml` (only together
+   with the file: a listed file that is missing breaks the whole Kustomization). Check with
+   `scripts/validate-manifests.sh`, then open a PR with both files and merge it.
+4. Check: `flux get kustomization infra-runners` Ready; `kubectl -n arc-systems get pods` shows the controller and
+   an `eshop-e2e-...-listener` pod Running; Settings → Actions → Runners lists the scale set `eshop-e2e`. Then a run
+   on it: `e2e/run-on-actions.sh prod X.Y.Z` (the release prod serves) passes.
+5. Keep Settings → Actions → General → "Approval for running fork pull request workflows from contributors" at
+   **Require approval for all external contributors** (it is set; check with
+   `gh api repos/pkhamdee/modernapp/actions/permissions/fork-pr-contributor-approval`, `all_external_contributors`).
+   The repository is public, and on a personal account a runner can't be limited to chosen workflows: a fork PR
+   whose workflow says `runs-on: eshop-e2e` would run in the cluster. Approve a fork's workflow run only after
+   reading what it runs.
+
+**Renewal**: create a new token with the same settings, `sops deploy/infrastructure/runners/eshop-e2e-github.sops.yaml`,
+replace the value, PR, merge. An expired token shows as listener errors (`kubectl -n arc-systems logs` on the
+listener pod) and runs that stay queued.
+
+The local runner of earlier versions is gone; its cache can be deleted: `rm -rf ~/.cache/eshop-e2e-runner`.
 
 ## Releasing
 
@@ -528,8 +592,9 @@ Enterprise sync steps can't pass there.
 | `clusters/local/` | Cluster entry point: `flux-system/` (generated by bootstrap) plus the Kustomizations below | `flux-system` |
 | `clusters/local/prod-release.yaml` | What `eshop-prod` runs, the **prod pin**: GitRepository `eshop-release` (one release tag) and Kustomization `apps-prod` with that release's `X.Y.Z` images; the `# release-pin: prod` lines change only in a promotion PR (`scripts/pin-release.sh`) | `flux-system` |
 | `clusters/local/qa-release.yaml` | What `eshop-qa` runs, the **QA pin**, same shape: GitRepository `eshop-qa` (one release-candidate tag) and Kustomization `apps-qa` with its `X.Y.Z-rc.N` images; the `# release-pin: qa` lines change only in a QA promotion PR. Suspended until the first one | `flux-system` |
-| `deploy/infrastructure/controllers/` | Namespaces, Traefik `HelmChartConfig` (Gateway API provider), cert-manager, CloudNativePG operator | `infra-controllers` |
+| `deploy/infrastructure/controllers/` | Namespaces, Traefik `HelmChartConfig` (Gateway API provider), cert-manager, CloudNativePG operator, Actions Runner Controller | `infra-controllers` |
 | `deploy/infrastructure/configs/` | Issuers, the `eshop` Gateway and its certificate, platform secrets | `infra-configs` (after controllers) |
+| `deploy/infrastructure/runners/` | The E2E job's runner scale set `eshop-e2e`, its service account's permissions and its GitHub token ([Cluster runner](#cluster-runner)) | `infra-runners` (after controllers; nothing depends on it) |
 | `deploy/apps/base/` | One directory per app, environment-neutral | – |
 | `deploy/apps/dev/` | `eshop-dev` overlay, follows `main` | `apps-dev` (after configs) |
 | `deploy/apps/dev/image-automation.yaml` | Flux image automation: newest `main-<sha>-<ts>` image per service, committed back to `main` | `apps-dev` |

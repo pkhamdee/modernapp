@@ -24,7 +24,8 @@ terms in `GLOSSARY.md`; decisions in `docs/adr/`. This file points there rather 
 - **Scripted API checks**: macOS `/bin/bash` 3.2 mangles Thai/multibyte JSON inside `"$(curl -d ...)"`; use Python
   `urllib` for anything with Thai text.
 - **Shared cluster**: the cluster also runs unrelated workloads: only touch namespaces this repo manages
-  (eshop-dev, eshop-qa, eshop-prod, thirdparty, gateway, cert-manager, cnpg-system, flux-system).
+  (eshop-dev, eshop-qa, eshop-prod, thirdparty, gateway, cert-manager, cnpg-system, arc-systems, arc-runners,
+  flux-system).
 - **Secrets in output**: decrypt Staff/DB/SMB passwords only inside a script that uses them and never prints them.
   Printing them is blocked for agents and leaks into logs.
 - `gh pr create` can fail with "connection reset by peer" after the push succeeded: check
@@ -236,6 +237,12 @@ eshop-sync-master:
   unfixable one add a `.trivyignore` at the repo root (CVE, reason, date): both gates run Trivy there.
 - An ImagePolicy with no matching tag stays not Ready and blocks a `wait: true` Kustomization: a new service's image
   must exist before its policy is applied.
+- **Cluster runner** (`deploy/infrastructure/runners`, `docs/setup.md` "Cluster runner"): the E2E job runs in a pod
+  of ARC's scale set `eshop-e2e`, as service account `eshop-e2e-runner`. Anything new the job reads from the cluster
+  needs a rule in `runner-rbac.yaml` (Secrets only by name). In the pod, Chromium resolves every `*.localhost` to
+  the pod itself and ignores `/etc/hosts`: hostnames reach Traefik through `--host-resolver-rules`
+  (`e2e/playwright.config.ts`), Node through `/etc/hosts` (`e2e.yml`). The ARC charts (controller and scale set)
+  share one pinned version; change both together. `.github/actionlint.yaml` lists the `eshop-e2e` label.
 
 ## thirdparty
 
@@ -259,6 +266,11 @@ Agents are denied these; ask the user, giving the exact command:
   `scripts/release.sh X.Y.Z-rc.N` is how a release candidate is cut, and the release tag `vX.Y.Z` comes only from
   sign-off (`gh workflow run sign-off.yml --ref main -f version=X.Y.Z-rc.N`, a maintainer's step; its logic is
   `scripts/sign-off.sh`, tested with fake `gh`/`crane` in `scripts/tests/release-scripts.sh`);
+- creating or renewing the cluster runner's GitHub token (`deploy/infrastructure/runners/eshop-e2e-github.sops.yaml`,
+  a fine-grained token with Administration read and write; `docs/setup.md`, "Cluster runner") and listing it in that
+  folder's `kustomization.yaml`: agents never write that file, not even with a placeholder;
+- keeping "Require approval for all external contributors" for fork PR workflows (Settings → Actions → General): a
+  public repository's fork PR could otherwise run on the cluster's runner;
 - creating or renewing secrets: `PROMOTION_TOKEN` and `DOCKERHUB_TOKEN` are secrets of the `release` environment
   (`gh secret set <NAME> --env release`; `docs/setup.md`, "Release secrets"), not repo secrets;
 - applying `scripts/protect-main.sh` (main's ruleset, the `v*` tag rulesets and the `release` environment) or changing any repo setting;

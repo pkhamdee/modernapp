@@ -207,7 +207,8 @@ cluster serves it), `flux get kustomization apps-qa`, `kubectl -n eshop-qa get d
 ### 4. QA test run
 
 QA runs the Playwright UI suite against `https://qa.eshop.localhost` **through CI**, so the run is recorded against
-the candidate. The cluster is on this Mac, so the job runs on an on-demand runner here:
+the candidate. The cluster is on this Mac, so the job runs on the runner inside the cluster (scale set `eshop-e2e`,
+docs/setup.md "Cluster runner"); the script starts the workflow and follows it:
 
 ```bash
 e2e/run-on-actions.sh qa X.Y.Z-rc.N      # workflow "E2E smoke test", environment qa, version X.Y.Z-rc.N
