@@ -21,6 +21,8 @@
 set -euo pipefail
 # shellcheck source=lib/versions.sh
 . "$(dirname "$0")/lib/versions.sh"
+# shellcheck source=lib/pins.sh
+. "$(dirname "$0")/lib/pins.sh"
 
 usage() {
   [ $# -eq 0 ] || echo "smoke-targets.sh: $*" >&2
@@ -45,17 +47,13 @@ case "${1:-} ${2:-}" in
         | grep -E '^[-+]' | grep -vE '^(---|\+\+\+) ' || true)
       envs=$(sed -nE 's/.* # release-pin: ([a-z]+)$/\1/p' <<<"$changed" | sort -u)
       if [ -n "$envs" ]; then
-        pins=$(mktemp -d)
-        trap 'rm -rf "$pins"' EXIT
-        git archive "$after" clusters/local | tar -x -C "$pins"
-        pin() { PIN_DIR="$pins/clusters/local" "$(dirname "$0")/pin-release.sh" "$@"; }
         for env in $envs; do
           # Exit 0: still suspended (`# release-pin-until: <env>`), its pin a placeholder nothing deploys; 2: no
           # pin left at all. Neither deploys anything to test.
           suspended=0
-          pin --suspended "$env" 2>/dev/null || suspended=$?
+          pin_at "$after" --suspended "$env" 2>/dev/null || suspended=$?
           [ "$suspended" -eq 1 ] || continue
-          version=$(pin "$env") || exit 1
+          version=$(pin_at "$after" "$env") || exit 1
           echo "$env $version"
         done
         # Nothing but pin lines changed (a promotion or rollback PR): dev's deploy is the same, so no dev test.
@@ -76,10 +74,7 @@ case "${1:-} ${2:-}" in
     env=$2 version=${3:-}
     if [ -z "$version" ] && [ "$env" = prod ]; then
       # main's pin, whatever branch the workflow was dispatched from.
-      pins=$(mktemp -d)
-      trap 'rm -rf "$pins"' EXIT
-      git archive origin/main clusters/local | tar -x -C "$pins"
-      version=$(PIN_DIR="$pins/clusters/local" "$(dirname "$0")/pin-release.sh" prod)
+      version=$(pin_at origin/main prod)
     fi
     env_takes "$env" "$version" || usage "$env takes $(env_grammar "$env"), not '$version'"
     echo "$env $version"

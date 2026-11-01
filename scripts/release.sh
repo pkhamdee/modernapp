@@ -17,8 +17,9 @@
 #
 # A candidate that brings in origin/main (a new release/N.x, or the merge above) bundles everything on main, so it is
 # cut only from a main commit that passed on dev (ADR 0008): dev's latest Deployment of exactly that commit (made by
-# e2e.yml, scripts/deployment.sh) must be success. Still in progress, it refuses and says to wait; failed, inactive
-# (superseded) or missing, it refuses and says why, with the run's link. --force cuts it anyway and adds "Cut with
+# e2e.yml on main, scripts/deployment.sh; one recorded by a run from another branch is ignored) must be success.
+# Still in progress, it refuses and says to wait; failed, inactive (superseded) or missing, it refuses and says why,
+# with the run's link. --force cuts it anyway and adds "Cut with
 # --force: dev's Deployment of <commit> was <state>" to the tag message. Candidates tagging the branch head are not
 # checked: they bring in nothing from main.
 #
@@ -34,6 +35,8 @@ set -euo pipefail
 . "$(dirname "$0")/lib/versions.sh"
 # shellcheck source=lib/repo.sh
 . "$(dirname "$0")/lib/repo.sh"
+# shellcheck source=lib/deployments.sh
+. "$(dirname "$0")/lib/deployments.sh"
 
 force=false
 [ "${1:-}" = --force ] && { force=true; shift; }
@@ -105,15 +108,17 @@ if ! $merge && git log -1 --format=%B "$commit" | grep -qiE '\[(skip ci|ci skip|
 fi
 
 # A candidate bringing in origin/main bundles everything on it, so dev's smoke test (e2e.yml, recorded as a Deployment
-# by scripts/deployment.sh) must have passed on exactly that commit: its latest Deployment to dev, latest status.
+# by scripts/deployment.sh) must have passed on exactly that commit: its latest Deployment to dev recorded by a run on
+# main (scripts/lib/deployments.sh), latest status.
 forced=""
 if $new_branch || $merge; then
   short=$(git rev-parse --short "$main_commit")
-  id=$(gh api "repos/$REPO/deployments?environment=dev&sha=$main_commit&per_page=1" --jq '.[0].id // empty')
+  id=$(deployments_of dev "sha=$main_commit" | head -n 1)
+  id=${id%% *}
   state="" run="" why=""
   if [ -n "$id" ]; then
-    status=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0] // {}')
-    state=$(jq -r '.state // "pending"' <<<"$status")
+    status=$(latest_status "$id")
+    state=$(jq -r .state <<<"$status")
     run=$(jq -r '.log_url // ""' <<<"$status")
     why=$(jq -r '.description // ""' <<<"$status")
   fi

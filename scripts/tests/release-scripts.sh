@@ -22,6 +22,8 @@ trap 'rm -rf "$work"' EXIT
 export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid
 export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
+# As in e2e.yml on main: scripts/deployment.sh records Deployments only from a run on main, and which run attempt.
+export GITHUB_REF=refs/heads/main GITHUB_RUN_ID=7 GITHUB_RUN_ATTEMPT=1
 
 # Fake gh: logs every call and keeps GitHub's state (Releases, PRs) as files in $GH_STATE.
 #   run list   (release.sh): prints a run URL
@@ -69,6 +71,13 @@ case "$1 $2" in
     elif [[ "$path" =~ /commits/[0-9a-f]+/pulls$ ]]; then jq -r "$jq_filter" <<<"${FAKE_COMMIT_PULLS:-[]}"
     elif [[ "$path" =~ /pulls/[0-9]+$ ]]; then jq -r "$jq_filter" <<<"${FAKE_PULL:-null}"
     elif [[ "$path" =~ /actions/runs/[0-9]+/artifacts$ ]]; then jq -r "$jq_filter" <<<"${FAKE_ARTIFACTS:-[]}"
+    elif [[ "$path" =~ /actions/runs/([0-9]+)/attempts/([0-9]+)$ ]]; then # its status: $GH_STATE/run-<id>-<attempt>
+      status=$(cat "$GH_STATE/run-${BASH_REMATCH[1]}-${BASH_REMATCH[2]}" 2>/dev/null || echo completed)
+      jq -n --arg s "$status" '{status: $s}' | jq -r "$jq_filter"
+    elif [[ "$path" =~ /collaborators/([^/]+)/permission$ ]]; then # FAKE_ROLES: login=role,... (GitHub's role_name)
+      role=$(tr ',' '\n' <<<"${FAKE_ROLES:-}" | sed -n "s/^${BASH_REMATCH[1]}=//p")
+      [ -n "$role" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+      jq -n --arg r "$role" '{role_name: $r}' | jq -r "$jq_filter"
     elif [[ " $* " == *" --method "* ]]; then # a write: its JSON body (stdin) kept as $GH_STATE/api-<METHOD>-<path>
       method=$(arg --method "$@"); path=${2//\//_}
       if [[ " $* " == *" --input - "* ]]; then cat >"$GH_STATE/api-$method-$path"; else : >"$GH_STATE/api-$method-$path"; fi
@@ -175,6 +184,16 @@ dev_tested() {
     || (cd "$clone" && scripts/deployment.sh finish "$id" "$1" "$smoke_run" https://eshop.localhost ${2:+"$2"})
 }
 no_deployments() { rm -rf "$GH_STATE/deployments"; }
+# recorded_off_main <env> <ref> <state>: a Deployment that a copy of e2e.yml run from another branch recorded, written
+# straight to the (fake) API since deployment.sh refuses to: it must never count as evidence.
+recorded_off_main() {
+  local id
+  id=$(jq -n --arg env "$1" --arg ref "$2" '{ref: $ref, environment: $env, auto_merge: false, required_contexts: [],
+        payload: {workflow_ref: "refs/heads/feature", run_url: "https://github.com/test/actions/runs/66"}}' \
+    | gh api repos/pkhamdee/modernapp/deployments --method POST --input - --jq .id)
+  jq -n --arg state "$3" '{state: $state, log_url: "https://github.com/test/actions/runs/66"}' \
+    | gh api "repos/pkhamdee/modernapp/deployments/$id/statuses" --method POST --input - >/dev/null
+}
 
 rc_on_new_series() {
   no_deployments
@@ -308,6 +327,14 @@ older_commit_passed_refused() { # a success for main's previous commit says noth
   refused "dev has no Deployment of main at $(origin rev-parse --short refs/heads/main)" 0.3.0-rc.1
 }
 check "release.sh checks dev's Deployment of exactly origin/main's commit" older_commit_passed_refused
+off_main_pass_refused() { # a pass recorded by a run from another branch, and a failure on main since: not evidence
+  no_deployments
+  recorded_off_main dev "$(origin rev-parse refs/heads/main)" success
+  refused "dev has no Deployment of main at $(origin rev-parse --short refs/heads/main)" 0.3.0-rc.1 || return 1
+  dev_tested failure && recorded_off_main dev "$(origin rev-parse refs/heads/main)" success
+  refused "dev's smoke test of main at $(origin rev-parse --short refs/heads/main) failed" 0.3.0-rc.1
+}
+check "release.sh counts only dev's Deployments recorded by a run on main" off_main_pass_refused
 running_refused() {
   no_deployments
   dev_tested in_progress
@@ -644,6 +671,14 @@ no_qa_deployment_refused() {
   sign_off_refused "no Deployment of v0.3.0-rc.1 to qa since eshop-qa was pinned to it ($pinned_at)"
 }
 check "sign-off.sh refuses without QA's Deployment of the candidate since main last changed QA's pin" no_qa_deployment_refused
+off_main_qa_pass_refused() {
+  no_deployments
+  recorded_off_main qa v0.3.0-rc.1 success
+  sign_off_refused "no Deployment of v0.3.0-rc.1 to qa since eshop-qa was pinned to it ($pinned_at)" || return 1
+  qa_tested failure "" "the Playwright demo failed" && recorded_off_main qa v0.3.0-rc.1 success
+  sign_off_refused "QA's latest Deployment of 0.3.0-rc.1 is failure"
+}
+check "sign-off.sh counts only QA's Deployments recorded by a run on main" off_main_qa_pass_refused
 latest_failed_refused() {
   qa_tested success && qa_tested failure "" "the Playwright demo failed"
   sign_off_refused "QA's latest Deployment of 0.3.0-rc.1 is failure (the Playwright demo failed): $qa_run" || return 1
@@ -917,26 +952,45 @@ finish_refusals() {
     && ! deployment start staging "$dev_commit" "$run_url" "$dev_url" && grep -qF 'usage: scripts/deployment.sh' "$work/out"
 }
 check "deployment.sh refuses an unknown state or environment" finish_refusals
-supersedes_older_in_progress() {
-  rm -rf "$GH_STATE/deployments"
-  local older finished qa own
-  deployment start dev 1111111111111111111111111111111111111111 "$run_url" "$dev_url" && older=$(cat "$work/out")
-  deployment start dev 2222222222222222222222222222222222222222 "$run_url" "$dev_url" && finished=$(cat "$work/out")
+sweeps_abandoned() {
+  rm -rf "$GH_STATE/deployments" "$GH_STATE"/run-*
+  local older running finished qa own
+  # Runs 5 and 6 (attempt 1) have ended, run 8 is still going (an overlapping QA or prod run), as is run 7 (own).
+  echo in_progress >"$GH_STATE/run-8-1"; echo in_progress >"$GH_STATE/run-7-1"
+  GITHUB_RUN_ID=5 deployment start dev 1111111111111111111111111111111111111111 "$run_url" "$dev_url" && older=$(cat "$work/out")
+  GITHUB_RUN_ID=8 deployment start dev 3333333333333333333333333333333333333333 "$run_url" "$dev_url" && running=$(cat "$work/out")
+  GITHUB_RUN_ID=6 deployment start dev 2222222222222222222222222222222222222222 "$run_url" "$dev_url" && finished=$(cat "$work/out")
   deployment finish "$finished" success "$run_url" "$dev_url"
-  deployment start qa 0.3.0-rc.1 "$run_url" https://qa.eshop.localhost && qa=$(cat "$work/out")
+  GITHUB_RUN_ID=5 deployment start qa v0.3.0-rc.1 "$run_url" https://qa.eshop.localhost && qa=$(cat "$work/out")
   deployment start dev "$dev_commit" "$run_url" "$dev_url" && own=$(cat "$work/out")
-  deployment supersede dev "$own" \
-    && statuses "$older" | jq -e 'map(.state) == ["in_progress", "inactive"] and .[1].description == "superseded"' >/dev/null \
+  deployment sweep dev "$own" \
+    && statuses "$older" | jq -e 'map(.state) == ["in_progress", "inactive"] and (.[1].description | startswith("abandoned"))' >/dev/null \
+    && statuses "$running" | jq -e 'map(.state) == ["in_progress"]' >/dev/null \
     && statuses "$finished" | jq -e 'map(.state) == ["in_progress", "success"]' >/dev/null \
     && statuses "$qa" | jq -e 'map(.state) == ["in_progress"]' >/dev/null \
     && statuses "$own" | jq -e 'map(.state) == ["in_progress"]' >/dev/null
 }
-check "deployment.sh supersede <env> <id> marks the environment's other in-progress Deployments inactive, superseded (finished ones, other environments' and its own untouched)" \
-  supersedes_older_in_progress
+check "deployment.sh sweep <env> <id> marks the environment's other in-progress Deployments whose run has ended inactive, abandoned (a running run's, finished ones, other environments' and its own untouched)" \
+  sweeps_abandoned
+rm -rf "$GH_STATE/deployments" "$GH_STATE"/run-*
+
+# Only a run on main records a Deployment, and says so in its payload: nothing else counts as evidence.
+records_workflow_ref() {
+  deployment start qa v0.3.0-rc.1 "$run_url" "$qa_url" || return 1
+  dep "$(cat "$work/out")" | jq -e --arg run "$run_url" \
+    '.payload == {workflow_ref: "refs/heads/main", run_url: $run, run_id: "7", run_attempt: "1"}' >/dev/null
+}
+qa_url=https://qa.eshop.localhost
+check "deployment.sh start records which ref ran it and which run attempt in the Deployment's payload" records_workflow_ref
+off_main_refused() {
+  rm -rf "$GH_STATE/deployments"
+  ! GITHUB_REF=refs/heads/feature deployment start qa v0.3.0-rc.1 "$run_url" "$qa_url" \
+    && grep -qF 'only from a run on main (this run: refs/heads/feature)' "$work/out" && [ ! -d "$GH_STATE/deployments" ]
+}
+check "deployment.sh start refuses, recording nothing, in a run that isn't on main" off_main_refused
 rm -rf "$GH_STATE/deployments"
 
 # A promotion's (or rollback's) Deployment that succeeds replaces the environment's previous successful one.
-qa_url=https://qa.eshop.localhost
 started() { deployment start "$@" "$run_url" "https://$1.eshop.localhost" && cat "$work/out"; } # started <env> <ref>
 success_replaces_previous_success() {
   rm -rf "$GH_STATE/deployments"
