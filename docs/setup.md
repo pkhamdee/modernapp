@@ -345,8 +345,9 @@ npm run report                                       # HTML report of the last r
   host-resolver rule (`e2e/environment.ts`), because Chromium answers `*.localhost` with loopback itself.
   `E2E_GATEWAY_HOST` sets that target anywhere, e.g. `KUBERNETES_SERVICE_HOST=x E2E_GATEWAY_HOST=192.168.64.2 npm run e2e:prod`
   tries the in-cluster mode from the Mac.
-- **QA's test of a release candidate** is `e2e/run-on-actions.sh qa X.Y.Z-rc.N`: only such a run counts for
-  sign-off (git-workflow.md, "QA test run"). Given a version (required for `qa`, optional `X.Y.Z` for `prod`, none
+- **QA's test of a release candidate** runs by itself when its QA promotion PR is merged; `e2e/run-on-actions.sh qa
+  X.Y.Z-rc.N` runs it again. Only such a run's Deployment counts for sign-off, and a pass opens the sign-off PR
+  (git-workflow.md, "QA test run" and "Sign-off"). Given a version (required for `qa`, optional `X.Y.Z` for `prod`, none
   for `dev`), the run refuses unless the environment is actually serving it, checked against the cluster by
   `e2e/check-serving.sh <env> <version>` (Flux applied tag `v<version>` to `apps-<env>`, and every Deployment in
   `eshop-<env>` finished rolling out with the `<version>` images), before and again after the test. The script makes
@@ -454,13 +455,19 @@ gh pr list --head promote/qa-0.3.0-rc.1
 flux get kustomization apps-qa                        # Applied revision: v0.3.0-rc.1@…
 kubectl -n eshop-qa get deploy -o wide               # images :0.3.0-rc.1, all READY
 
-# 4. QA's Playwright run against https://qa.eshop.localhost, recorded as "E2E qa 0.3.0-rc.1"
-e2e/run-on-actions.sh qa 0.3.0-rc.1
+#    That merge also starts QA's smoke test (e2e.yml, run "E2E push <commit>"): a Deployment of v0.3.0-rc.1 to qa
+gh api 'repos/pkhamdee/modernapp/deployments?environment=qa&ref=v0.3.0-rc.1' --jq '.[0].id'
+gh api "repos/pkhamdee/modernapp/deployments/<id>/statuses" --jq '.[0].state'   # success
+#    (to test it again: e2e/run-on-actions.sh qa 0.3.0-rc.1)
 
-# 5. Sign-off (a maintainer, from main): refuses unless main pins QA to 0.3.0-rc.1 and its latest QA run passed;
-#    copies the images to 0.3.0 by digest, tags v0.3.0 on the candidate's commit, publishes the GitHub Release and
-#    opens the prod promotion PR "eshop-prod: deploy v0.3.0"; merging that is the production approval
-gh workflow run sign-off.yml --ref main -f version=0.3.0-rc.1
+# 4. Its pass opens the sign-off PR "Sign off v0.3.0-rc.1", adding releases/0.3.0.md (candidate, digests, the run and
+#    its Playwright report). Review it; merging it is the sign-off (the QA lead's step)
+gh pr list --head sign-off/0.3.0-rc.1
+
+# 5. The merge runs sign-off.yml: refuses unless main still pins QA to 0.3.0-rc.1 and QA's latest Deployment of it
+#    since that pin succeeded; copies the images to 0.3.0 by digest, tags v0.3.0 on the candidate's commit (naming
+#    who merged), publishes the GitHub Release and opens the prod promotion PR "eshop-prod: deploy v0.3.0"; merging
+#    that is the production approval
 gh run watch "$(gh run list --workflow sign-off.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 gh pr list --head promote/prod-0.3.0
 
@@ -476,15 +483,17 @@ If the promotion token is missing, CI's `open the QA promotion PR` job fails aft
 the secret; set it and re-run that job, or open the PR yourself with `scripts/promotion-pr.sh qa 0.3.0-rc.1`
 (`PROMOTION_PUSH=0` first shows the commit and description without pushing).
 
-Sign-off's refusals say what is missing (QA pinned to another candidate or suspended, no passing QA run, a missing
-image, `v0.3.0` already released). If it fails half-way (a registry or GitHub error), run it again with the same
-version: it skips what is done and finishes. It needs `PROMOTION_TOKEN` and the same Docker Hub credentials as CI's
-push job (variable `DOCKERHUB_USERNAME`, `release` environment secret `DOCKERHUB_TOKEN`, Read & Write), and only maintainers (repo role
-admin or maintain) may run it (git-workflow.md, "Releasing").
+Sign-off's refusals fail the `sign-off.yml` run and say what is missing (QA pinned to another candidate or suspended,
+no successful QA Deployment of the candidate since its pin, a missing image, `v0.3.0` already released). If it fails
+half-way (a registry or GitHub error), re-run the failed job: it skips what is done and finishes. It needs
+`PROMOTION_TOKEN` and the same Docker Hub credentials as CI's push job (variable `DOCKERHUB_USERNAME`, `release`
+environment secret `DOCKERHUB_TOKEN`, Read & Write). Whoever may merge into `main` may sign off; the tag and the
+Release name them (git-workflow.md, "Sign-off"). A stale sign-off PR (QA moved to another candidate, or its test
+failed) is closed by the pipeline with a comment.
 
 ### Promotion token
 
-CI opens promotion PRs (and, with sign-off, pushes the release tag) with a **fine-grained personal access token**,
+CI opens promotion and sign-off PRs (and, with sign-off, pushes the release tag) with a **fine-grained personal access token**,
 stored as the secret `PROMOTION_TOKEN` of the `release` environment. Not the workflow's own `GITHUB_TOKEN`: GitHub runs no workflow for a PR
 or tag that token creates, so a promotion PR would never get its required checks. Commits and PRs made with it show
 you as the actor (the commits themselves are authored by `github-actions[bot]`).
@@ -504,8 +513,8 @@ you as the actor (the commits themselves are authored by `github-actions[bot]`).
 `gh secret set PROMOTION_TOKEN --env release --repo pkhamdee/modernapp`. An expired or revoked token makes the promotion job fail at `git push` or `gh pr create` with an
 authentication error; the images are already pushed, so re-run just that job once the secret is updated. The
 token must belong to a repository admin or maintainer: only they may create `v*` tags (ruleset "Create release
-tags"; git-workflow.md, "Tags"). It pushes only `promote/*` branches and `vX.Y.Z` tags, never `main`,
-so `main`'s ruleset needs no bypass for it either: a person merges the promotion PR.
+tags"; git-workflow.md, "Tags"). It pushes only `promote/*` and `sign-off/*` branches and `vX.Y.Z` tags, never
+`main`, so `main`'s ruleset needs no bypass for it either: a person merges the promotion and sign-off PRs.
 
 ### Protecting main
 
@@ -538,7 +547,7 @@ status *Disabled*, merge the fix by PR, then run `scripts/protect-main.sh` again
 
 The two release secrets belong to the `release` environment, so only `main` and `v*` tags can use them
 (git-workflow.md, "The release environment"): `DOCKERHUB_TOKEN` (CI's `push images` and sign-off) and
-`PROMOTION_TOKEN` (CI's `open the QA promotion PR` and sign-off). **Human**, once, after `scripts/protect-main.sh`
+`PROMOTION_TOKEN` (CI's `open the QA promotion PR`, the smoke test's `Sign-off PR` and sign-off). **Human**, once, after `scripts/protect-main.sh`
 created the environment (`gh secret set` prompts for each value, so it never lands in shell history):
 
 ```sh
@@ -611,7 +620,8 @@ Enterprise sync steps can't pass there.
 | `services/thirdparty-mock/` | Node 24 + Express (TypeScript run directly): mock SMS (+ inbox page), ID Verification and Credit Check; adjustable delay; mock Enterprise System admin tool | – |
 | `services/eshop-node-api/` | Image service: Node 24 + Express + TypeScript (run directly by Node), SMB share via `smbclient` | – |
 | `e2e/` | Seam 4: Playwright smoke test of the whole demo against a deployed environment (`npm run e2e`) | – |
-| `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI); `sign-off.sh` signs off a candidate (the sign-off workflow); `protect-main.sh` sets `main`'s ruleset and the `release` environment (admin-run); tests of all of them in `tests/release-scripts.sh`; `lib/` holds what they share, sourced: `versions.sh` (the version grammar: X.Y.Z, X.Y.Z-rc.N, 0.0.0-test.N, and which environment takes which), `repo.sh` (the GitHub repository and image registry, env-overridable), `images.sh` (the image list in PR and Release bodies); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
+| `scripts/` | Repo tasks: `release.sh X.Y.Z-rc.N` cuts a release candidate (human-run); `promotion-pr.sh <env> <version>` opens a promotion PR (CI); `sign-off-pr.sh` opens and closes sign-off PRs (e2e.yml); `sign-off.sh` signs off a candidate when its sign-off PR is merged (sign-off.yml); `protect-main.sh` sets `main`'s ruleset and the `release` environment (admin-run); tests of all of them in `tests/release-scripts.sh`; `lib/` holds what they share, sourced: `versions.sh` (the version grammar: X.Y.Z, X.Y.Z-rc.N, 0.0.0-test.N, and which environment takes which), `repo.sh` (the GitHub repository and image registry, env-overridable), `images.sh` (the image list in PR and Release bodies), `qa.sh` (QA's pin and Deployments, the evidence sign-off reads); `validate-manifests.sh` builds and schema-checks every Flux path (also CI's `repo rules` job) | – |
+| `releases/` | One record per release, `X.Y.Z.md`: the signed-off candidate, its image digests, QA's passing run and Deployment. Added by the sign-off PR (`scripts/sign-off-pr.sh`); merging it signs off (git-workflow.md, "Sign-off") | – |
 | `scripts/gates/` | Release gates (ADR 0007), one script each, tool from a pinned image, report in `reports/<gate>/`: `sast.sh` (Semgrep), `deps.sh` (Trivy over the lockfiles), `temporary-copy.sh` (the temporary copy, Compose file in `temporary-copy/`; see [Temporary copy](#temporary-copy-release-gate)), `latest-main-image.sh`, `image-scan.sh` (Trivy on built images), `perf.sh` (Locust; load, thresholds and locustfile in `perf/`), `dast.sh` (OWASP ZAP against the copy, signed out and as a Customer and Staff via `dast-session.mjs`; accepted alerts in `dast-rules.conf`). See [Running the gates locally](#running-the-gates-locally) | – |
 | `.github/services.json` | Container images CI builds (context, Dockerfile, source paths): changed ones on `main`, all of them on a release-candidate tag | – |
 

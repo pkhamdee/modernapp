@@ -264,8 +264,11 @@ Agents are denied these; ask the user, giving the exact command:
 - making a new GHCR package public (the `gh` token has no packages scope);
 - pushing release branches and tags, and dispatching the release workflow (`docs/git-workflow.md`, "Releasing");
   `scripts/release.sh X.Y.Z-rc.N` is how a release candidate is cut, and the release tag `vX.Y.Z` comes only from
-  sign-off (`gh workflow run sign-off.yml --ref main -f version=X.Y.Z-rc.N`, a maintainer's step; its logic is
-  `scripts/sign-off.sh`, tested with fake `gh`/`crane` in `scripts/tests/release-scripts.sh`);
+  sign-off: **merging the sign-off PR** "Sign off vX.Y.Z-rc.N" (the QA lead's step; agents never merge, approve or
+  close it, nor push `sign-off/*` branches or `releases/*.md` to bring one about). The pipeline opens and closes
+  those PRs (`scripts/sign-off-pr.sh`, from `e2e.yml`) and acts on the merge (`scripts/sign-off.sh`, from
+  `sign-off.yml`), both tested with fake `gh`/`crane` in `scripts/tests/release-scripts.sh`. There is no sign-off
+  workflow to dispatch;
 - creating or renewing the cluster runner's GitHub token (`deploy/infrastructure/runners/eshop-e2e-github.sops.yaml`,
   a fine-grained token with Administration read and write; `docs/setup.md`, "Cluster runner") and listing it in that
   folder's `kustomization.yaml`: agents never write that file, not even with a placeholder;
@@ -275,7 +278,7 @@ Agents are denied these; ask the user, giving the exact command:
   (`gh secret set <NAME> --env release`; `docs/setup.md`, "Release secrets"), not repo secrets;
 - applying `scripts/protect-main.sh` (main's ruleset, the `v*` tag rulesets and the `release` environment) or changing any repo setting;
   give the user `scripts/protect-main.sh --dry-run` first. Test `scripts/release.sh`, `scripts/check-release-tag.sh`,
-  `scripts/pin-release.sh`, `scripts/promotion-pr.sh`, `scripts/sign-off.sh`, `scripts/check-new-images.sh` and `scripts/protect-main.sh` with
+  `scripts/pin-release.sh`, `scripts/promotion-pr.sh`, `scripts/sign-off-pr.sh`, `scripts/sign-off.sh`, `scripts/check-new-images.sh` and `scripts/protect-main.sh` with
   `scripts/tests/release-scripts.sh` (throwaway local repos, fake `gh`), never against GitHub.
 
 `main` is protected (`docs/git-workflow.md`, "Protecting main"): agents never push to it; every change is a PR whose

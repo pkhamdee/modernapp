@@ -9,8 +9,8 @@
 #                                        build EVERY service, temporary copy, gates, scan, push
 #                                        docker.io/pkhamdee/<service>:X.Y.Z-rc.N, then open the QA promotion PR
 #                                        (scripts/promotion-pr.sh, with PROMOTION_TOKEN); merging it deploys eshop-qa
-#   - push tag vX.Y.Z                 -> lint + test only: a release is tagged by the "Sign off release candidate"
-#                                        workflow, which copies the candidate's images and publishes the Release
+#   - push tag vX.Y.Z                 -> lint + test only: a release is tagged by sign-off (merging the
+#                                        sign-off PR, sign-off.yml), which copies the images and publishes the Release
 #   - workflow_dispatch               -> no input, on main: rebuild, gate and push every service as main-<sha>
 #                                        input version=0.0.0-test.N: dry run of the release build; builds, gates
 #                                        and scans every service on any branch. From main it then pushes each as
@@ -569,8 +569,8 @@ jobs:
           | Temporary copy from these images, and the gates against it (Locust, ZAP) | $GATE |
           | Image scan (Trivy, fail on critical) | $SCAN |
 
-          Candidate: [$TAG]($TAG_URL). After merging, run the QA Playwright suite against https://qa.eshop.localhost,
-          then sign it off (docs/git-workflow.md, "Releasing").
+          Candidate: [$TAG]($TAG_URL). Merging this starts QA's smoke test of it (e2e.yml); a pass opens its
+          sign-off PR (docs/git-workflow.md, "Releasing").
           EOF
           )
           export PROMOTION_DETAILS

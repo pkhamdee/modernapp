@@ -12,9 +12,11 @@ issue/* ── PR (required checks) ──► main ── CI: gates, scan, push 
                                      ▼
               CI: gates, scan, push X.Y.Z-rc.N ──► QA promotion PR ── merged (QA's approval) ──► eshop-qa
                                                                                                     │
-                        smoke test of QA at vX.Y.Z-rc.N (Deployment), and "E2E qa X.Y.Z-rc.N" ◄─────┘
-                                                                     │
-              "Sign off release candidate": tag vX.Y.Z, copy images, GitHub Release, prod promotion PR
+                                        smoke test of QA at vX.Y.Z-rc.N (Deployment) ◄──────────────┘
+                                                                     │ success
+                       sign-off PR "Sign off vX.Y.Z-rc.N" (adds releases/X.Y.Z.md)
+                                                                     │ merged (the QA lead's sign-off)
+                    sign-off.yml: tag vX.Y.Z, copy images, GitHub Release, prod promotion PR
                                                                      │
                                         merged (production approval) ──► eshop-prod
                                                  smoke test of prod at vX.Y.Z (Deployment) ◄─┘
@@ -47,12 +49,13 @@ git log main --oneline --grep "<subject>"       # cherry-picked commits get new 
 | `release/N.x` | One per major series (e.g. `release/0.x`): its release candidates and releases are tagged here. Fixes only, between minors | Kept while the series is supported |
 | `issue/*`, `feature/*` | One task, merged into `main` by PR | Deleted after merge |
 | `promote/qa-X.Y.Z-rc.N`, `promote/prod-X.Y.Z` | A promotion PR's branch: one commit changing a pin | Deleted after merge |
+| `sign-off/X.Y.Z-rc.N` | A sign-off PR's branch: one commit adding the release's record `releases/X.Y.Z.md` ([Sign-off](#5-sign-off)) | Deleted after merge, or when the PR is closed as stale |
 
 ## Tags
 
 - `vMAJOR.MINOR.PATCH-rc.N`: a **release candidate**, e.g. `v0.3.0-rc.1`. Cut by a person with `scripts/release.sh`.
-- `vMAJOR.MINOR.PATCH`: a **release**, e.g. `v0.3.0`. Made only by the **"Sign off release candidate"** workflow, on
-  the signed-off candidate's own commit. `scripts/release.sh X.Y.Z` refuses.
+- `vMAJOR.MINOR.PATCH`: a **release**, e.g. `v0.3.0`. Made only by **sign-off** (merging the candidate's sign-off
+  PR runs `sign-off.yml`), on the signed-off candidate's own commit. `scripts/release.sh X.Y.Z` refuses.
 - Always **annotated**, always on a `release/N.x` branch; CI rejects anything else (`scripts/check-release-tag.sh`).
 - Never moved or deleted. A bad candidate is followed by the next `rc.N`, a bad release by the next patch.
 
@@ -108,7 +111,8 @@ to put it back. There is deliberately no standing admin bypass: it would let the
 ### The `release` environment
 
 The jobs that hold release secrets run in the GitHub environment **`release`**: `ci-release.yml`'s `push` (Docker
-Hub token) and `promote-qa` (`PROMOTION_TOKEN`), and `sign-off.yml` (both). `scripts/protect-main.sh` makes it
+Hub token) and `promote-qa` (`PROMOTION_TOKEN`), `sign-off.yml` (both) and `e2e.yml`'s `sign-off-pr`
+(`PROMOTION_TOKEN`). `scripts/protect-main.sh` makes it
 deployable only from the branch `main` and from `v*` tags, and the secrets `DOCKERHUB_TOKEN` and `PROMOTION_TOKEN`
 live in it, not in the repository (docs/setup.md, "Release secrets"). So a workflow file changed on another branch and
 dispatched from there can't reach them; the job fails at "Branch ... is not allowed to deploy to release". A release
@@ -249,9 +253,9 @@ success or failure; a success marks QA's previous successful Deployment inactive
 active one is what QA runs. A push changing only pins doesn't test dev; a push moving both pins tests both
 environments. QA and prod runs are never cancelled by later pushes: they wait their turn.
 
-Sign-off still reads a run started by hand, until it moves to Deployments (#90). QA starts it **through CI**, so the
-run is recorded against the candidate. The cluster is on this Mac, so the job runs on the runner inside the cluster
-(scale set `eshop-e2e`, docs/setup.md "Cluster runner"); the script starts the workflow and follows it:
+To test QA again (a flaky failure, a fix to the test), start the same workflow **through CI** from `main`. The
+cluster is on this Mac, so the job runs on the runner inside the cluster (scale set `eshop-e2e`, docs/setup.md
+"Cluster runner"); the script starts the workflow and follows it:
 
 ```bash
 e2e/run-on-actions.sh qa X.Y.Z-rc.N      # workflow "E2E smoke test", environment qa, version X.Y.Z-rc.N
@@ -259,43 +263,65 @@ e2e/run-on-actions.sh qa X.Y.Z-rc.N      # workflow "E2E smoke test", environmen
 
 The run waits (up to 15 minutes, then fails) until QA is serving exactly that candidate, asked of the cluster
 (`e2e/check-serving.sh --wait`: `apps-qa` not suspended and Ready, applied revision `vX.Y.Z-rc.N@sha1:…`, every
-Deployment in `eshop-qa` rolled out with `X.Y.Z-rc.N` images), and checks again after the test. Like dev's
-automatic run, it retries a failed test once and records a Deployment of `vX.Y.Z-rc.N` to `qa`. It is named
+Deployment in `eshop-qa` rolled out with `X.Y.Z-rc.N` images), and checks again after the test. Like the automatic
+run, it retries a failed test once and records a Deployment of `vX.Y.Z-rc.N` to `qa`. It is named
 **`E2E qa X.Y.Z-rc.N`**, and its summary records the version, revision, images and the test code's commit.
-Sign-off finds the latest completed run of that name on `main` created since `main` last changed QA's pin
-(`<pinned-at>`, UTC: the commit on `main` that last changed a `# release-pin: qa` line). An older run tested an earlier deployment (rc.1 → rc.2 → rc.1 needs a new run of rc.1):
-
-```bash
-gh run list --repo pkhamdee/modernapp --workflow e2e.yml --branch main --event workflow_dispatch \
-  --status completed --limit 100 --json databaseId,displayTitle,conclusion,url,createdAt \
-  --jq '[.[] | select(.displayTitle == "E2E qa X.Y.Z-rc.N" and .createdAt >= "<pinned-at>")] | first'
-```
 
 The same works for prod (`e2e/run-on-actions.sh prod X.Y.Z`, run `E2E prod X.Y.Z`); without a version it tests
 prod's pin on `main` (`e2e/run-on-actions.sh`) or dev at `main`'s head (`e2e/run-on-actions.sh dev`).
 
-### 5. Sign-off
-
-Once the candidate's QA run passed, a maintainer signs it off:
+What counts for sign-off is QA's **latest Deployment of the candidate created since `main` last changed QA's pin**
+(`<pinned-at>`, UTC: the commit on `main`, on its first-parent line, that last changed a `# release-pin: qa` line).
+An older one tested an earlier deployment: rc.1 → rc.2 → rc.1 needs a new test of rc.1, which the last promotion's
+merge starts anyway.
 
 ```bash
-gh workflow run sign-off.yml --repo pkhamdee/modernapp --ref main -f version=X.Y.Z-rc.N
+gh api 'repos/pkhamdee/modernapp/deployments?environment=qa&ref=vX.Y.Z-rc.N' --jq '.[] | "\(.id) \(.created_at)"'
+gh api repos/pkhamdee/modernapp/deployments/<id>/statuses --jq '.[0] | "\(.state) \(.description) \(.log_url)"'
 ```
 
-or Actions → **Sign off release candidate** → Run workflow (branch `main`). `.github/workflows/sign-off.yml` only
-supplies tokens and tools; the decisions are `scripts/sign-off.sh`. It **refuses, changing nothing**, unless:
+### 5. Sign-off
 
-- it runs from `main` and was started by a maintainer (repo role admin or maintain);
-- `vX.Y.Z-rc.N` exists, and `main` pins `eshop-qa` to exactly that candidate, not suspended;
-- the latest completed QA run of it on `main`, created since `main` last changed QA's pin, passed (no such run,
-  or a newer failed or cancelled one, refuses);
+**Signing off is merging the sign-off PR**, as QA's and prod's approvals are merging promotion PRs
+([ADR 0008](adr/0008-smoke-tests-on-deploy-reported-as-deployments.md)). Nobody starts a workflow.
+
+**The sign-off PR.** When a run on `main` tested QA, `e2e.yml`'s last job (`Sign-off PR`, `scripts/sign-off-pr.sh`,
+with `PROMOTION_TOKEN` so the PR gets its checks) looks at QA afresh: the candidate `main` pins it to, and QA's latest
+Deployment of it since that pin. If that succeeded and `vX.Y.Z` isn't released, it opens **"Sign off vX.Y.Z-rc.N"**
+from branch `sign-off/X.Y.Z-rc.N`, whose one commit adds the release's record **`releases/X.Y.Z.md`**:
+
+- ``Candidate: `vX.Y.Z-rc.N` `` (the line sign-off reads) and its commit;
+- the candidate's images with digests (what `X.Y.Z` will be);
+- the passing run, its Playwright report (artifact `playwright-report-qa`), and the QA Deployment (id, created at).
+
+One PR per candidate: running it again finds the PR up to date and pushes nothing; a later pass of the same
+candidate updates its record. It also **closes stale sign-off PRs** with a comment saying why: any for another
+candidate once QA's pin moves (or apps-qa is suspended), and the candidate's own when QA's latest test of it failed.
+A new pass opens it again. The QA lead reviews the record (and the report) and merges the PR: that merge is the
+sign-off, and Git keeps the record of what was signed off on which evidence.
+
+**The merge.** A push to `main` that adds or changes a `releases/*.md` runs `.github/workflows/sign-off.yml`, which only
+supplies tokens and tools; the decisions are `scripts/sign-off.sh <before> <after>`. Who signed off is whoever merged
+the PR that brought the push in. It **refuses, changing nothing**, and fails the run (the step's error says why),
+unless:
+
+- the push adds or changes one record, naming a candidate of its version whose tag exists, and a merged PR brought
+  it in;
+- `main` pins `eshop-qa` to exactly that candidate, not suspended;
+- QA's latest Deployment of it, created since `main` last changed QA's pin, succeeded (none, still running, or
+  failed refuses);
 - every candidate image exists, and no `X.Y.Z` image exists with another digest;
 - `vX.Y.Z` doesn't exist, unless an earlier sign-off of this same candidate made it.
 
 Then it copies each image to `docker.io/pkhamdee/<service>:X.Y.Z` **by digest** (never rebuilt), tags **`vX.Y.Z`** on
-the candidate's commit (CI's `plan` skips a plain release tag: nothing is built), publishes the **GitHub Release**
-(images, candidate, QA run, who signed off) and opens the **prod promotion PR** `eshop-prod: deploy vX.Y.Z`. Each step
-is skipped or updated when already done, so a sign-off that failed half-way is finished by running it again.
+the candidate's commit ("Signed off from vX.Y.Z-rc.N by @<merger>, merging <PR>"; CI's `plan` skips a plain release
+tag: nothing is built), publishes the **GitHub Release** (images, candidate, QA Deployment and run, who signed off in
+which PR, the record) and opens the **prod promotion PR** `eshop-prod: deploy vX.Y.Z`. Each step is skipped or
+updated when already done, so a sign-off that failed half-way is finished by re-running the failed job.
+
+A refused sign-off leaves the record on `main` and no release. Put right what it names (wait for or re-run QA's test,
+or promote the candidate again), then re-run the job; or let the next candidate's sign-off PR replace the record
+(it changes `releases/X.Y.Z.md`, which runs sign-off again).
 
 ### 6. Prod promotion
 
@@ -382,7 +408,7 @@ scripts/release.sh 0.3.1-rc.1                      # tags the head of release/0.
 ```
 
 ```
-fix ──► release/0.x ──► v0.3.1-rc.1 ──► CI ──► QA promotion ──► QA run ──► sign-off: v0.3.1 ──► prod promotion
+fix ──► release/0.x ──► v0.3.1-rc.1 ──► CI ──► QA promotion ──► QA test ──► sign-off PR: v0.3.1 ──► prod promotion
           └── same fix ──► main
 ```
 
@@ -394,9 +420,10 @@ supported.
 ```bash
 git tag -l "v*" --sort=-v:refname          # releases and candidates, highest version first
 git log v0.2.0..v0.3.0 --oneline           # what changed between two releases
-git show v0.3.0                            # tag message ("Signed off from v0.3.0-rc.N by @..."), commit
+git show v0.3.0                            # tag message ("Signed off from v0.3.0-rc.N by @<merger>, merging <PR>")
 git cherry -v origin/main origin/release/0.x   # release-branch commits not on main ("+")
-gh release view v0.3.0                     # images with digests, QA run, who signed off
+gh release view v0.3.0                     # images with digests, QA Deployment and run, who signed off
+git log --oneline -- releases/             # every sign-off record (releases/X.Y.Z.md: candidate, digests, evidence)
 git log --oneline -- clusters/local/prod-release.yaml   # every prod promotion and rollback
 ```
 
