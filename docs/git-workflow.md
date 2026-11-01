@@ -192,6 +192,19 @@ Which commit it tags:
 - **Any other candidate** (`X.Y.Z-rc.N` with N > 1, or Z > 0): the head of `release/N.x` as it is. A fix found in QA
   lands on `release/N.x` **and** `main` (the one rule), then `scripts/release.sh X.Y.Z-rc.<N+1>`.
 
+**Only from a `main` commit that passed on dev.** A candidate that brings in `origin/main` (a new `release/N.x`, or
+the merge above) bundles everything on it, so before asking it looks up dev's latest Deployment of exactly that
+commit ([Dev's smoke test](#devs-smoke-test), [ADR 0008](adr/0008-smoke-tests-on-deploy-reported-as-deployments.md)):
+
+- **success**: it goes on;
+- **in progress** (or queued, pending): it refuses, saying dev's smoke test is still running: wait, then run it again;
+- **failure**, **inactive** (superseded by a newer push) or **no Deployment**: it refuses, saying which, why and the
+  run's link. Fix `main`, or wait for its newest commit to pass on dev.
+
+`scripts/release.sh --force X.Y.0-rc.1` skips that refusal and records it in the tag message ("Cut with --force:
+dev's Deployment of `<commit>` was failure (`<run>`)."), so the override stays visible on the tag. Any other candidate
+tags the branch head, brings in nothing from `main` and is not checked.
+
 It refuses plain `X.Y.Z` (sign-off tags releases), a candidate whose tag exists, a version already released (cut the
 next one), and a commit with a GitHub skip-ci marker (`[skip ci]`, `[ci skip]`, …): GitHub skips every push workflow
 on such a commit, tag pushes included, so the tag would never build (that is how `v0.1.0` was lost). For the same

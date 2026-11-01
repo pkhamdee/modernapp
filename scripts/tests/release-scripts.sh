@@ -27,7 +27,7 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 #   api .../rulesets, .../deployment-branch-policies: print $FAKE_RULESETS, $FAKE_BRANCH_POLICIES (GitHub's JSON;
 #              FAKE_NO_ENVIRONMENT=1: the environment doesn't exist, 404); api <path> --method <M>: a write, its
 #              body kept as $GH_STATE/api-<M>-<path with / as _>
-#   api .../deployments[?environment=&ref=], .../deployments/<id>[/statuses]: GitHub's Deployments as files in
+#   api .../deployments[?environment=&ref=&sha=], .../deployments/<id>[/statuses]: GitHub's Deployments as files in
 #              $GH_STATE/deployments, <id>.json (the create body plus its id, numbered from 1) and <id>.statuses
 #              (one status body per line, oldest first); create (--method POST) and list newest first, --jq applied
 #              (strings printed raw, as gh does)
@@ -48,10 +48,12 @@ case "$1 $2" in
     elif [[ "$path" =~ /deployments/([0-9]+)/statuses$ && " $* " == *" --method POST "* ]]; then # appended, oldest first
       [ -f "$deployments/${BASH_REMATCH[1]}.json" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
       jq -c . >>"$deployments/${BASH_REMATCH[1]}.statuses"; echo '{}'
-    elif [[ "$path" == */deployments ]]; then # list, newest first, filtered by ?environment= and ?ref=
+    elif [[ "$path" == */deployments ]]; then # list, newest first, filtered by ?environment=, ?ref= and ?sha=
       env=$(sed -nE 's/(^|.*&)environment=([^&]*).*/\2/p' <<<"$query"); ref=$(sed -nE 's/(^|.*&)ref=([^&]*).*/\2/p' <<<"$query")
-      find "$deployments" -name '*.json' -exec cat {} + 2>/dev/null | jq -s --arg env "$env" --arg ref "$ref" \
-        'map(select(($env == "" or .environment == $env) and ($ref == "" or .ref == $ref))) | sort_by(-.id)' \
+      sha=$(sed -nE 's/(^|.*&)sha=([^&]*).*/\2/p' <<<"$query") # GitHub's .sha is the ref's commit: these refs are SHAs
+      find "$deployments" -name '*.json' -exec cat {} + 2>/dev/null | jq -s --arg env "$env" --arg ref "$ref" --arg sha "$sha" \
+        'map(select(($env == "" or .environment == $env) and ($ref == "" or .ref == $ref) and ($sha == "" or .ref == $sha)))
+         | sort_by(-.id)' \
         | jq -r "$jq_filter"
     elif [[ "$path" =~ /deployments/([0-9]+)$ ]]; then # one Deployment
       [ -f "$deployments/${BASH_REMATCH[1]}.json" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
@@ -146,7 +148,22 @@ release() { (cd "$clone" && printf '%s\n' "${answer:-y}" | scripts/release.sh "$
 
 # --- scripts/release.sh ---
 
+# Dev's smoke test of origin/main's commit, recorded as e2e.yml does (scripts/deployment.sh): dev_tested <state>
+# [description] makes a Deployment in progress and, unless <state> is in_progress, finishes it with <state>.
+# Every fresh origin starts with the same "initial" commit, so each test starts from no Deployments at all.
+smoke_run=https://github.com/test/actions/runs/42
+dev_tested() {
+  local sha id
+  sha=$(origin rev-parse refs/heads/main)
+  id=$(cd "$clone" && scripts/deployment.sh start dev "$sha" "$smoke_run" https://eshop.localhost)
+  [ "$1" = in_progress ] \
+    || (cd "$clone" && scripts/deployment.sh finish "$id" "$1" "$smoke_run" https://eshop.localhost ${2:+"$2"})
+}
+no_deployments() { rm -rf "$GH_STATE/deployments"; }
+
 rc_on_new_series() {
+  no_deployments
+  dev_tested success
   release 0.3.0-rc.1 \
     && [ "$(origin cat-file -t refs/tags/v0.3.0-rc.1)" = tag ] \
     && [ "$(origin rev-parse 'refs/tags/v0.3.0-rc.1^{commit}')" = "$(origin rev-parse refs/heads/release/0.x)" ] \
@@ -178,9 +195,9 @@ next_rc_on_existing_branch() {
 check "release.sh tags the head of an existing release/N.x" next_rc_on_existing_branch
 check "release.sh refuses plain X.Y.Z and points to sign-off" \
   refused 'Sign off release candidate' 0.3.0
-check "release.sh refuses a malformed version" refused 'usage: scripts/release.sh X.Y.Z-rc.N' 0.3.0-rc
+check "release.sh refuses a malformed version" refused 'usage: scripts/release.sh [--force] X.Y.Z-rc.N' 0.3.0-rc
 check "release.sh refuses a dry-run version (dispatched, never tagged)" \
-  refused 'usage: scripts/release.sh X.Y.Z-rc.N' 0.0.0-test.1
+  refused 'usage: scripts/release.sh [--force] X.Y.Z-rc.N' 0.0.0-test.1
 check "release.sh refuses an existing candidate tag" refused 'v0.3.0-rc.1 already exists' 0.3.0-rc.1
 released_version_refused() {
   git -C "$clone" tag -a v0.3.0 -m "Release 0.3.0" origin/release/0.x
@@ -214,6 +231,11 @@ git -C "$clone" checkout -q main
 git -C "$clone" cherry-pick -x rel >/dev/null
 commit_file feature-b.txt "feature b"
 git -C "$clone" push -q origin HEAD:main
+no_deployments
+dev_tested failure "eshop-dev is not serving main: not deployed after 900s"
+check "release.sh X.Y.0-rc.1 merging main refuses when dev's Deployment of main's commit failed" \
+  refused "failed: eshop-dev is not serving main: not deployed after 900s ($smoke_run)" 0.3.0-rc.1
+dev_tested success
 answer=n check "release.sh X.Y.0-rc.1 on an existing release/N.x pushes nothing when not confirmed" \
   refused 'aborted' 0.3.0-rc.1
 new_minor_merges_main() {
@@ -232,11 +254,14 @@ new_minor_merges_main() {
 check "release.sh X.Y.0-rc.1 on an existing release/N.x merges origin/main in (main's tree) and tags the merge" \
   new_minor_merges_main
 patch_rc_tags_head() {
+  # It brings in nothing from main, so dev's Deployments don't matter: main's latest failed.
+  dev_tested failure
   release 0.2.1-rc.1 \
     && [ "$(origin rev-parse 'refs/tags/v0.2.1-rc.1^{commit}')" = "$(origin rev-parse refs/heads/release/0.x)" ] \
     && [ "$(origin rev-parse 'refs/tags/v0.2.1-rc.1^{commit}')" = "$(origin rev-parse 'refs/tags/v0.3.0-rc.1^{commit}')" ]
 }
-check "release.sh X.Y.Z-rc.1 with Z > 0 tags the branch head (merges nothing)" patch_rc_tags_head
+check "release.sh X.Y.Z-rc.1 with Z > 0 tags the branch head (merges nothing), whatever dev's Deployments" \
+  patch_rc_tags_head
 
 clone=$(fresh new-minor-unmerged-fix)
 git -C "$clone" push -q origin HEAD:refs/heads/release/0.x
@@ -252,10 +277,63 @@ unmerged_fix_refused() {
 check "release.sh X.Y.0-rc.1 refuses while release/N.x has a commit that is not on main (git cherry)" \
   unmerged_fix_refused
 
+# A candidate that brings in origin/main (a new release/N.x, or X.Y.0-rc.1 merging main) needs dev's latest
+# Deployment of exactly that main commit to have succeeded (ADR 0008).
+clone=$(fresh dev-guard)
+no_deployment_refused() {
+  no_deployments
+  refused "dev has no Deployment of main at $(origin rev-parse --short refs/heads/main)" 0.3.0-rc.1
+}
+check "release.sh refuses a candidate bringing in main when dev has no Deployment of that commit" no_deployment_refused
+older_commit_passed_refused() { # a success for main's previous commit says nothing about this one
+  no_deployments
+  dev_tested success
+  git -C "$clone" commit -q --allow-empty -m "feature"
+  git -C "$clone" push -q origin HEAD:main
+  refused "dev has no Deployment of main at $(origin rev-parse --short refs/heads/main)" 0.3.0-rc.1
+}
+check "release.sh checks dev's Deployment of exactly origin/main's commit" older_commit_passed_refused
+running_refused() {
+  no_deployments
+  dev_tested in_progress
+  refused 'still running (in_progress): wait for it to finish' 0.3.0-rc.1 && grep -qF "$smoke_run" "$work/out"
+}
+check "release.sh refuses while dev's smoke test of main's commit is still running" running_refused
+failed_refused() {
+  no_deployments
+  dev_tested failure "2 of 9 smoke tests failed"
+  refused "failed: 2 of 9 smoke tests failed ($smoke_run)" 0.3.0-rc.1
+}
+check "release.sh refuses when dev's latest Deployment of main's commit failed, saying why and linking the run" \
+  failed_refused
+retried_and_passed() { # the latest Deployment counts: an earlier failure of the same commit, then a pass
+  no_deployments
+  dev_tested failure
+  dev_tested success
+  answer=n refused 'aborted' 0.3.0-rc.1
+}
+check "release.sh goes by dev's latest Deployment of main's commit" retried_and_passed
+superseded_refused() {
+  no_deployments
+  dev_tested inactive superseded
+  refused 'inactive (superseded)' 0.3.0-rc.1
+}
+check "release.sh refuses when dev's Deployment of main's commit is inactive (superseded)" superseded_refused
+forced() {
+  no_deployments
+  dev_tested failure
+  release --force 0.3.0-rc.1 || return 1
+  [ "$(origin rev-parse 'refs/tags/v0.3.0-rc.1^{commit}')" = "$(origin rev-parse refs/heads/main)" ] \
+    && origin cat-file tag refs/tags/v0.3.0-rc.1 \
+      | grep -qF "Cut with --force: dev's Deployment of $(origin rev-parse refs/heads/main) was failure ($smoke_run)."
+}
+check "release.sh --force cuts it anyway and the tag message records dev's Deployment state" forced
+
 clone=$(fresh skip-ci)
 git -C "$clone" commit -q --allow-empty -m "eshop-dev: update images [skip ci]"
 git -C "$clone" push -q origin HEAD:main
 check "release.sh refuses a commit with a skip-ci marker" refused 'skip-ci marker' 0.3.0-rc.1
+no_deployments
 
 # --- scripts/check-release-tag.sh (CI's plan job, in a full clone with the tag fetched) ---
 
