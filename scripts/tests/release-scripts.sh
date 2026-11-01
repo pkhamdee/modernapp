@@ -5,8 +5,9 @@
 #   scripts/promotion-pr.sh        the promotion PR's branch, pin commit and body
 #   scripts/sign-off.sh            the "Sign off release candidate" workflow: its refusals, the release, re-runs
 #   scripts/check-new-images.sh    CI's push job: a version's images are never overwritten
-#   scripts/smoke-targets.sh       the smoke test's targets: what a push to main, or a dispatch, tests where
-#   scripts/deployment.sh          the smoke test's Deployments: create, in progress, outcome, superseded
+#   scripts/smoke-targets.sh       the smoke test's targets: what a push to main (promotions and rollbacks
+#                                  included), or a dispatch, tests where
+#   scripts/deployment.sh          the smoke test's Deployments: create, in progress, outcome, superseded, replaced
 #   scripts/protect-main.sh        main's ruleset, the tag rulesets and the release environment (dry run and apply)
 # `gh` and `crane` are fakes on PATH that record their arguments and keep GitHub's and the registry's state in files.
 # Run from anywhere: scripts/tests/release-scripts.sh
@@ -26,7 +27,7 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 #   api .../rulesets, .../deployment-branch-policies: print $FAKE_RULESETS, $FAKE_BRANCH_POLICIES (GitHub's JSON;
 #              FAKE_NO_ENVIRONMENT=1: the environment doesn't exist, 404); api <path> --method <M>: a write, its
 #              body kept as $GH_STATE/api-<M>-<path with / as _>
-#   api .../deployments[?environment=&ref=], .../deployments/<id>/statuses: GitHub's Deployments as files in
+#   api .../deployments[?environment=&ref=], .../deployments/<id>[/statuses]: GitHub's Deployments as files in
 #              $GH_STATE/deployments, <id>.json (the create body plus its id, numbered from 1) and <id>.statuses
 #              (one status body per line, oldest first); create (--method POST) and list newest first, --jq applied
 #              (strings printed raw, as gh does)
@@ -52,6 +53,9 @@ case "$1 $2" in
       find "$deployments" -name '*.json' -exec cat {} + 2>/dev/null | jq -s --arg env "$env" --arg ref "$ref" \
         'map(select(($env == "" or .environment == $env) and ($ref == "" or .ref == $ref))) | sort_by(-.id)' \
         | jq -r "$jq_filter"
+    elif [[ "$path" =~ /deployments/([0-9]+)$ ]]; then # one Deployment
+      [ -f "$deployments/${BASH_REMATCH[1]}.json" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+      jq -r "$jq_filter" "$deployments/${BASH_REMATCH[1]}.json"
     elif [[ "$path" =~ /deployments/([0-9]+)/statuses$ ]]; then # newest first
       cat "$deployments/${BASH_REMATCH[1]}.statuses" 2>/dev/null | jq -s 'reverse' | jq -r "$jq_filter"
     elif [[ " $* " == *" --method "* ]]; then # a write: its JSON body (stdin) kept as $GH_STATE/api-<METHOD>-<path>
@@ -583,6 +587,64 @@ dispatch_refusals() {
 check "smoke-targets.sh dispatch refuses QA without a candidate, a version the environment doesn't take, and other environments" \
   dispatch_refusals
 
+# --- scripts/smoke-targets.sh push: promotions and rollbacks (a push changing `# release-pin: <env>` lines) ---
+
+clone=$(fresh promotion-targets)
+promoted() { # promoted <env> <version>...: pins each <env> to its <version> in one commit pushed to main; prints before, after
+  local before
+  before=$(git -C "$clone" rev-parse HEAD)
+  while [ $# -gt 0 ]; do (cd "$clone" && scripts/pin-release.sh "$1" "$2" >/dev/null 2>&1) || return 1; shift 2; done
+  git -C "$clone" commit -qam "promote" && git -C "$clone" push -q origin HEAD:main
+  echo "$before $(git -C "$clone" rev-parse HEAD)"
+}
+suspended_placeholder_tests_nothing() {
+  local f="$clone/clusters/local/qa-release.yaml"
+  # QA's placeholder changed by hand, its `# release-pin-until: qa` line kept: still nothing deployed to test.
+  sed -E 's|: "0.2.0" (# release-pin: qa)$|: "0.2.1" \1|' "$f" >"$f.new" && mv "$f.new" "$f"
+  # shellcheck disable=SC2046 # two SHAs
+  set -- $(promoted) && targets push "$1" "$2" && [ ! -s "$work/out" ] \
+    && grep -q ' # release-pin-until: qa$' "$f"
+}
+check "smoke-targets.sh push: a pin change to a suspended environment tests nothing (nor dev)" suspended_placeholder_tests_nothing
+qa_promotion_tests_qa() {
+  # shellcheck disable=SC2046
+  set -- $(promoted qa 0.3.0-rc.1) && targets push "$1" "$2" && [ "$(cat "$work/out")" = "qa 0.3.0-rc.1" ]
+}
+check "smoke-targets.sh push: a QA promotion (its first, unsuspending QA) is qa at the candidate, not dev" qa_promotion_tests_qa
+prod_promotion_tests_prod() {
+  # shellcheck disable=SC2046
+  set -- $(promoted prod 0.3.0) && targets push "$1" "$2" && [ "$(cat "$work/out")" = "prod 0.3.0" ]
+}
+check "smoke-targets.sh push: a prod promotion is prod at the release, not dev" prod_promotion_tests_prod
+both_promoted_tests_both() {
+  # shellcheck disable=SC2046
+  set -- $(promoted qa 0.4.0-rc.1 prod 0.3.1) && targets push "$1" "$2" \
+    && [ "$(cat "$work/out")" = "$(printf 'prod 0.3.1\nqa 0.4.0-rc.1')" ]
+}
+check "smoke-targets.sh push: a push moving both pins is both environments, each at its version" both_promoted_tests_both
+rollback_tests_earlier_release() {
+  # shellcheck disable=SC2046
+  set -- $(promoted prod 0.3.0) && targets push "$1" "$2" && [ "$(cat "$work/out")" = "prod 0.3.0" ]
+}
+check "smoke-targets.sh push: a rollback (prod back to an earlier release) is prod at that release" rollback_tests_earlier_release
+pin_with_other_lines_tests_dev_too() {
+  local f="$clone/clusters/local/qa-release.yaml"
+  echo "# a comment beside the pin" >>"$f"
+  # shellcheck disable=SC2046
+  set -- $(promoted qa 0.4.0-rc.2) && targets push "$1" "$2" \
+    && [ "$(cat "$work/out")" = "$(printf 'qa 0.4.0-rc.2\ndev %s' "$2")" ] \
+    && set -- $(promoted qa 0.4.0-rc.3 && pushed eshop-api/README.md "a change") \
+    && targets push "$1" "$4" && [ "$(cat "$work/out")" = "$(printf 'qa 0.4.0-rc.3\ndev %s' "$4")" ]
+}
+check "smoke-targets.sh push: a pin change with other lines, in the pin files or elsewhere, is the environment and dev" \
+  pin_with_other_lines_tests_dev_too
+other_lines_in_pin_files_test_dev() {
+  # shellcheck disable=SC2046
+  set -- $(pushed clusters/local/prod-release.yaml "# not a pin") && targets push "$1" "$2" \
+    && [ "$(cat "$work/out")" = "dev $2" ]
+}
+check "smoke-targets.sh push: other lines of the pin files, no pin changed, are dev only" other_lines_in_pin_files_test_dev
+
 # --- scripts/deployment.sh (e2e.yml: each target's GitHub Deployment and its statuses) ---
 
 deployment() { (cd "$root" && scripts/deployment.sh "$@") >"$work/out" 2>&1; }
@@ -644,6 +706,38 @@ supersedes_older_in_progress() {
 }
 check "deployment.sh supersede <env> <id> marks the environment's other in-progress Deployments inactive, superseded (finished ones, other environments' and its own untouched)" \
   supersedes_older_in_progress
+rm -rf "$GH_STATE/deployments"
+
+# A promotion's (or rollback's) Deployment that succeeds replaces the environment's previous successful one.
+qa_url=https://qa.eshop.localhost
+started() { deployment start "$@" "$run_url" "https://$1.eshop.localhost" && cat "$work/out"; } # started <env> <ref>
+success_replaces_previous_success() {
+  rm -rf "$GH_STATE/deployments"
+  local first failed prod previous own
+  first=$(started qa v0.3.0-rc.1) && deployment finish "$first" success "$run_url" "$qa_url"
+  previous=$(started qa v0.3.0-rc.2) && deployment finish "$previous" success "$run_url" "$qa_url"
+  failed=$(started qa v0.3.0-rc.3) && deployment finish "$failed" failure "$run_url" "$qa_url" "the Playwright demo failed"
+  prod=$(started prod v0.2.0) && deployment finish "$prod" success "$run_url" https://prod.eshop.localhost
+  own=$(started qa v0.3.0-rc.1) || return 1 # a rollback to rc.1
+  deployment finish "$own" success "$run_url" "$qa_url" \
+    && statuses "$previous" | jq -e 'map(.state) == ["in_progress", "success", "inactive"]
+         and .[2].description == "replaced by v0.3.0-rc.1"' >/dev/null \
+    && statuses "$first" | jq -e 'map(.state) == ["in_progress", "success", "inactive"]' >/dev/null \
+    && statuses "$failed" | jq -e 'map(.state) == ["in_progress", "failure"]' >/dev/null \
+    && statuses "$prod" | jq -e 'map(.state) == ["in_progress", "success"]' >/dev/null \
+    && statuses "$own" | jq -e 'map(.state) == ["in_progress", "success"]' >/dev/null
+}
+check "deployment.sh finish <id> success marks the environment's previous successful Deployments inactive (failed ones, other environments' and its own untouched)" \
+  success_replaces_previous_success
+failure_keeps_previous_success() {
+  rm -rf "$GH_STATE/deployments"
+  local previous own
+  previous=$(started prod v0.3.0) && deployment finish "$previous" success "$run_url" https://prod.eshop.localhost
+  own=$(started prod v0.3.1) || return 1
+  deployment finish "$own" failure "$run_url" https://prod.eshop.localhost "the Playwright demo failed" \
+    && statuses "$previous" | jq -e 'map(.state) == ["in_progress", "success"]' >/dev/null
+}
+check "deployment.sh finish <id> failure leaves the previous successful Deployment as it is" failure_keeps_previous_success
 rm -rf "$GH_STATE/deployments"
 
 # --- scripts/protect-main.sh (main's ruleset and the release environment; applied by a maintainer) ---

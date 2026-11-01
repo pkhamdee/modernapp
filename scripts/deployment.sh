@@ -6,15 +6,17 @@
 #       creates the Deployment of <ref> (a tag vX.Y.Z[-rc.N] or a main commit) to <env> (dev, qa or prod), in
 #       progress, and prints its id
 #   scripts/deployment.sh finish <id> success|failure|inactive <log_url> <environment_url> [description]
-#       its outcome: success or failure, or inactive when a newer run superseded it (description `superseded`)
+#       its outcome: success or failure, or inactive when a newer run superseded it (description `superseded`).
+#       On success the environment's earlier successful Deployments become inactive, `replaced by <ref>`: the
+#       environment no longer serves them (a promotion, or a rollback to an earlier release)
 #   scripts/deployment.sh supersede <env> <id>
 #       marks every other in-progress Deployment of <env> inactive, `superseded`: one run tests an environment at a
 #       time (e2e.yml's concurrency), so any other still in progress belongs to a run that is gone
 #
 # Created through the Deployments API rather than a job's `environment:` key, which would record the workflow's
 # ref (main) instead of what was tested. auto_merge is off (GitHub would otherwise merge main into the ref) and no
-# commit status is required. GitHub marks an environment's earlier successful Deployments inactive when a newer one
-# succeeds (auto_inactive). Needs gh with Deployments write access (GITHUB_TOKEN: `deployments: write`).
+# commit status is required. GitHub's own auto_inactive skips production environments, so finish marks the earlier
+# successful ones inactive itself rather than rely on how GitHub classifies qa and prod. Needs gh with Deployments write access (GITHUB_TOKEN: `deployments: write`).
 # Tests: scripts/tests/release-scripts.sh.
 set -euo pipefail
 # shellcheck source=lib/repo.sh
@@ -51,6 +53,15 @@ case "${1:-}" in
   finish)
     { [[ $# =~ ^[56]$ ]] && is_id "$2" && [[ "$3" =~ ^(success|failure|inactive)$ ]]; } || usage
     status "$2" "$3" "$4" "$5" "${6:-}"
+    [ "$3" = success ] || exit 0
+    # The environment now serves this ref: its earlier successful Deployments no longer describe it.
+    read -r env ref < <(gh api "repos/$REPO/deployments/$2" --jq '"\(.environment) \(.ref)"')
+    for id in $(gh api "repos/$REPO/deployments?environment=$env&per_page=30" --jq '.[].id'); do
+      [ "$id" -lt "$2" ] || continue
+      state=$(gh api "repos/$REPO/deployments/$id/statuses?per_page=1" --jq '.[0].state // ""')
+      [ "$state" = success ] || continue
+      status "$id" inactive "" "" "replaced by $ref"
+    done
     ;;
   supersede)
     { [ $# -eq 3 ] && is_env "$2" && is_id "$3"; } || usage

@@ -5,13 +5,18 @@
 #
 #   scripts/smoke-targets.sh push <before> <after>   # a push to main, its before and after commits
 #   -> dev 3f2c...                                    #   dev at the pushed commit
+#   -> qa 0.3.0-rc.1                                  #   a QA promotion: QA at its new pin, and no dev line
 #   scripts/smoke-targets.sh dispatch dev [commit]    # a manual run: main's head, or that main commit
 #   scripts/smoke-targets.sh dispatch qa X.Y.Z-rc.N   #   QA's candidate (required: sign-off names the run by it)
 #   scripts/smoke-targets.sh dispatch prod [X.Y.Z]    #   prod's pin on main when not given
 #
-# A push to main means dev at the pushed commit, whatever it changed: Flux deploys every main commit to eshop-dev,
-# its own image-update commits included. The lines are the job matrix; e2e.yml waits for each environment to
-# serve its target (e2e/check-serving.sh --wait) and records the result as a Deployment (scripts/deployment.sh).
+# A push to main means dev at the pushed commit: Flux deploys every main commit to eshop-dev, its own image-update
+# commits included. A push that changes a `# release-pin: <env>` line in clusters/local/*.yaml (a promotion or a
+# rollback PR) also means that environment at the version pinned in <after> (a line each, so a push moving both
+# pins tests both), unless the environment is still suspended (`# release-pin-until: <env>`): its pin is then a
+# placeholder and nothing is deployed. A push changing nothing but pin lines has no dev line: dev's deploy is the
+# same as before. The lines are the job matrix; e2e.yml waits for each environment to serve its target
+# (e2e/check-serving.sh --wait) and records the result as a Deployment (scripts/deployment.sh).
 # Exit 1: a commit or pin it can't find; 2: bad arguments. Tests: scripts/tests/release-scripts.sh.
 set -euo pipefail
 # shellcheck source=lib/versions.sh
@@ -32,11 +37,34 @@ case "${1:-} ${2:-}" in
   "push "*)
     [ $# -eq 3 ] || usage
     after=$(commit "$3")
-    # The seam for the pinned environments (#88): a push that changes a `# release-pin: <env>` line between
-    # <before> and <after> will mean that environment at the newly pinned version (a line each, so a push moving
-    # both pins tests both), and a push changing nothing but pins will not test dev, whose deploy it doesn't
-    # change. Until then every push is dev's.
     only_pins=false
+    # No <before> here (a new branch's all-zero SHA, a force push's lost commit): dev only, as for any push.
+    if before=$(git rev-parse --verify --quiet "$2^{commit}"); then
+      # The lines this push changed in the pin files, removed and added, without the diff's own headers.
+      changed=$(git diff --unified=0 --no-color "$before" "$after" -- 'clusters/local/*.yaml' \
+        | grep -E '^[-+]' | grep -vE '^(---|\+\+\+) ' || true)
+      envs=$(sed -nE 's/.* # release-pin: ([a-z]+)$/\1/p' <<<"$changed" | sort -u)
+      if [ -n "$envs" ]; then
+        pins=$(mktemp -d)
+        trap 'rm -rf "$pins"' EXIT
+        git archive "$after" clusters/local | tar -x -C "$pins"
+        pin() { PIN_DIR="$pins/clusters/local" "$(dirname "$0")/pin-release.sh" "$@"; }
+        for env in $envs; do
+          # Exit 0: still suspended (`# release-pin-until: <env>`), its pin a placeholder nothing deploys; 2: no
+          # pin left at all. Neither deploys anything to test.
+          suspended=0
+          pin --suspended "$env" 2>/dev/null || suspended=$?
+          [ "$suspended" -eq 1 ] || continue
+          version=$(pin "$env") || exit 1
+          echo "$env $version"
+        done
+        # Nothing but pin lines changed (a promotion or rollback PR): dev's deploy is the same, so no dev test.
+        if ! git diff --name-only "$before" "$after" | grep -qvE '^clusters/local/[^/]+\.yaml$' \
+          && ! grep -qvE ' # release-pin(-until)?: [a-z]+$' <<<"$changed"; then
+          only_pins=true
+        fi
+      fi
+    fi
     $only_pins || echo "dev $after"
     ;;
   "dispatch dev")
