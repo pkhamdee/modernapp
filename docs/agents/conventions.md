@@ -282,7 +282,7 @@ Agents are denied these; ask the user, giving the exact command:
   send a real email: `scripts/notify.sh` is tested with a fake `curl` in `scripts/tests/release-scripts.sh`;
 - applying `scripts/protect-main.sh` (main's ruleset, the `v*` tag rulesets, the `release` and `smoke-test` environments) or changing any repo setting;
   give the user `scripts/protect-main.sh --dry-run` first. Test `scripts/release.sh`, `scripts/check-release-tag.sh`,
-  `scripts/pin-release.sh`, `scripts/promotion-pr.sh`, `scripts/sign-off-pr.sh`, `scripts/sign-off.sh`, `scripts/check-new-images.sh`, `scripts/notify.sh` and `scripts/protect-main.sh` with
+  `scripts/pin-release.sh`, `scripts/promotion-pr.sh`, `scripts/sign-off-pr.sh`, `scripts/sign-off.sh`, `scripts/check-new-images.sh`, `scripts/smoke-targets.sh`, `scripts/smoke-result.sh`, `scripts/deployment.sh`, `scripts/notify.sh` and `scripts/protect-main.sh` with
   `scripts/tests/release-scripts.sh` (throwaway local repos, fake `gh`), never against GitHub.
 
 `main` is protected (`docs/git-workflow.md`, "Protecting main"): agents never push to it; every change is a PR whose
@@ -293,9 +293,13 @@ from `main` and `v*` tags, so those jobs fail on any other branch (a release dry
 `scripts/release.sh X.Y.0-rc.1` on an existing `release/N.x` merges `origin/main` into it first and refuses while the
 branch has commits not on `main` by patch-id (`git cherry`).
 
-Release and e2e scripts share `scripts/lib/` (sourced): the version grammar is `versions.sh` (`is_candidate`,
-`env_takes qa|prod <version>`, ...), the repository and image registry `repo.sh` (`REPO`, `IMAGE_REGISTRY`); use
-them rather than a new regex or a literal `pkhamdee/...`. Whether an environment is still suspended is
-`scripts/pin-release.sh --suspended <env>` (exit 0 suspended, 1 not, 2 no pin), not a grep for the marker.
+Release and e2e scripts share `scripts/lib/` (sourced): the version and environment grammar is `versions.sh`
+(`is_candidate`, `env_takes qa|prod <version>`, `is_env`, `is_commit`, `is_target <env> <target>`, ...), the
+repository and image registry `repo.sh` (`REPO`, `IMAGE_REGISTRY`, `gh_read`), the pins at a commit `pins.sh`
+(`pin_at <rev> [--suspended] <env>`), the smoke test's Deployments `deployments.sh` (`deployments_of`,
+`latest_status`, `outcome_of`, `run_ended`; only those recorded by a run on main). Use them rather than a new regex,
+a literal `pkhamdee/...`, another `git archive` of the pins or another walk of the Deployments API. Whether an
+environment is still suspended is `pin_at <rev> --suspended <env>` (`scripts/pin-release.sh --suspended <env>` on
+the working tree; exit 0 suspended, 1 not, 2 no pin), not a grep for the marker.
 
 `gh pr merge <n> --squash --delete-branch` works for agents only as a standalone command, not inside a compound one.

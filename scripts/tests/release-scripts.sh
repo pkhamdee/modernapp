@@ -916,6 +916,70 @@ other_lines_in_pin_files_test_dev() {
 }
 check "smoke-targets.sh push: other lines of the pin files, no pin changed, are dev only" other_lines_in_pin_files_test_dev
 
+# --- scripts/smoke-result.sh (e2e.yml: is the target still the environment's, and how did its test end) ---
+
+# QA and prod runs aren't cancelled by newer ones and may overlap: a run whose version is no longer its environment's
+# pin on main (a newer promotion merged) tested nothing that matters, and says so as `superseded`.
+clone=$(fresh smoke-result)
+result() { (cd "$clone" && scripts/smoke-result.sh "$@") >"$work/out" 2>&1; }
+promoted qa 0.3.0-rc.1 prod 0.3.0 >/dev/null
+still_pinned_is_current() {
+  result current qa 0.3.0-rc.1 && result current prod 0.3.0 && result current dev "$(git -C "$clone" rev-parse HEAD)"
+}
+check "smoke-result.sh current: a version still its environment's pin on main is current (dev always is)" \
+  still_pinned_is_current
+moved_pin_is_superseded() {
+  local status=0
+  result current qa 0.3.0-rc.2 || status=$?
+  [ "$status" = 1 ] && [ "$(cat "$work/out")" = "eshop-qa is pinned to 0.3.0-rc.1 on main now, not 0.3.0-rc.2" ]
+}
+check "smoke-result.sh current: a version no longer its environment's pin on main is not (exit 1, saying what is)" \
+  moved_pin_is_superseded
+retried_file() { printf '%s\n' "desktop: tests/demo.spec.ts › the demo" >"$work/retried.txt"; echo "$work/retried.txt"; }
+outcome_is() { # outcome_is <expected line> <smoke-result.sh of args...>
+  local expected=$1; shift
+  result of "$@" && [ "$(cat "$work/out")" = "$expected" ]
+}
+results_by_job_status() {
+  local head
+  head=$(git -C "$clone" rev-parse HEAD)
+  outcome_is passed qa 0.3.0-rc.1 success success \
+    && outcome_is passed qa 0.3.0-rc.1 success success "$work/none.txt" \
+    && outcome_is retried prod 0.3.0 success success "$(retried_file)" \
+    && outcome_is not-deployed qa 0.3.0-rc.1 failure failure \
+    && outcome_is failed qa 0.3.0-rc.1 failure success \
+    && outcome_is failed dev "$head" failure success \
+    && outcome_is cancelled prod 0.3.0 cancelled success \
+    && outcome_is superseded dev "$head" cancelled skipped
+}
+check "smoke-result.sh of: passed, retried (a test passed only on retry), not-deployed (the wait failed), failed, cancelled (QA or prod, by hand) and superseded (dev, by a newer run)" \
+  results_by_job_status
+failure_after_promotion_is_superseded() {
+  outcome_is "superseded eshop-qa is pinned to 0.3.0-rc.1 on main now, not 0.2.9-rc.1" qa 0.2.9-rc.1 failure failure \
+    && outcome_is "superseded eshop-qa is pinned to 0.3.0-rc.1 on main now, not 0.2.9-rc.1" qa 0.2.9-rc.1 failure success \
+    && outcome_is "superseded eshop-prod is pinned to 0.3.0 on main now, not 0.2.0" prod 0.2.0 cancelled success \
+    && outcome_is passed prod 0.2.0 success success # it passed before prod moved on: the pass stands
+}
+check "smoke-result.sh of: a QA or prod run that failed or was cancelled after a newer promotion merged is superseded, saying why" \
+  failure_after_promotion_is_superseded
+suspended_is_superseded() {
+  local f="$clone/clusters/local/qa-release.yaml"
+  cp "$f" "$work/qa-release.yaml"
+  cp "$clusters/qa-release.yaml" "$f" && git -C "$clone" commit -qam "suspend QA" && git -C "$clone" push -q origin HEAD:main
+  local status=0
+  result current qa 0.3.0-rc.1 || status=$?
+  cp "$work/qa-release.yaml" "$f" && git -C "$clone" commit -qam "back" && git -C "$clone" push -q origin HEAD:main
+  [ "$status" = 1 ] && grep -qF "apps-qa is suspended on main now" "$work/out"
+}
+check "smoke-result.sh current: an environment suspended again on main is not current" suspended_is_superseded
+result_refusals() {
+  ! result of qa 0.3.0 success success && grep -qF 'usage: scripts/smoke-result.sh' "$work/out" \
+    && ! result of qa 0.3.0-rc.1 green success && grep -qF 'usage: scripts/smoke-result.sh' "$work/out" \
+    && ! result current staging 1.0.0 && grep -qF 'usage: scripts/smoke-result.sh' "$work/out"
+}
+check "smoke-result.sh refuses a target its environment doesn't take, an unknown job status and an unknown environment" \
+  result_refusals
+
 # --- scripts/deployment.sh (e2e.yml: each target's GitHub Deployment and its statuses) ---
 
 deployment() { (cd "$root" && scripts/deployment.sh "$@") >"$work/out" 2>&1; }
@@ -1033,13 +1097,14 @@ rm -rf "$GH_STATE/deployments"
 # --- scripts/notify.sh (e2e.yml's notify job: a smoke test's result by email) ---
 
 # Fake curl: logs its arguments to $CURL_LOG, keeps the --config it reads on stdin (the credentials) as
-# $CURL_MAIL.config and the message it would upload (--upload-file) as $CURL_MAIL. Sends nothing.
+# $CURL_MAIL.config and the message it would upload (--upload-file) as $CURL_MAIL, also appended to $CURL_MAIL.all
+# (every message since notify() started). Sends nothing.
 cat >"$work/bin/curl" <<'CURL'
 #!/usr/bin/env bash
 echo "curl $*" >>"$CURL_LOG"
 while [ $# -gt 0 ]; do
   case "$1" in
-    --upload-file) cp "$2" "$CURL_MAIL" ;;
+    --upload-file) cp "$2" "$CURL_MAIL"; cat "$2" >>"$CURL_MAIL.all" ;;
     --config) [ "$2" != - ] || cat >"$CURL_MAIL.config" ;;
   esac
   shift
@@ -1051,7 +1116,7 @@ smtp_password=not-a-real-app-password
 # notify <args>: scripts/notify.sh with every SMTP setting (each overridable, '' for missing), the mail it sent (if
 # any) in $CURL_MAIL. Output in $work/out.
 notify() {
-  rm -f "$CURL_MAIL" "$CURL_MAIL.config"; : >"$CURL_LOG"
+  rm -f "$CURL_MAIL" "$CURL_MAIL.config" "$CURL_MAIL.all"; : >"$CURL_LOG"
   (cd "$root" && SMTP_USERNAME=${SMTP_USERNAME-eshop.smoke@example.com} SMTP_PASSWORD=${SMTP_PASSWORD-$smtp_password} \
     NOTIFY_EMAIL=${NOTIFY_EMAIL-team@example.com} RUN_URL=$run_url REPORT_URL=$run_url/artifacts/99 \
     scripts/notify.sh "$@") >"$work/out" 2>&1
@@ -1147,6 +1212,61 @@ notify_refusals() {
 }
 check "notify.sh refuses a version its environment doesn't take, an unknown result and a dev target that isn't a commit" \
   notify_refusals
+
+# Not tested: a QA or prod run superseded by a newer promotion, or cancelled, still reports its target; dev doesn't.
+qa_superseded_mailed() {
+  DETAIL="eshop-qa is pinned to 0.3.0-rc.2 on main now, not 0.3.0-rc.1" notify qa 0.3.0-rc.1 superseded \
+    && [ "$(subject)" = "[eShop] qa v0.3.0-rc.1: NOT TESTED (superseded)" ] \
+    && grep -qF "NOT TESTED" "$CURL_MAIL" && grep -qF "eshop-qa is pinned to 0.3.0-rc.2 on main now" "$CURL_MAIL" \
+    && ! grep -qF "Rollback" "$CURL_MAIL"
+}
+check "notify.sh: a superseded QA run is mailed as not tested, saying what QA is pinned to now" qa_superseded_mailed
+prod_cancelled_mailed() {
+  notify prod 0.3.0 cancelled && [ "$(subject)" = "[eShop] prod v0.3.0: NOT TESTED (cancelled)" ] \
+    && grep -qF "e2e/run-on-actions.sh prod 0.3.0" "$CURL_MAIL" && ! grep -qF "Rollback" "$CURL_MAIL"
+}
+check "notify.sh: a cancelled prod run is mailed as not tested, with how to run it again" prod_cancelled_mailed
+dev_not_tested_quiet() {
+  notify dev "$dev_commit" superseded && ! mailed && notify dev "$dev_commit" cancelled && ! mailed
+}
+check "notify.sh: a superseded or cancelled dev run sends nothing" dev_not_tested_quiet
+
+# notify.sh results <dir>: e2e.yml's notify job, every target of the run (stdin) from its smoke-result-<env> artifact.
+results_dir=$work/results
+smoke_result() { # smoke_result <env> <result line> [detail]: the artifact e2e.yml's test job uploads
+  mkdir -p "$results_dir/smoke-result-$1"
+  echo "$2" >"$results_dir/smoke-result-$1/result"
+  echo "${3:-}" >"$results_dir/smoke-result-$1/detail"
+  echo "$run_url/artifacts/98" >"$results_dir/smoke-result-$1/report-url"
+}
+all_subjects() { sed -n 's/^Subject: //p' "$CURL_MAIL.all" 2>/dev/null | tr -d '\r'; }
+mails_each_target() {
+  rm -rf "$GH_STATE/deployments" "$results_dir"
+  smoke_result qa "failed" "the Playwright demo failed"
+  smoke_result prod "passed"
+  printf 'qa 0.3.1-rc.1\nprod 0.3.0\n' | notify results "$results_dir" \
+    && [ "$(all_subjects)" = "$(printf '%s\n' "[eShop] qa v0.3.1-rc.1: smoke test FAILED" \
+         "[eShop] prod v0.3.0: deployed and smoke test passed")" ] \
+    && grep -qF "the Playwright demo failed" "$CURL_MAIL.all" && grep -qF "$run_url/artifacts/98" "$CURL_MAIL.all"
+}
+check "notify.sh results <dir>: each target of the run is mailed from its result, detail and report link" mails_each_target
+missing_result_not_tested() {
+  rm -rf "$GH_STATE/deployments" "$results_dir"; mkdir -p "$results_dir"
+  printf 'qa 0.3.1-rc.1\ndev %s\n' "$dev_commit" | notify results "$results_dir" \
+    && [ "$(all_subjects)" = "[eShop] qa v0.3.1-rc.1: NOT TESTED (cancelled)" ] \
+    && grep -qF "recorded no result" "$CURL_MAIL.all" && ! grep -qF FAILED "$CURL_MAIL.all"
+}
+check "notify.sh results <dir>: a target with no result (its job cancelled while queued) is not tested, never FAILED: QA mailed as such, dev not at all" \
+  missing_result_not_tested
+one_email_failing_fails() {
+  rm -rf "$GH_STATE/deployments" "$results_dir"
+  smoke_result qa "passed"; smoke_result prod "passed"
+  local status=0
+  printf 'qa 0.3.1-rc.1\nprod 0.3.0\n' | NOTIFY_EMAIL='' notify results "$results_dir" || status=$?
+  [ "$status" = 1 ] && [ "$(grep -c 'no NOTIFY_EMAIL' "$work/out")" = 2 ]
+}
+check "notify.sh results <dir>: an email that can't be sent fails the whole (exit 1) after trying every target" \
+  one_email_failing_fails
 rm -rf "$GH_STATE/deployments"
 
 # --- scripts/protect-main.sh (main's ruleset and the release environment; applied by a maintainer) ---

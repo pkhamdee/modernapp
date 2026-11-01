@@ -368,7 +368,8 @@ npm run report                                       # HTML report of the last r
 Each smoke test result on GitHub Actions is emailed (`e2e.yml`'s `notify` job, `scripts/notify.sh`): every QA and
 prod result, and for dev only a failure and the first pass after one (judged from dev's previous Deployment). The
 subject says what happened, e.g. `[eShop] prod v0.3.0: deployed and smoke test passed` or
-`[eShop] qa v0.3.1-rc.1: smoke test FAILED` (also `passed on retry` and `NOT DEPLOYED`); the body links the run and
+`[eShop] qa v0.3.1-rc.1: smoke test FAILED` (also `passed on retry`, `NOT DEPLOYED`, and for QA and prod
+`NOT TESTED (superseded)` or `NOT TESTED (cancelled)`: docs/git-workflow.md, "QA test run"); the body links the run and
 its Playwright report artifact (`playwright-report-<env>`). A prod failure names the last release that passed in prod
 and the rollback: `scripts/promotion-pr.sh prod <that version>`, whose PR's commit is
 `scripts/pin-release.sh prod <that version>`, then merge it.

@@ -251,7 +251,28 @@ cluster serves it), `flux get kustomization apps-qa`, `kubectl -n eshop-qa get d
 a Deployment of **`vX.Y.Z-rc.N`** to `qa` (`gh api 'repos/pkhamdee/modernapp/deployments?environment=qa'`) that ends
 success or failure; a success marks QA's previous successful Deployment inactive ("replaced by vX.Y.Z-rc.N"), so the
 active one is what QA runs. A push changing only pins doesn't test dev; a push moving both pins tests both
-environments. QA and prod runs are never cancelled by later pushes: they wait their turn.
+environments.
+
+**QA and prod runs are never cancelled or dropped**: every promotion's (or rollback's) target is tested, or reported
+as not tested. They have no concurrency group, since GitHub keeps only the newest of several runs waiting in one and
+would drop the rest unreported, so two runs of one environment can overlap: rc.1's promotion still waiting for the
+runner when rc.2's is merged, say. `scripts/smoke-result.sh` sorts them out against `main`'s pin, read afresh:
+
+- before waiting, a run whose version is no longer the environment's pin on `main` stops; it ends **superseded**;
+- a run that fails or is cancelled after the pin moved on (not deployed, or redeployed during the test as Flux
+  replaced its version) also ends **superseded**: that failure says nothing about its version;
+- otherwise the run is tested as usual, and a pass always stands: the environment served the target before and
+  after the test.
+
+A superseded run's Deployment ends inactive ("superseded: eshop-qa is pinned to … on main now, not …"), and its email
+says **NOT TESTED** and why; the newer version's own run reports on it. A run cancelled by hand ends inactive,
+"cancelled", and is emailed the same way, as is a target whose job left no result at all (cancelled while queued, or
+its runner died): never "FAILED". Dev's superseded and cancelled runs send nothing.
+
+**Only `main`'s runs count.** `scripts/deployment.sh` records a Deployment only in a run on `main`, and writes the
+run's ref into its payload (`workflow_ref`, `run_url`, `run_id`, `run_attempt`); sign-off and `scripts/release.sh`
+read only Deployments whose `workflow_ref` is `refs/heads/main` (`scripts/lib/deployments.sh`). A copy of `e2e.yml`
+dispatched from another branch still tests, but records nothing.
 
 To test QA again (a flaky failure, a fix to the test), start the same workflow **through CI** from `main`. The
 cluster is on this Mac, so the job runs on the runner inside the cluster (scale set `eshop-e2e`, docs/setup.md
