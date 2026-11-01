@@ -152,7 +152,8 @@ git push --quiet --force origin "HEAD:refs/heads/$branch"
 
 {
   echo "QA's smoke test of **$rc_tag** passed. **Merging this PR is the sign-off** of release **v$version**"
-  echo "(docs/git-workflow.md, \"Sign-off\"). The merge runs the sign-off workflow, which checks again that main"
+  echo "(docs/git-workflow.md, \"Sign-off\"), and only a maintainer's merge counts (repo role admin or maintain)."
+  echo "The merge runs the sign-off workflow, which checks again that main"
   echo "still pins eshop-qa to $candidate and that QA's latest Deployment of it since that pin succeeded, then copies"
   echo "the images to \`$version\` by digest, tags \`v$version\` naming who merged, publishes the GitHub Release and"
   echo "opens the prod promotion PR."

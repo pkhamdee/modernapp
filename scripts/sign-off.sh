@@ -10,7 +10,8 @@
 # Refuses, changing nothing (and failing, so the workflow run shows it), unless:
 #   - the push adds or changes exactly one record, which names a candidate of its version, tag vX.Y.Z-rc.N on origin
 #     (annotated);
-#   - a merged PR brought in <after> (its merger signs off);
+#   - a merged PR brought in <after> (its merger signs off), and its merger is a maintainer of $REPO (repo role
+#     admin or maintain): anyone else's merge signs off nothing, and the run fails saying so;
 #   - origin/main pins eshop-qa to exactly that candidate and apps-qa is not suspended (scripts/pin-release.sh qa);
 #   - QA's latest Deployment of vX.Y.Z-rc.N (e2e.yml, scripts/deployment.sh) created since main last changed QA's
 #     pin succeeded (scripts/lib/qa.sh): older ones tested an earlier deployment. That run checked of the cluster that
@@ -82,6 +83,13 @@ main() {
   read -r pr actor < <(gh_read api "repos/$repo/pulls/$pr_number" --jq '"\(.html_url) \(.merged_by.login // "")"') \
     || refuse "could not read PR #$pr_number"
   [ -n "$actor" ] || refuse "can't tell who merged $pr"
+  local role
+  role=$(gh_read api "repos/$repo/collaborators/$actor/permission" --jq .role_name) \
+    || refuse "could not read $actor's role in $repo"
+  if [ "$role" != admin ] && [ "$role" != maintain ]; then
+    refuse "$actor merged $pr but is not a maintainer of $repo (role: $role); only admin or maintain may sign off." \
+      "Revert the record's merge, or have a maintainer merge a new sign-off PR"
+  fi
 
   git fetch --quiet origin main
   git fetch --quiet --force origin "refs/tags/$rc_tag:refs/tags/$rc_tag" 2>/dev/null \

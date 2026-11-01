@@ -36,6 +36,8 @@ export GITHUB_REF=refs/heads/main GITHUB_RUN_ID=7 GITHUB_RUN_ATTEMPT=1
 #              list newest first, --jq applied (strings printed raw, as gh does)
 #   api .../commits/<sha>/pulls, .../pulls/<n>, .../actions/runs/<id>/artifacts: $FAKE_COMMIT_PULLS, $FAKE_PULL,
 #              $FAKE_ARTIFACTS (GitHub's JSON), --jq applied
+#   api .../actions/runs/<id>/attempts/<n>: {status} from $GH_STATE/run-<id>-<n> (default completed)
+#   api .../collaborators/<login>/permission: {role_name} from $FAKE_ROLES (login=role,...; 404 for anyone else)
 #   (only the calls these scripts make; gh's own --jq is not emulated beyond that)
 #   release view/create/edit, pr list/create/edit/close: against $GH_STATE (a Release's notes, an open PR's body as
 #              pr-<head with / as _>; pr list without --head lists them as {headRefName, url}, --jq applied; a closed
@@ -609,9 +611,10 @@ reopens_after_new_pass() { # after closes_on_failure: a new pass opens it again
 check "sign-off-pr.sh opens it again on QA's next pass, with that Deployment" reopens_after_new_pass
 
 # The sign-off PR merged into main, as GitHub's merge would (its branch was made from main, so a fast-forward), by
-# qa-lead in PR #5; sets $before and $after, the push sign-off.yml sees.
+# qa-lead (a maintainer: repo role maintain) in PR #5; sets $before and $after, the push sign-off.yml sees.
 export FAKE_COMMIT_PULLS='[{"number":5,"merged_at":"2026-10-31T00:00:00Z","html_url":"https://github.com/test/pull/5"}]'
 export FAKE_PULL='{"number":5,"html_url":"https://github.com/test/pull/5","merged_by":{"login":"qa-lead"}}'
+export FAKE_ROLES=qa-lead=maintain,owner=admin,tester=write
 merged() {
   before=$(origin rev-parse refs/heads/main)
   origin update-ref refs/heads/main refs/heads/sign-off/0.3.0-rc.1 "$before"
@@ -643,6 +646,12 @@ nothing_to_sign_off() {
 check "sign-off.sh does nothing for a push that adds or changes no releases/*.md" nothing_to_sign_off
 FAKE_COMMIT_PULLS='[]' check "sign-off.sh refuses a record that no merged PR brought in (who signed off is unknown)" \
   sign_off_refused "no merged pull request brought in $after"
+FAKE_PULL='{"number":5,"html_url":"https://github.com/test/pull/5","merged_by":{"login":"tester"}}' \
+  check "sign-off.sh refuses a sign-off PR merged by someone who is not a maintainer (role write)" \
+  sign_off_refused "tester merged https://github.com/test/pull/5 but is not a maintainer of pkhamdee/modernapp (role: write)"
+FAKE_PULL='{"number":5,"html_url":"https://github.com/test/pull/5","merged_by":{"login":"stranger"}}' \
+  check "sign-off.sh refuses when the merger's role can't be read" \
+  sign_off_refused "could not read stranger's role in pkhamdee/modernapp"
 
 qa_moved_refused() {
   pin_qa 0.3.0-rc.2

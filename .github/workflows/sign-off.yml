@@ -4,7 +4,8 @@
 # no other way to start this.
 #
 # The decisions and steps are all in scripts/sign-off.sh (tested by scripts/tests/release-scripts.sh); this file only
-# supplies tokens and tools. It refuses, changing nothing and failing this run, unless main still pins eshop-qa to
+# supplies tokens and tools. It refuses, changing nothing and failing this run, unless whoever merged the sign-off PR
+# is a maintainer (repo role admin or maintain; anyone with write access can merge a PR), main still pins eshop-qa to
 # the record's candidate (not suspended), QA's latest Deployment of it created since main last changed QA's pin
 # succeeded, and the version isn't released yet. That Deployment's run asked the cluster that QA served the candidate
 # before and after the test; this hosted runner can't reach the cluster, so the Deployment stands in for it.

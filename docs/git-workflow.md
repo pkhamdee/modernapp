@@ -307,9 +307,11 @@ unless:
 
 - the push adds or changes one record, naming a candidate of its version whose tag exists, and a merged PR brought
   it in;
+- whoever merged that PR is a **maintainer** (repo role admin or maintain), as the old dispatched sign-off required:
+  anyone with write access can merge a PR, but only a maintainer's merge signs off;
 - `main` pins `eshop-qa` to exactly that candidate, not suspended;
-- QA's latest Deployment of it, created since `main` last changed QA's pin, succeeded (none, still running, or
-  failed refuses);
+- QA's latest Deployment of it, created since `main` last changed QA's pin by a run on `main`, succeeded (none,
+  still running, or failed refuses; a Deployment recorded by a run from another branch never counts);
 - every candidate image exists, and no `X.Y.Z` image exists with another digest;
 - `vX.Y.Z` doesn't exist, unless an earlier sign-off of this same candidate made it.
 
@@ -321,7 +323,8 @@ updated when already done, so a sign-off that failed half-way is finished by re-
 
 A refused sign-off leaves the record on `main` and no release. Put right what it names (wait for or re-run QA's test,
 or promote the candidate again), then re-run the job; or let the next candidate's sign-off PR replace the record
-(it changes `releases/X.Y.Z.md`, which runs sign-off again).
+(it changes `releases/X.Y.Z.md`, which runs sign-off again). A record merged by a non-maintainer is refused on every
+re-run: revert its merge (a PR), and the next QA run on `main` opens the sign-off PR again for a maintainer to merge.
 
 ### 6. Prod promotion
 
