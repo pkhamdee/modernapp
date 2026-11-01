@@ -12,11 +12,12 @@ issue/* ── PR (required checks) ──► main ── CI: gates, scan, push 
                                      ▼
               CI: gates, scan, push X.Y.Z-rc.N ──► QA promotion PR ── merged (QA's approval) ──► eshop-qa
                                                                                                     │
-                                                    QA's Playwright run "E2E qa X.Y.Z-rc.N" ◄───────┘
+                        smoke test of QA at vX.Y.Z-rc.N (Deployment), and "E2E qa X.Y.Z-rc.N" ◄─────┘
                                                                      │
               "Sign off release candidate": tag vX.Y.Z, copy images, GitHub Release, prod promotion PR
                                                                      │
                                         merged (production approval) ──► eshop-prod
+                                                 smoke test of prod at vX.Y.Z (Deployment) ◄─┘
 ```
 
 Nothing deploys because a tag appeared: `eshop-dev` follows `main`, and `eshop-qa` and `eshop-prod` each run exactly
@@ -227,9 +228,17 @@ cluster serves it), `flux get kustomization apps-qa`, `kubectl -n eshop-qa get d
 
 ### 4. QA test run
 
-QA runs the Playwright UI suite against `https://qa.eshop.localhost` **through CI**, so the run is recorded against
-the candidate. The cluster is on this Mac, so the job runs on the runner inside the cluster (scale set `eshop-e2e`,
-docs/setup.md "Cluster runner"); the script starts the workflow and follows it:
+**Merging the QA promotion PR starts QA's smoke test automatically**: the push to `main` changes the
+`# release-pin: qa` lines, so the E2E smoke test (`.github/workflows/e2e.yml`, run `E2E push <commit>`) tests
+`eshop-qa` at the newly pinned candidate instead of dev, as [Dev's smoke test](#devs-smoke-test) describes. It records
+a Deployment of **`vX.Y.Z-rc.N`** to `qa` (`gh api 'repos/pkhamdee/modernapp/deployments?environment=qa'`) that ends
+success or failure; a success marks QA's previous successful Deployment inactive ("replaced by vX.Y.Z-rc.N"), so the
+active one is what QA runs. A push changing only pins doesn't test dev; a push moving both pins tests both
+environments. QA and prod runs are never cancelled by later pushes: they wait their turn.
+
+Sign-off still reads a run started by hand, until it moves to Deployments (#90). QA starts it **through CI**, so the
+run is recorded against the candidate. The cluster is on this Mac, so the job runs on the runner inside the cluster
+(scale set `eshop-e2e`, docs/setup.md "Cluster runner"); the script starts the workflow and follows it:
 
 ```bash
 e2e/run-on-actions.sh qa X.Y.Z-rc.N      # workflow "E2E smoke test", environment qa, version X.Y.Z-rc.N
@@ -287,8 +296,10 @@ is skipped or updated when already done, so a sign-off that failed half-way is f
 
 **Merging the prod promotion PR is the production approval.** Flux then applies `deploy/apps/prod` as it is in tag
 `vX.Y.Z` with the `X.Y.Z` images. Pushing a tag never changes prod, and changes on `main` reach prod only once they are
-released and promoted. Afterwards, the post-release smoke test: `cd e2e && npm run e2e:prod`, or
-`e2e/run-on-actions.sh prod X.Y.Z`.
+released and promoted. The merge starts prod's smoke test automatically, as for QA ([step 4](#4-qa-test-run)): it
+waits until `eshop-prod` serves `X.Y.Z`, tests it and records a Deployment of **`vX.Y.Z`** to `prod`, which on
+success marks prod's previous successful one inactive. To test again by hand: `e2e/run-on-actions.sh prod X.Y.Z`
+(recorded too), or `cd e2e && npm run e2e:prod` (nothing recorded).
 
 ```bash
 scripts/pin-release.sh prod                     # the pinned release, from Git
@@ -321,6 +332,9 @@ git checkout -b promote/prod-0.2.0 origin/main
 scripts/pin-release.sh prod 0.2.0
 git commit -am "eshop-prod: roll back to v0.2.0"   # push, open a PR into main, merge it
 ```
+
+Its merge is smoke-tested like any promotion: a Deployment of `v0.2.0` to `prod`, whose success marks the rolled-back
+release's Deployment inactive.
 
 It moves manifests and images back but **never the data**: eshop-api migrates the database forwards on start-up and
 nothing migrates it back. A rollback is safe only when the earlier release works with the schema the later one left:

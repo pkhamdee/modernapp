@@ -2,6 +2,9 @@
 # deploy (ADR 0008):
 #   - every push to main: Flux deploys each main commit to eshop-dev (its own image-update commits included), so
 #     the run tests dev at the pushed commit;
+#   - a push to main that changes a `# release-pin: <env>` line (a merged QA or prod promotion PR, or a rollback):
+#     that environment at the newly pinned version, both environments if both pins moved. A push changing nothing
+#     but pins doesn't test dev, whose deploy it didn't change; a still-suspended environment is not tested;
 #   - by hand (Actions -> E2E smoke test -> Run workflow, or e2e/run-on-actions.sh [environment] [version]):
 #     QA's test of a release candidate (environment `qa`, version `X.Y.Z-rc.N`, required: sign-off finds the run by
 #     its name, docs/git-workflow.md "QA test run"); prod at `X.Y.Z` (default: prod's pin on main); dev at a main
@@ -16,7 +19,8 @@
 # (e2e/check-serving.sh --wait: Flux applied tag vX, or main at the commit, and every Deployment rolled out from it);
 # not serving it after 15 minutes is a failure, "not deployed". It checks again after the test, so a pass tested
 # the target from start to end. Failed tests run once more (playwright.config.ts); a pass on the retry still passes,
-# and the run summary names the test.
+# and the run summary names the test. A successful Deployment marks the environment's earlier successful ones
+# inactive, "replaced by <ref>": GitHub then shows each environment's current version as its one active Deployment.
 #
 # One run at a time per environment. A newer dev run cancels the running or waiting one: dev has moved on, so that
 # run's Deployment is marked inactive, "superseded", not failed. QA and prod runs are never cancelled.
