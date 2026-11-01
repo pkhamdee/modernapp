@@ -5,6 +5,8 @@
 #   scripts/promotion-pr.sh        the promotion PR's branch, pin commit and body
 #   scripts/sign-off.sh            the "Sign off release candidate" workflow: its refusals, the release, re-runs
 #   scripts/check-new-images.sh    CI's push job: a version's images are never overwritten
+#   scripts/smoke-targets.sh       the smoke test's targets: what a push to main, or a dispatch, tests where
+#   scripts/deployment.sh          the smoke test's Deployments: create, in progress, outcome, superseded
 #   scripts/protect-main.sh        main's ruleset, the tag rulesets and the release environment (dry run and apply)
 # `gh` and `crane` are fakes on PATH that record their arguments and keep GitHub's and the registry's state in files.
 # Run from anywhere: scripts/tests/release-scripts.sh
@@ -24,6 +26,10 @@ export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 #   api .../rulesets, .../deployment-branch-policies: print $FAKE_RULESETS, $FAKE_BRANCH_POLICIES (GitHub's JSON;
 #              FAKE_NO_ENVIRONMENT=1: the environment doesn't exist, 404); api <path> --method <M>: a write, its
 #              body kept as $GH_STATE/api-<M>-<path with / as _>
+#   api .../deployments[?environment=&ref=], .../deployments/<id>/statuses: GitHub's Deployments as files in
+#              $GH_STATE/deployments, <id>.json (the create body plus its id, numbered from 1) and <id>.statuses
+#              (one status body per line, oldest first); create (--method POST) and list newest first, --jq applied
+#              (strings printed raw, as gh does)
 #   (only the calls these scripts make; gh's own --jq is not emulated beyond that)
 #   release view/create/edit, pr list/create/edit: against $GH_STATE (a Release's notes, a PR's body)
 mkdir -p "$work/bin" "$work/gh-state"
@@ -34,7 +40,21 @@ arg() { local name=$1; shift; while [ $# -gt 0 ]; do [ "$1" = "$name" ] && { ech
 case "$1 $2" in
   "run list") if [[ " $* " == *" e2e.yml "* ]]; then jq "$(arg --jq "$@")" <<<"${FAKE_QA_RUNS:-[]}"; else echo "https://github.com/test/run/1"; fi ;;
   "api "*)
-    if [[ " $* " == *" --method "* ]]; then # a write: its JSON body (stdin) kept as $GH_STATE/api-<METHOD>-<path>
+    deployments="$GH_STATE/deployments" query=${2#*\?}; path=${2%%\?*}; jq_filter=$(arg --jq "$@"); jq_filter=${jq_filter:-.}
+    if [[ "$path" == */deployments && " $* " == *" --method POST "* ]]; then # create: the next id, the body kept
+      mkdir -p "$deployments"; id=$(( $(find "$deployments" -name '*.json' | wc -l) + 1 ))
+      jq --argjson id "$id" '. + {id: $id}' >"$deployments/$id.json"; jq -r "$jq_filter" "$deployments/$id.json"
+    elif [[ "$path" =~ /deployments/([0-9]+)/statuses$ && " $* " == *" --method POST "* ]]; then # appended, oldest first
+      [ -f "$deployments/${BASH_REMATCH[1]}.json" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+      jq -c . >>"$deployments/${BASH_REMATCH[1]}.statuses"; echo '{}'
+    elif [[ "$path" == */deployments ]]; then # list, newest first, filtered by ?environment= and ?ref=
+      env=$(sed -nE 's/(^|.*&)environment=([^&]*).*/\2/p' <<<"$query"); ref=$(sed -nE 's/(^|.*&)ref=([^&]*).*/\2/p' <<<"$query")
+      find "$deployments" -name '*.json' -exec cat {} + 2>/dev/null | jq -s --arg env "$env" --arg ref "$ref" \
+        'map(select(($env == "" or .environment == $env) and ($ref == "" or .ref == $ref))) | sort_by(-.id)' \
+        | jq -r "$jq_filter"
+    elif [[ "$path" =~ /deployments/([0-9]+)/statuses$ ]]; then # newest first
+      cat "$deployments/${BASH_REMATCH[1]}.statuses" 2>/dev/null | jq -s 'reverse' | jq -r "$jq_filter"
+    elif [[ " $* " == *" --method "* ]]; then # a write: its JSON body (stdin) kept as $GH_STATE/api-<METHOD>-<path>
       method=$(arg --method "$@"); path=${2//\//_}
       if [[ " $* " == *" --input - "* ]]; then cat >"$GH_STATE/api-$method-$path"; else : >"$GH_STATE/api-$method-$path"; fi
       echo '{}'
@@ -517,6 +537,114 @@ registry_error_fails() {
 check "check-new-images.sh fails when it can't tell (a registry error is not \"absent\")" registry_error_fails
 usage_refused() { ! new_images && grep -qF 'usage: scripts/check-new-images.sh' "$work/out"; }
 check "check-new-images.sh needs at least one image" usage_refused
+
+# --- scripts/smoke-targets.sh (e2e.yml's first job: what a push to main, or a dispatch, smoke-tests) ---
+
+clone=$(fresh smoke-targets)
+targets() { (cd "$clone" && scripts/smoke-targets.sh "$@") >"$work/out" 2>&1; }
+pushed() { # pushed <file> <subject>: commits a change to <file> on main and pushes it; prints before and after
+  local before
+  before=$(git -C "$clone" rev-parse HEAD)
+  mkdir -p "$clone/$(dirname "$1")" && echo "$2" >>"$clone/$1"
+  git -C "$clone" add "$1" && git -C "$clone" commit -qm "$2" && git -C "$clone" push -q origin HEAD:main
+  echo "$before $(git -C "$clone" rev-parse HEAD)"
+}
+ordinary_push_tests_dev() {
+  # shellcheck disable=SC2046 # two SHAs
+  set -- $(pushed eshop-api/README.md "a change") && targets push "$1" "$2" && [ "$(cat "$work/out")" = "dev $2" ]
+}
+check "smoke-targets.sh push: an ordinary commit is dev at that commit" ordinary_push_tests_dev
+flux_image_push_tests_dev() {
+  # shellcheck disable=SC2046
+  set -- $(pushed deploy/apps/dev/kustomization.yaml "chore: update images") \
+    && targets push "$1" "$2" && [ "$(cat "$work/out")" = "dev $2" ]
+}
+check "smoke-targets.sh push: Flux's image-update commit is dev at that commit" flux_image_push_tests_dev
+unknown_commit_refused() { ! targets push "$(git -C "$clone" rev-parse HEAD)" 0123456789abcdef0123456789abcdef01234567; }
+check "smoke-targets.sh push: refuses an after-commit it doesn't have" unknown_commit_refused
+dispatched_dev_is_main() {
+  local main
+  main=$(git -C "$clone" rev-parse origin/main)
+  targets dispatch dev && [ "$(cat "$work/out")" = "dev $main" ] \
+    && targets dispatch dev "${main:0:7}" && [ "$(cat "$work/out")" = "dev $main" ]
+}
+check "smoke-targets.sh dispatch dev: main's head, or the commit given (short or full)" dispatched_dev_is_main
+dispatched_versions() {
+  targets dispatch qa 0.3.0-rc.1 && [ "$(cat "$work/out")" = "qa 0.3.0-rc.1" ] \
+    && targets dispatch prod 0.2.1 && [ "$(cat "$work/out")" = "prod 0.2.1" ] \
+    && targets dispatch prod && [ "$(cat "$work/out")" = "prod 0.2.0" ]
+}
+check "smoke-targets.sh dispatch qa|prod: the version given; prod without one is its pin on main" dispatched_versions
+dispatch_refusals() {
+  ! targets dispatch qa && grep -qF 'X.Y.Z-rc.N' "$work/out" \
+    && ! targets dispatch prod 0.3.0-rc.1 && grep -qF 'a release X.Y.Z' "$work/out" \
+    && ! targets dispatch staging && grep -qF 'usage: scripts/smoke-targets.sh' "$work/out"
+}
+check "smoke-targets.sh dispatch refuses QA without a candidate, a version the environment doesn't take, and other environments" \
+  dispatch_refusals
+
+# --- scripts/deployment.sh (e2e.yml: each target's GitHub Deployment and its statuses) ---
+
+deployment() { (cd "$root" && scripts/deployment.sh "$@") >"$work/out" 2>&1; }
+run_url=https://github.com/test/actions/runs/7
+dev_url=https://eshop.localhost
+dep() { cat "$GH_STATE/deployments/$1.json"; }                             # dep <id>: the create body
+statuses() { jq -s . "$GH_STATE/deployments/$1.statuses" 2>/dev/null || echo '[]'; } # oldest first
+dev_commit=0123456789abcdef0123456789abcdef01234567
+starts_in_progress() {
+  deployment start dev "$dev_commit" "$run_url" "$dev_url" || return 1
+  local id
+  id=$(cat "$work/out")
+  dep "$id" | jq -e --arg ref "$dev_commit" \
+      '.ref == $ref and .environment == "dev" and .auto_merge == false and .required_contexts == []' >/dev/null \
+    && statuses "$id" | jq -e --arg log "$run_url" --arg url "$dev_url" \
+      'length == 1 and .[0].state == "in_progress" and .[0].log_url == $log and .[0].environment_url == $url' >/dev/null
+}
+check "deployment.sh start creates a Deployment of the ref to the environment (no auto-merge, no required contexts), in progress, and prints its id" \
+  starts_in_progress
+finishes() { # finishes <state> [description]: a new Deployment finished with that state ends with exactly that status
+  deployment start dev "$dev_commit" "$run_url" "$dev_url" || return 1
+  local id
+  id=$(cat "$work/out")
+  deployment finish "$id" "$1" "$run_url" "$dev_url" ${2:+"$2"} \
+    && statuses "$id" | jq -e --arg state "$1" --arg log "$run_url" --arg url "$dev_url" --arg d "${2:-}" \
+      '(map(.state) == ["in_progress", $state]) and .[1].log_url == $log and .[1].environment_url == $url
+       and (.[1].description // "") == $d' >/dev/null
+}
+check "deployment.sh finish <id> success records success, linked to the run and the environment" finishes success
+check "deployment.sh finish <id> failure <description> records failure and why" \
+  finishes failure "eshop-dev is not serving main at 0123456: not deployed after 900s"
+check "deployment.sh finish <id> inactive superseded records inactive, superseded" finishes inactive superseded
+long_description_cut() {
+  deployment start dev "$dev_commit" "$run_url" "$dev_url" || return 1
+  local id
+  id=$(cat "$work/out")
+  deployment finish "$id" failure "$run_url" "$dev_url" "$(printf 'x%.0s' {1..200})" \
+    && statuses "$id" | jq -e '.[1].description | length == 140' >/dev/null
+}
+check "deployment.sh finish cuts a description to GitHub's 140 characters" long_description_cut
+finish_refusals() {
+  ! deployment finish 1 passed "$run_url" "$dev_url" && grep -qF 'usage: scripts/deployment.sh' "$work/out" \
+    && ! deployment start staging "$dev_commit" "$run_url" "$dev_url" && grep -qF 'usage: scripts/deployment.sh' "$work/out"
+}
+check "deployment.sh refuses an unknown state or environment" finish_refusals
+supersedes_older_in_progress() {
+  rm -rf "$GH_STATE/deployments"
+  local older finished qa own
+  deployment start dev 1111111111111111111111111111111111111111 "$run_url" "$dev_url" && older=$(cat "$work/out")
+  deployment start dev 2222222222222222222222222222222222222222 "$run_url" "$dev_url" && finished=$(cat "$work/out")
+  deployment finish "$finished" success "$run_url" "$dev_url"
+  deployment start qa 0.3.0-rc.1 "$run_url" https://qa.eshop.localhost && qa=$(cat "$work/out")
+  deployment start dev "$dev_commit" "$run_url" "$dev_url" && own=$(cat "$work/out")
+  deployment supersede dev "$own" \
+    && statuses "$older" | jq -e 'map(.state) == ["in_progress", "inactive"] and .[1].description == "superseded"' >/dev/null \
+    && statuses "$finished" | jq -e 'map(.state) == ["in_progress", "success"]' >/dev/null \
+    && statuses "$qa" | jq -e 'map(.state) == ["in_progress"]' >/dev/null \
+    && statuses "$own" | jq -e 'map(.state) == ["in_progress"]' >/dev/null
+}
+check "deployment.sh supersede <env> <id> marks the environment's other in-progress Deployments inactive, superseded (finished ones, other environments' and its own untouched)" \
+  supersedes_older_in_progress
+rm -rf "$GH_STATE/deployments"
 
 # --- scripts/protect-main.sh (main's ruleset and the release environment; applied by a maintainer) ---
 
