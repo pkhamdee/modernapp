@@ -178,9 +178,10 @@ jobs:
       - name: Manifests (kustomize build + kubeconform)
         run: scripts/validate-manifests.sh
       # A broken ci-release.yml runs no job at all (the PR just shows no checks); this still guards e2e.yml
-      # and every edit that leaves the file parseable.
+      # and every edit that leaves the file parseable. 1.7.12 or later: it knows `environment: {deployment: false}`
+      # (e2e.yml's notify job).
       - name: Workflows (actionlint)
-        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.7
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo rhysd/actionlint:1.7.12
       - uses: actions/setup-node@v7
         with:
           node-version: 24

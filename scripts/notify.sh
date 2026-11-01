@@ -142,8 +142,10 @@ trap 'rm -f "$message"' EXIT
 recipients=()
 IFS=, read -ra to <<<"$NOTIFY_EMAIL"
 for r in "${to[@]}"; do r=${r// /}; [ -z "$r" ] || recipients+=(--mail-rcpt "$r"); done
-# The password goes to curl on stdin, never on its command line (which any process on the runner can read).
-printf 'user = "%s:%s"\n' "$SMTP_USERNAME" "$(sed 's/[\\"]/\\&/g' <<<"$SMTP_PASSWORD")" \
+# The password goes to curl on stdin, never on its command line (which any process on the runner can read); in
+# curl's config syntax, inside quotes, with \ and " escaped.
+quoted=${SMTP_PASSWORD//\\/\\\\} quoted=${quoted//\"/\\\"}
+printf 'user = "%s:%s"\n' "$SMTP_USERNAME" "$quoted" \
   | curl --silent --show-error --fail --ssl-reqd --url "${SMTP_URL:-smtps://smtp.gmail.com:465}" \
       --mail-from "$SMTP_USERNAME" "${recipients[@]}" --config - --upload-file "$message"
 echo "emailed $NOTIFY_EMAIL: $subject"

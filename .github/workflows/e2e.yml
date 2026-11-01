@@ -22,6 +22,10 @@
 # and the run summary names the test. A successful Deployment marks the environment's earlier successful ones
 # inactive, "replaced by <ref>": GitHub then shows each environment's current version as its one active Deployment.
 #
+# The result is emailed (the notify job, scripts/notify.sh; docs/setup.md "Smoke test email"): every QA and prod
+# result, dev only a failure and the first pass after one. A prod failure names the last release that passed in prod
+# and the rollback promotion PR.
+#
 # One run at a time per environment. A newer dev run cancels the running or waiting one: dev has moved on, so that
 # run's Deployment is marked inactive, "superseded", not failed. QA and prod runs are never cancelled.
 #
@@ -193,6 +197,7 @@ jobs:
           echo "$ip eshop.localhost qa.eshop.localhost prod.eshop.localhost" | sudo tee -a /etc/hosts
       # Wait (up to 15 minutes) until the cluster serves exactly this target; stderr says what it's waiting for.
       - name: Wait until ${{ matrix.env }} serves ${{ matrix.target }}
+        id: wait
         run: |
           status=0
           ./check-serving.sh --wait "$E2E_ENV" "$TARGET" 2>&1 >serving.txt | tee waiting.txt || status=$?
@@ -248,6 +253,7 @@ jobs:
           fi
           { echo; echo "Still serving $TARGET after the test."; } >>"$GITHUB_STEP_SUMMARY"
       - name: Upload the Playwright report
+        id: report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
@@ -274,3 +280,84 @@ jobs:
             *) if [ "$E2E_ENV" = dev ]; then set -- inactive superseded; else set -- inactive cancelled; fi ;;
           esac
           scripts/deployment.sh finish "$ID" "$1" "$RUN_URL" "$E2E_BASE_URL" "$2"
+      # The result for the notify job's email, as artifact smoke-result-<env> (one target per environment a run):
+      # passed, retried, failed, not-deployed (never served the target), or superseded / cancelled (no email); the
+      # Deployment's id, why it failed, the tests that passed only on retry and the Playwright report's link.
+      - name: Keep the result for the email
+        if: ${{ always() }}
+        working-directory: .
+        env:
+          ID: ${{ steps.deployment.outputs.id }}
+          JOB_STATUS: ${{ job.status }}
+          WAITED: ${{ steps.wait.outcome }}
+          REPORT_URL: ${{ steps.report.outputs.artifact-url }}
+        run: |
+          mkdir -p smoke-result
+          [ ! -s e2e/retried.txt ] || cp e2e/retried.txt smoke-result/
+          case "$JOB_STATUS" in
+            success) if [ -s e2e/retried.txt ]; then result=retried; else result=passed; fi ;;
+            failure) if [ "$WAITED" = failure ]; then result=not-deployed; else result=failed; fi ;;
+            *) if [ "$E2E_ENV" = dev ]; then result=superseded; else result=cancelled; fi ;;
+          esac
+          echo "$result $ID" >smoke-result/result
+          cat "$OUTCOME" >smoke-result/detail 2>/dev/null || : >smoke-result/detail
+          echo "${REPORT_URL:-$RUN_URL}" >smoke-result/report-url
+      - name: Upload the result for the email
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: smoke-result-${{ matrix.env }}
+          path: smoke-result
+          retention-days: 14
+
+  # Emails each target's result (scripts/notify.sh): qa and prod every result, dev only a failure and the first pass
+  # after one. A job of its own, on a GitHub-hosted runner (it needs no cluster), because SMTP_PASSWORD is a secret
+  # of environment smoke-test, which deploys from main only (scripts/protect-main.sh):
+  #   - in the e2e job, that environment would also stop a run dispatched from another branch from testing at all,
+  #     and would put the secret within reach of the whole job (npm packages, the browser) on the cluster's runner;
+  #   - `deployment: false`: the job reads the environment's secret without GitHub recording a deployment to
+  #     "smoke-test", which would sit beside the Deployments of what was tested (scripts/deployment.sh).
+  # It reads the e2e job's results from artifacts smoke-result-<env> (a matrix job has no per-target outputs). A
+  # target with no result (its job died before that step) counts as failed. The Deployments are finished before
+  # this job starts, and it may only read them: a failure here (a missing SMTP setting, Gmail refusing) fails this
+  # job, visibly, and never changes what the smoke test recorded.
+  notify:
+    name: Email the results
+    needs: [targets, e2e]
+    if: ${{ always() && needs.targets.result == 'success' && needs.targets.outputs.targets != '[]' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: smoke-test
+      deployment: false
+    permissions:
+      contents: read
+      deployments: read # dev's previous Deployment, prod's last passing release (scripts/notify.sh)
+    steps:
+      - uses: actions/checkout@v7
+      # Whatever it finds: a missing result is handled below, as a failure.
+      - uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          pattern: smoke-result-*
+          path: results
+      - name: Email the results
+        env:
+          TARGETS: ${{ needs.targets.outputs.targets }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GH_TOKEN: ${{ github.token }}
+          SMTP_USERNAME: ${{ vars.SMTP_USERNAME }}
+          NOTIFY_EMAIL: ${{ vars.NOTIFY_EMAIL }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          status=0
+          while read -r env target; do
+            dir="results/smoke-result-$env"
+            result=failed id=
+            [ ! -f "$dir/result" ] || read -r result id <"$dir/result"
+            detail=$(cat "$dir/detail" 2>/dev/null || echo "the smoke test job recorded no result")
+            case "$result" in superseded | cancelled) echo "$env $target: $result, no email"; continue ;; esac
+            DETAIL=$detail REPORT_URL=$(cat "$dir/report-url" 2>/dev/null || echo "$RUN_URL") \
+              RETRIED_FILE="$dir/retried.txt" scripts/notify.sh "$env" "$target" "$result" ${id:+"$id"} \
+              || { status=1; echo "::error::$env $target: the result was not emailed (see above)"; }
+          done < <(jq -r '.[] | "\(.env) \(.target)"' <<<"$TARGETS")
+          exit "$status"
